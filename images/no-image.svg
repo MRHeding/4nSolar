@@ -1,0 +1,10 @@
+<!-- This is a placeholder SVG for products without images -->
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <rect width="200" height="200" fill="#f3f4f6"/>
+  <text x="100" y="100" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-size="14" fill="#9ca3af">
+    No Image
+  </text>
+  <rect x="60" y="60" width="80" height="60" fill="none" stroke="#d1d5db" stroke-width="2"/>
+  <circle cx="75" cy="80" r="8" fill="#d1d5db"/>
+  <path d="M85 95 L95 85 L115 105 L105 115" stroke="#d1d5db" stroke-width="2" fill="none"/>
+</svg>
