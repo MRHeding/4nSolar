@@ -114,7 +114,7 @@ include 'includes/header.php';
                 <i class="fas fa-cash-register text-green-600 text-xl mr-3"></i>
                 <span class="font-medium text-gray-900">Start New Sale</span>
             </a>
-            <a href="inventory.php?action=create" class="flex items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition">
+            <a href="inventory.php?action=add" class="flex items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition">
                 <i class="fas fa-plus text-blue-600 text-xl mr-3"></i>
                 <span class="font-medium text-gray-900">Add Inventory</span>
             </a>
