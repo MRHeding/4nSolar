@@ -177,10 +177,12 @@ include 'includes/header.php';
 
 <!-- Filters -->
 <div class="bg-white rounded-lg shadow p-6 mb-6">
-    <div class="flex flex-wrap gap-4 items-center">
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Category Filter</label>
-            <select onchange="window.location.href='?category=' + this.value" class="border border-gray-300 rounded-md px-3 py-2">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <!-- Category Filter Section -->
+        <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-700">Category Filter</label>
+            <select onchange="window.location.href='?category=' + this.value" 
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                 <option value="">All Categories</option>
                 <?php foreach ($categories as $category): ?>
                 <option value="<?php echo $category['id']; ?>" <?php echo ($category_filter == $category['id']) ? 'selected' : ''; ?>>
@@ -189,16 +191,77 @@ include 'includes/header.php';
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="flex gap-2">
-            <a href="?" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition">All Items</a>
-            <a href="?filter=low_stock" class="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition">Low Stock</a>
+        
+        <!-- Quick Filter Buttons -->
+        <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-700">Quick Filters</label>
+            <div class="flex gap-2">
+                <a href="?" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition text-sm">
+                    <i class="fas fa-list mr-1"></i>All Items
+                </a>
+                <a href="?filter=low_stock" class="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition text-sm">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>Low Stock
+                </a>
+            </div>
         </div>
-        <div class="ml-auto">
-            <button onclick="exportToCSV('inventory-table', 'inventory')" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
-                <i class="fas fa-download mr-2"></i>Export CSV
-            </button>
+        
+        <!-- Export Section -->
+        <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-700">Export Data</label>
+            <div class="flex gap-2">
+                <button onclick="exportToCSV('inventory-table', 'inventory')" 
+                        class="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm">
+                    <i class="fas fa-download mr-1"></i>Quick CSV
+                </button>
+                <div class="relative">
+                    <button onclick="toggleExportMenu()" 
+                            class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm">
+                        <i class="fas fa-file-export mr-1"></i>Export <i class="fas fa-chevron-down ml-1"></i>
+                    </button>
+                    <div id="export-menu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-40">
+                        <a href="export_inventory.php?format=csv<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
+                           class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i class="fas fa-file-csv mr-2"></i>Full CSV Export
+                        </a>
+                        <a href="export_inventory.php?format=json<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
+                           class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i class="fas fa-file-code mr-2"></i>JSON Export
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+    
+    <!-- Filter Status Display -->
+    <?php if ($category_filter || isset($_GET['filter'])): ?>
+    <div class="mt-4 pt-4 border-t border-gray-200">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <span class="text-sm text-gray-600">Active filters:</span>
+                <?php if ($category_filter): ?>
+                    <?php 
+                    $active_category = array_filter($categories, function($cat) use ($category_filter) {
+                        return $cat['id'] == $category_filter;
+                    });
+                    $active_category = reset($active_category);
+                    ?>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        Category: <?php echo htmlspecialchars($active_category['name']); ?>
+                    </span>
+                <?php endif; ?>
+                <?php if (isset($_GET['filter']) && $_GET['filter'] == 'low_stock'): ?>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        Low Stock Items
+                    </span>
+                <?php endif; ?>
+            </div>
+            <a href="?" class="text-sm text-gray-500 hover:text-gray-700 transition">
+                <i class="fas fa-times mr-1"></i>Clear all filters
+            </a>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <!-- Inventory Table -->
@@ -656,10 +719,27 @@ function closeImageModal() {
     document.body.style.overflow = 'auto'; // Restore scrolling
 }
 
+// Toggle export menu
+function toggleExportMenu() {
+    const menu = document.getElementById('export-menu');
+    menu.classList.toggle('hidden');
+}
+
+// Close export menu when clicking outside
+document.addEventListener('click', function(event) {
+    const menu = document.getElementById('export-menu');
+    const button = event.target.closest('button');
+    
+    if (!button || !button.onclick || button.onclick.toString().indexOf('toggleExportMenu') === -1) {
+        menu.classList.add('hidden');
+    }
+});
+
 // Close modal with Escape key
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
         closeImageModal();
+        document.getElementById('export-menu').classList.add('hidden');
     }
 });
 </script>

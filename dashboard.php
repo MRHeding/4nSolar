@@ -20,8 +20,13 @@ $total_projects = count(getSolarProjects());
 $project_stats = getProjectStats();
 $pos_stats = getPOSStats(date('Y-m-d'), date('Y-m-d')); // Today's POS stats
 
-// Get recent projects
+// Get recent projects and POS sales
 $recent_projects = array_slice(getSolarProjects(), 0, 5);
+try {
+    $recent_pos_sales = array_slice(getPOSSales('completed', null, null), 0, 10); // Get last 10 completed sales
+} catch (Exception $e) {
+    $recent_pos_sales = []; // Fallback to empty array if POS function fails
+}
 
 include 'includes/header.php';
 ?>
@@ -77,6 +82,9 @@ include 'includes/header.php';
             <div class="ml-4">
                 <p class="text-sm font-medium text-gray-600">Today's Sales</p>
                 <p class="text-2xl font-semibold text-gray-900"><?php echo $pos_stats['today_sales']; ?></p>
+                <p class="text-xs text-gray-500">
+                    <?php echo formatCurrency($pos_stats['today_revenue']); ?> revenue
+                </p>
             </div>
         </div>
     </div>
@@ -122,7 +130,7 @@ include 'includes/header.php';
     </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
     <!-- Low Stock Alert -->
     <?php if (!empty($low_stock_items)): ?>
     <div class="bg-white rounded-lg shadow">
@@ -225,33 +233,62 @@ include 'includes/header.php';
     <div class="bg-white rounded-lg shadow">
         <div class="p-6 border-b border-gray-200">
             <h2 class="text-lg font-semibold text-gray-800">
-                <i class="fas fa-bolt text-solar-yellow mr-2"></i>
-                Quick Actions
+                <i class="fas fa-cash-register text-solar-yellow mr-2"></i>
+                Recent POS Transactions
             </h2>
         </div>
         <div class="p-6">
-            <div class="grid grid-cols-2 gap-4">
-                <a href="inventory.php?action=add" 
-                   class="flex items-center justify-center p-4 bg-solar-blue text-white rounded-lg hover:bg-blue-800 transition">
-                    <i class="fas fa-plus mr-2"></i>
-                    Add Item
-                </a>
-                <a href="projects.php?action=create" 
-                   class="flex items-center justify-center p-4 bg-solar-green text-white rounded-lg hover:bg-green-700 transition">
-                    <i class="fas fa-project-diagram mr-2"></i>
-                    New Project
-                </a>
-                <a href="suppliers.php?action=add" 
-                   class="flex items-center justify-center p-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
-                    <i class="fas fa-truck mr-2"></i>
-                    Add Supplier
-                </a>
-                <a href="reports.php" 
-                   class="flex items-center justify-center p-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
-                    <i class="fas fa-chart-bar mr-2"></i>
-                    View Reports
+            <?php if (!empty($recent_pos_sales)): ?>
+            <div class="space-y-3">
+                <?php foreach (array_slice($recent_pos_sales, 0, 5) as $sale): ?>
+                <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition">
+                    <div class="flex-1">
+                        <div class="flex items-center justify-between">
+                            <p class="font-medium text-gray-900">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></p>
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                                <?php echo ucfirst($sale['status']); ?>
+                            </span>
+                        </div>
+                        <p class="text-sm text-gray-600">
+                            <?php echo htmlspecialchars($sale['customer_name'] ?? 'Walk-in Customer'); ?>
+                            <?php if (!empty($sale['customer_phone'])): ?>
+                            • <?php echo htmlspecialchars($sale['customer_phone']); ?>
+                            <?php endif; ?>
+                        </p>
+                        <p class="text-xs text-gray-500">
+                            <?php echo date('M j, Y g:i A', strtotime($sale['created_at'])); ?>
+                            • <?php echo $sale['items_count']; ?> item(s)
+                            <?php if (!empty($sale['cashier_name'])): ?>
+                            • by <?php echo htmlspecialchars($sale['cashier_name']); ?>
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    <div class="text-right ml-4">
+                        <p class="text-lg font-semibold text-gray-900"><?php echo formatCurrency($sale['total_amount']); ?></p>
+                        <?php if ($sale['payment_method']): ?>
+                        <p class="text-xs text-gray-500 capitalize"><?php echo htmlspecialchars($sale['payment_method']); ?></p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+                
+                <?php if (count($recent_pos_sales) > 5): ?>
+                <div class="text-center pt-3 border-t">
+                    <a href="pos.php?action=history" class="text-solar-blue hover:underline text-sm">
+                        View All Transactions (<?php echo count($recent_pos_sales); ?> total)
+                    </a>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php else: ?>
+            <div class="text-center py-8">
+                <i class="fas fa-cash-register text-gray-300 text-3xl mb-3"></i>
+                <p class="text-gray-500 mb-3">No POS transactions yet</p>
+                <a href="pos.php" class="inline-flex items-center px-4 py-2 bg-solar-blue text-white rounded-lg hover:bg-blue-800 transition">
+                    <i class="fas fa-plus mr-2"></i>Start Your First Sale
                 </a>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
