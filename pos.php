@@ -397,45 +397,290 @@ include 'includes/header.php';
 
 <!-- Add Item Modal -->
 <div id="add-item-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
         <div class="mt-3">
             <h3 class="text-lg font-medium text-gray-900 mb-4">Add Item to Sale</h3>
-            <form method="POST" action="?action=add_item&id=<?php echo $sale['id']; ?>">
-                <div class="mb-4">
-                    <label for="inventory_item_id" class="block text-sm font-medium text-gray-700 mb-2">Select Item</label>
-                    <select id="inventory_item_id" name="inventory_item_id" required
-                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-                        <option value="">Choose an item...</option>
-                        <?php foreach ($inventory_items as $inv_item): ?>
-                        <option value="<?php echo $inv_item['id']; ?>">
-                            <?php echo htmlspecialchars($inv_item['brand'] . ' ' . $inv_item['model'] . ' - ' . formatCurrency($inv_item['selling_price']) . ' (Stock: ' . $inv_item['stock_quantity'] . ')'); ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+            
+            <!-- Search Bar -->
+            <div class="mb-4">
+                <label for="item-search" class="block text-sm font-medium text-gray-700 mb-2">Search Items</label>
+                <input type="text" id="item-search" placeholder="Search by brand, model, or category..." 
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                       oninput="filterItems()">
+            </div>
+            
+            <!-- Category Filter -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Quick Filter by Category</label>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="filterByPOSCategory('')" 
+                            class="pos-category-filter-btn px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition active">
+                        All Items
+                    </button>
+                    <?php 
+                    $pos_categories = [];
+                    foreach ($inventory_items as $item) {
+                        if (!empty($item['category_name']) && !in_array($item['category_name'], $pos_categories)) {
+                            $pos_categories[] = $item['category_name'];
+                        }
+                    }
+                    foreach ($pos_categories as $category): ?>
+                    <button type="button" onclick="filterByPOSCategory('<?php echo strtolower($category); ?>')" 
+                            class="pos-category-filter-btn px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition">
+                        <?php echo htmlspecialchars($category); ?>
+                    </button>
+                    <?php endforeach; ?>
                 </div>
-                <div class="mb-4">
-                    <label for="quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
-                    <input type="number" min="1" id="quantity" name="quantity" required value="1"
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+            </div>
+            
+            <!-- Items Grid -->
+            <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                <div id="items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+                    <?php foreach ($inventory_items as $inv_item): ?>
+                    <div class="item-card border border-gray-200 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
+                         data-item-id="<?php echo $inv_item['id']; ?>"
+                         data-brand="<?php echo strtolower($inv_item['brand']); ?>"
+                         data-model="<?php echo strtolower($inv_item['model']); ?>"
+                         data-category="<?php echo strtolower($inv_item['category_name'] ?? ''); ?>"
+                         data-price="<?php echo $inv_item['selling_price']; ?>"
+                         data-stock="<?php echo $inv_item['stock_quantity']; ?>"
+                         onclick="selectItem(this)">
+                        
+                        <div class="flex items-center space-x-3">
+                            <div class="flex-shrink-0">
+                                <img class="h-12 w-12 rounded-lg object-cover border" 
+                                     src="<?php echo htmlspecialchars(getProductImageUrl($inv_item['image_path'])); ?>" 
+                                     alt="<?php echo htmlspecialchars($inv_item['brand'] . ' ' . $inv_item['model']); ?>">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-medium text-gray-900 truncate">
+                                    <?php echo htmlspecialchars($inv_item['brand']); ?>
+                                </div>
+                                <div class="text-sm text-gray-500 truncate">
+                                    <?php echo htmlspecialchars($inv_item['model']); ?>
+                                </div>
+                                <div class="text-xs text-gray-400">
+                                    <?php echo htmlspecialchars($inv_item['category_name'] ?? 'N/A'); ?>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm font-medium text-gray-900">
+                                    <?php echo formatCurrency($inv_item['selling_price']); ?>
+                                </div>
+                                <div class="text-xs <?php echo $inv_item['stock_quantity'] > 0 ? 'text-green-600' : 'text-red-600'; ?>">
+                                    Stock: <?php echo $inv_item['stock_quantity']; ?>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <?php if ($inv_item['stock_quantity'] <= 0): ?>
+                        <div class="mt-2 text-center">
+                            <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                                Out of Stock
+                            </span>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
-                <div class="mb-4">
-                    <label for="discount_percentage" class="block text-sm font-medium text-gray-700 mb-2">Discount %</label>
-                    <input type="number" min="0" max="100" step="0.01" id="discount_percentage" name="discount_percentage" value="0"
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                
+                <div id="no-items-message" class="hidden text-center py-8 text-gray-500">
+                    <i class="fas fa-search text-2xl mb-2"></i>
+                    <p>No items found matching your search.</p>
                 </div>
+            </div>
+            
+            <!-- Selected Item Form -->
+            <form id="add-item-form" method="POST" action="?action=add_item&id=<?php echo $sale['id']; ?>" class="hidden">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <h4 class="font-medium text-gray-900 mb-2">Selected Item:</h4>
+                    <div id="selected-item-display" class="text-sm text-gray-700"></div>
+                </div>
+                
+                <input type="hidden" id="selected_inventory_item_id" name="inventory_item_id">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                        <input type="number" min="1" id="quantity" name="quantity" required value="1"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                               oninput="updateTotalPreview()">
+                    </div>
+                    <div>
+                        <label for="discount_percentage" class="block text-sm font-medium text-gray-700 mb-2">Discount %</label>
+                        <input type="number" min="0" max="100" step="0.01" id="discount_percentage" name="discount_percentage" value="0"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                               oninput="updateTotalPreview()">
+                    </div>
+                </div>
+                
+                <div id="total-preview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 hidden">
+                    <div class="flex justify-between text-sm">
+                        <span>Subtotal:</span>
+                        <span id="subtotal-amount">₱0.00</span>
+                    </div>
+                    <div class="flex justify-between text-sm text-green-600">
+                        <span>Discount:</span>
+                        <span id="discount-amount">₱0.00</span>
+                    </div>
+                    <hr class="my-2">
+                    <div class="flex justify-between font-medium">
+                        <span>Total:</span>
+                        <span id="total-amount">₱0.00</span>
+                    </div>
+                </div>
+                
                 <div class="flex justify-end space-x-3">
-                    <button type="button" onclick="document.getElementById('add-item-modal').classList.add('hidden')"
+                    <button type="button" onclick="clearSelection()"
                             class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
-                        Cancel
+                        Clear Selection
                     </button>
                     <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
-                        Add Item
+                        Add to Sale
                     </button>
                 </div>
             </form>
+            
+            <div class="flex justify-end mt-4">
+                <button type="button" onclick="document.getElementById('add-item-modal').classList.add('hidden')"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Close
+                </button>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+let selectedItemData = null;
+let currentPOSCategoryFilter = '';
+
+function filterItems() {
+    const searchTerm = document.getElementById('item-search').value.toLowerCase();
+    const itemCards = document.querySelectorAll('.item-card');
+    let visibleCount = 0;
+    
+    itemCards.forEach(card => {
+        const brand = card.getAttribute('data-brand');
+        const model = card.getAttribute('data-model');
+        const category = card.getAttribute('data-category');
+        
+        const matchesSearch = brand.includes(searchTerm) || 
+                             model.includes(searchTerm) || 
+                             category.includes(searchTerm);
+        
+        const matchesCategory = currentPOSCategoryFilter === '' || category === currentPOSCategoryFilter;
+        
+        if (matchesSearch && matchesCategory) {
+            card.style.display = 'block';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    // Show/hide no results message
+    const noItemsMessage = document.getElementById('no-items-message');
+    if (visibleCount === 0) {
+        noItemsMessage.classList.remove('hidden');
+    } else {
+        noItemsMessage.classList.add('hidden');
+    }
+}
+
+function filterByPOSCategory(category) {
+    currentPOSCategoryFilter = category;
+    
+    // Update button states
+    document.querySelectorAll('.pos-category-filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-green-600', 'text-white');
+        btn.classList.add('bg-gray-100', 'text-gray-700');
+        
+        // Restore original colors for category buttons
+        if (btn.textContent.trim() !== 'All Items') {
+            btn.classList.remove('bg-gray-100', 'text-gray-700');
+            btn.classList.add('bg-green-100', 'text-green-700');
+        }
+    });
+    
+    // Highlight active button
+    if (category === '') {
+        // All Items button
+        event.target.classList.remove('bg-gray-100', 'text-gray-700');
+        event.target.classList.add('active', 'bg-green-600', 'text-white');
+    } else {
+        // Category button
+        event.target.classList.remove('bg-green-100', 'text-green-700');
+        event.target.classList.add('active', 'bg-green-600', 'text-white');
+    }
+    
+    filterItems();
+}
+
+function selectItem(cardElement) {
+    // Remove previous selection
+    document.querySelectorAll('.item-card').forEach(card => {
+        card.classList.remove('bg-blue-100', 'border-blue-500');
+    });
+    
+    // Mark current selection
+    cardElement.classList.add('bg-blue-100', 'border-blue-500');
+    
+    // Store selected item data
+    selectedItemData = {
+        id: cardElement.getAttribute('data-item-id'),
+        brand: cardElement.querySelector('.text-sm.font-medium').textContent,
+        model: cardElement.querySelector('.text-sm.text-gray-500').textContent,
+        price: parseFloat(cardElement.getAttribute('data-price')),
+        stock: parseInt(cardElement.getAttribute('data-stock'))
+    };
+    
+    // Update form
+    document.getElementById('selected_inventory_item_id').value = selectedItemData.id;
+    document.getElementById('selected-item-display').innerHTML = 
+        `<strong>${selectedItemData.brand}</strong> - ${selectedItemData.model}<br>
+         Price: ${formatCurrency(selectedItemData.price)} | Available: ${selectedItemData.stock}`;
+    
+    // Show form and update preview
+    document.getElementById('add-item-form').classList.remove('hidden');
+    updateTotalPreview();
+    
+    // Update quantity max
+    document.getElementById('quantity').max = selectedItemData.stock;
+}
+
+function clearSelection() {
+    // Clear visual selection
+    document.querySelectorAll('.item-card').forEach(card => {
+        card.classList.remove('bg-blue-100', 'border-blue-500');
+    });
+    
+    // Hide form
+    document.getElementById('add-item-form').classList.add('hidden');
+    selectedItemData = null;
+}
+
+function updateTotalPreview() {
+    if (!selectedItemData) return;
+    
+    const quantity = parseInt(document.getElementById('quantity').value) || 0;
+    const discountPercent = parseFloat(document.getElementById('discount_percentage').value) || 0;
+    
+    const subtotal = selectedItemData.price * quantity;
+    const discountAmount = subtotal * (discountPercent / 100);
+    const total = subtotal - discountAmount;
+    
+    document.getElementById('subtotal-amount').textContent = formatCurrency(subtotal);
+    document.getElementById('discount-amount').textContent = formatCurrency(discountAmount);
+    document.getElementById('total-amount').textContent = formatCurrency(total);
+    
+    document.getElementById('total-preview').classList.remove('hidden');
+}
+
+function formatCurrency(amount) {
+    return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+</script>
 
 <?php elseif (($action == 'receipt') && isset($sale)): ?>
 <!-- Receipt Screen -->

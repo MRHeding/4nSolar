@@ -62,8 +62,6 @@ function getDateRangeStats($date_from, $date_to) {
 
 function getTopSellingItems($date_from, $date_to, $limit = 10) {
     global $pdo;
-    // Ensure limit is an integer to prevent SQL injection
-    $limit = (int)$limit;
     $stmt = $pdo->prepare("SELECT 
                           i.brand, i.model, i.size_specification,
                           SUM(psi.quantity) as total_sold,
@@ -76,15 +74,13 @@ function getTopSellingItems($date_from, $date_to, $limit = 10) {
                           AND DATE(ps.created_at) BETWEEN ? AND ?
                           GROUP BY psi.inventory_item_id
                           ORDER BY total_sold DESC
-                          LIMIT $limit");
-    $stmt->execute([$date_from, $date_to]);
+                          LIMIT ?");
+    $stmt->execute([$date_from, $date_to, $limit]);
     return $stmt->fetchAll();
 }
 
 function getInventoryMovements($date_from, $date_to, $limit = 20) {
     global $pdo;
-    // Ensure limit is an integer to prevent SQL injection
-    $limit = (int)$limit;
     $stmt = $pdo->prepare("SELECT 
                           sm.*, i.brand, i.model, i.size_specification, u.full_name as user_name
                           FROM stock_movements sm
@@ -92,8 +88,8 @@ function getInventoryMovements($date_from, $date_to, $limit = 20) {
                           LEFT JOIN users u ON sm.created_by = u.id
                           WHERE DATE(sm.created_at) BETWEEN ? AND ?
                           ORDER BY sm.created_at DESC
-                          LIMIT $limit");
-    $stmt->execute([$date_from, $date_to]);
+                          LIMIT ?");
+    $stmt->execute([$date_from, $date_to, $limit]);
     return $stmt->fetchAll();
 }
 
@@ -219,20 +215,19 @@ include 'includes/header.php';
 </div>
 
 <!-- Enhanced Overview Cards -->
-<!-- Primary Revenue Metrics -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
     <!-- Today's Revenue -->
-    <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
+    <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-white bg-opacity-20">
-                <i class="fas fa-calendar-day text-2xl"></i>
+                <i class="fas fa-calendar-day text-xl"></i>
             </div>
-            <div class="ml-4 flex-1">
+            <div class="ml-4">
                 <p class="text-sm font-medium text-blue-100">Today's Revenue</p>
                 <?php $today_total = getTodayProjectRevenue() + $pos_stats_today['total_revenue']; ?>
-                <p class="text-3xl font-bold"><?php echo formatCurrency($today_total, 0); ?></p>
-                <p class="text-xs text-blue-100 mt-1">
-                    Projects: <?php echo formatCurrency(getTodayProjectRevenue()); ?><br>
+                <p class="text-2xl font-semibold"><?php echo formatCurrency($today_total, 0); ?></p>
+                <p class="text-xs text-blue-100">
+                    Projects: <?php echo formatCurrency(getTodayProjectRevenue()); ?> | 
                     POS: <?php echo formatCurrency($pos_stats_today['total_revenue']); ?>
                 </p>
             </div>
@@ -240,17 +235,17 @@ include 'includes/header.php';
     </div>
 
     <!-- This Month's Revenue -->
-    <div class="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg shadow-lg p-6">
+    <div class="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-white bg-opacity-20">
-                <i class="fas fa-calendar-alt text-2xl"></i>
+                <i class="fas fa-calendar-alt text-xl"></i>
             </div>
-            <div class="ml-4 flex-1">
+            <div class="ml-4">
                 <p class="text-sm font-medium text-green-100">This Month</p>
                 <?php $month_total = getMonthProjectRevenue() + $pos_stats_month['total_revenue']; ?>
-                <p class="text-3xl font-bold"><?php echo formatCurrency($month_total, 0); ?></p>
-                <p class="text-xs text-green-100 mt-1">
-                    Projects: <?php echo formatCurrency(getMonthProjectRevenue()); ?><br>
+                <p class="text-2xl font-semibold"><?php echo formatCurrency($month_total, 0); ?></p>
+                <p class="text-xs text-green-100">
+                    Projects: <?php echo formatCurrency(getMonthProjectRevenue()); ?> | 
                     POS: <?php echo formatCurrency($pos_stats_month['total_revenue']); ?>
                 </p>
             </div>
@@ -258,64 +253,61 @@ include 'includes/header.php';
     </div>
 
     <!-- Total Revenue -->
-    <div class="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
+    <div class="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-white bg-opacity-20">
-                <i class="fas fa-dollar-sign text-2xl"></i>
+                <i class="fas fa-dollar-sign text-xl"></i>
             </div>
-            <div class="ml-4 flex-1">
+            <div class="ml-4">
                 <p class="text-sm font-medium text-purple-100">Total Revenue</p>
                 <?php $total_all_time = $project_stats['total_revenue'] + $pos_stats_all_time['total_revenue']; ?>
-                <p class="text-3xl font-bold"><?php echo formatCurrency($total_all_time, 0); ?></p>
-                <p class="text-xs text-purple-100 mt-1">
-                    Projects: <?php echo formatCurrency($project_stats['total_revenue']); ?><br>
+                <p class="text-2xl font-semibold"><?php echo formatCurrency($total_all_time, 0); ?></p>
+                <p class="text-xs text-purple-100">
+                    Projects: <?php echo formatCurrency($project_stats['total_revenue']); ?> | 
                     POS: <?php echo formatCurrency($pos_stats_all_time['total_revenue']); ?>
                 </p>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Secondary Metrics -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
     <!-- Inventory Value -->
-    <div class="bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg shadow-lg p-6">
+    <div class="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-white bg-opacity-20">
-                <i class="fas fa-boxes text-2xl"></i>
+                <i class="fas fa-boxes text-xl"></i>
             </div>
-            <div class="ml-4 flex-1">
+            <div class="ml-4">
                 <p class="text-sm font-medium text-yellow-100">Inventory Value</p>
-                <p class="text-3xl font-bold"><?php echo formatCurrency($inventory_stats['total_value'], 0); ?></p>
-                <p class="text-xs text-yellow-100 mt-1"><?php echo number_format($inventory_stats['total_items']); ?> items in stock</p>
+                <p class="text-2xl font-semibold"><?php echo formatCurrency($inventory_stats['total_value'], 0); ?></p>
+                <p class="text-xs text-yellow-100"><?php echo $inventory_stats['total_items']; ?> items</p>
             </div>
         </div>
     </div>
 
-    <!-- Today's Sales -->
-    <div class="bg-gradient-to-r from-indigo-500 to-blue-500 text-white rounded-lg shadow-lg p-6">
+    <!-- POS Sales Today -->
+    <div class="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-white bg-opacity-20">
-                <i class="fas fa-cash-register text-2xl"></i>
+                <i class="fas fa-cash-register text-xl"></i>
             </div>
-            <div class="ml-4 flex-1">
+            <div class="ml-4">
                 <p class="text-sm font-medium text-indigo-100">Today's Sales</p>
-                <p class="text-3xl font-bold"><?php echo $pos_stats_today['today_sales']; ?></p>
-                <p class="text-xs text-indigo-100 mt-1">transactions completed</p>
+                <p class="text-2xl font-semibold"><?php echo $pos_stats_today['today_sales']; ?></p>
+                <p class="text-xs text-indigo-100">transactions</p>
             </div>
         </div>
     </div>
 
     <!-- Low Stock Alert -->
-    <div class="bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg shadow-lg p-6">
+    <div class="bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-white bg-opacity-20">
-                <i class="fas fa-exclamation-triangle text-2xl"></i>
+                <i class="fas fa-exclamation-triangle text-xl"></i>
             </div>
-            <div class="ml-4 flex-1">
-                <p class="text-sm font-medium text-red-100">Low Stock Alert</p>
-                <p class="text-3xl font-bold"><?php echo $inventory_stats['low_stock_count']; ?></p>
-                <p class="text-xs text-red-100 mt-1">items need restocking</p>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-red-100">Low Stock</p>
+                <p class="text-2xl font-semibold"><?php echo $inventory_stats['low_stock_count']; ?></p>
+                <p class="text-xs text-red-100">items need restock</p>
             </div>
         </div>
     </div>

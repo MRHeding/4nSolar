@@ -586,40 +586,313 @@ include 'includes/header.php';
 
 <!-- Add Item Modal -->
 <div id="add-item-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-5xl shadow-lg rounded-md bg-white">
         <div class="mt-3">
             <h3 class="text-lg font-medium text-gray-900 mb-4">Add Item to Project</h3>
-            <form method="POST" action="?action=add_item&id=<?php echo $project['id']; ?>">
-                <div class="mb-4">
-                    <label for="inventory_item_id" class="block text-sm font-medium text-gray-700 mb-2">Select Item</label>
-                    <select id="inventory_item_id" name="inventory_item_id" required
-                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-                        <option value="">Choose an item...</option>
-                        <?php foreach ($inventory_items as $inv_item): ?>
-                        <option value="<?php echo $inv_item['id']; ?>">
-                            <?php echo htmlspecialchars($inv_item['brand'] . ' ' . $inv_item['model'] . ' - ' . formatCurrency($inv_item['selling_price'])); ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+            
+            <!-- Search Bar -->
+            <div class="mb-4">
+                <label for="project-item-search" class="block text-sm font-medium text-gray-700 mb-2">Search Items</label>
+                <input type="text" id="project-item-search" placeholder="Search by brand, model, category, or specifications..." 
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                       oninput="filterProjectItems()">
+            </div>
+            
+            <!-- Category Filter -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Quick Filter by Category</label>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="filterByCategory('')" 
+                            class="category-filter-btn px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition active">
+                        All Items
+                    </button>
+                    <?php 
+                    $categories = [];
+                    foreach ($inventory_items as $item) {
+                        if (!empty($item['category_name']) && !in_array($item['category_name'], $categories)) {
+                            $categories[] = $item['category_name'];
+                        }
+                    }
+                    foreach ($categories as $category): ?>
+                    <button type="button" onclick="filterByCategory('<?php echo strtolower($category); ?>')" 
+                            class="category-filter-btn px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition">
+                        <?php echo htmlspecialchars($category); ?>
+                    </button>
+                    <?php endforeach; ?>
                 </div>
-                <div class="mb-4">
-                    <label for="quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
-                    <input type="number" min="1" id="quantity" name="quantity" required
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+            </div>
+            
+            <!-- Items Grid -->
+            <div class="mb-4 max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
+                <div id="project-items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-4">
+                    <?php foreach ($inventory_items as $inv_item): ?>
+                    <div class="project-item-card border border-gray-200 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
+                         data-item-id="<?php echo $inv_item['id']; ?>"
+                         data-brand="<?php echo strtolower($inv_item['brand']); ?>"
+                         data-model="<?php echo strtolower($inv_item['model']); ?>"
+                         data-category="<?php echo strtolower($inv_item['category_name'] ?? ''); ?>"
+                         data-size="<?php echo strtolower($inv_item['size_specification'] ?? ''); ?>"
+                         data-price="<?php echo $inv_item['selling_price']; ?>"
+                         data-base-price="<?php echo $inv_item['base_price']; ?>"
+                         data-stock="<?php echo $inv_item['stock_quantity']; ?>"
+                         onclick="selectProjectItem(this)">
+                        
+                        <div class="flex items-start space-x-3">
+                            <div class="flex-shrink-0">
+                                <img class="h-12 w-12 rounded-lg object-cover border" 
+                                     src="<?php echo htmlspecialchars(getProductImageUrl($inv_item['image_path'])); ?>" 
+                                     alt="<?php echo htmlspecialchars($inv_item['brand'] . ' ' . $inv_item['model']); ?>">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-medium text-gray-900 truncate">
+                                    <?php echo htmlspecialchars($inv_item['brand']); ?>
+                                </div>
+                                <div class="text-sm text-gray-600 truncate">
+                                    <?php echo htmlspecialchars($inv_item['model']); ?>
+                                </div>
+                                <div class="text-xs text-gray-500 truncate">
+                                    <?php echo htmlspecialchars($inv_item['category_name'] ?? 'N/A'); ?>
+                                </div>
+                                <?php if (!empty($inv_item['size_specification'])): ?>
+                                <div class="text-xs text-gray-400 truncate">
+                                    <?php echo htmlspecialchars($inv_item['size_specification']); ?>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-2 flex justify-between items-center">
+                            <div class="text-sm">
+                                <div class="font-medium text-gray-900">
+                                    <?php echo formatCurrency($inv_item['selling_price']); ?>
+                                </div>
+                                <div class="text-xs text-gray-500">
+                                    Base: <?php echo formatCurrency($inv_item['base_price']); ?>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs <?php echo $inv_item['stock_quantity'] > 10 ? 'text-green-600' : ($inv_item['stock_quantity'] > 0 ? 'text-yellow-600' : 'text-red-600'); ?>">
+                                    Stock: <?php echo $inv_item['stock_quantity']; ?>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <?php if ($inv_item['stock_quantity'] <= 0): ?>
+                        <div class="mt-2 text-center">
+                            <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                                Out of Stock
+                            </span>
+                        </div>
+                        <?php elseif ($inv_item['stock_quantity'] <= 10): ?>
+                        <div class="mt-2 text-center">
+                            <span class="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                                Low Stock
+                            </span>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
+                
+                <div id="no-project-items-message" class="hidden text-center py-8 text-gray-500">
+                    <i class="fas fa-search text-2xl mb-2"></i>
+                    <p>No items found matching your criteria.</p>
+                </div>
+            </div>
+            
+            <!-- Selected Item Form -->
+            <form id="add-project-item-form" method="POST" action="?action=add_item&id=<?php echo $project['id']; ?>" class="hidden">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <h4 class="font-medium text-gray-900 mb-2">Selected Item:</h4>
+                    <div id="selected-project-item-display" class="text-sm text-gray-700"></div>
+                </div>
+                
+                <input type="hidden" id="selected_project_inventory_item_id" name="inventory_item_id">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="project_quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity Needed</label>
+                        <input type="number" min="1" id="project_quantity" name="quantity" required value="1"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                               oninput="updateProjectTotalPreview()">
+                        <p class="text-xs text-gray-500 mt-1">Available stock: <span id="available-stock">0</span></p>
+                    </div>
+                    <div>
+                        <label for="project_notes" class="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                        <input type="text" id="project_notes" name="notes" placeholder="Installation notes, specifications, etc."
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                    </div>
+                </div>
+                
+                <div id="project-total-preview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 hidden">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-600">Unit Cost:</span>
+                            <div class="font-medium" id="unit-cost">₱0.00</div>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Unit Price:</span>
+                            <div class="font-medium" id="unit-price">₱0.00</div>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Total Cost:</span>
+                            <div class="font-medium text-blue-600" id="total-cost">₱0.00</div>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Total Price:</span>
+                            <div class="font-medium text-green-600" id="total-price">₱0.00</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 pt-2 border-t text-xs text-gray-500">
+                        Profit Margin: <span id="profit-margin" class="font-medium">₱0.00</span>
+                    </div>
+                </div>
+                
                 <div class="flex justify-end space-x-3">
-                    <button type="button" onclick="document.getElementById('add-item-modal').classList.add('hidden')"
+                    <button type="button" onclick="clearProjectSelection()"
                             class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
-                        Cancel
+                        Clear Selection
                     </button>
                     <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
-                        Add Item
+                        Add to Project
                     </button>
                 </div>
             </form>
+            
+            <div class="flex justify-end mt-4">
+                <button type="button" onclick="document.getElementById('add-item-modal').classList.add('hidden')"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Close
+                </button>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+let selectedProjectItemData = null;
+let currentCategoryFilter = '';
+
+function filterProjectItems() {
+    const searchTerm = document.getElementById('project-item-search').value.toLowerCase();
+    const itemCards = document.querySelectorAll('.project-item-card');
+    let visibleCount = 0;
+    
+    itemCards.forEach(card => {
+        const brand = card.getAttribute('data-brand');
+        const model = card.getAttribute('data-model');
+        const category = card.getAttribute('data-category');
+        const size = card.getAttribute('data-size');
+        
+        const matchesSearch = brand.includes(searchTerm) || 
+                             model.includes(searchTerm) || 
+                             category.includes(searchTerm) ||
+                             size.includes(searchTerm);
+        
+        const matchesCategory = currentCategoryFilter === '' || category === currentCategoryFilter;
+        
+        if (matchesSearch && matchesCategory) {
+            card.style.display = 'block';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    // Show/hide no results message
+    const noItemsMessage = document.getElementById('no-project-items-message');
+    if (visibleCount === 0) {
+        noItemsMessage.classList.remove('hidden');
+    } else {
+        noItemsMessage.classList.add('hidden');
+    }
+}
+
+function filterByCategory(category) {
+    currentCategoryFilter = category;
+    
+    // Update button states
+    document.querySelectorAll('.category-filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-blue-600', 'text-white');
+        btn.classList.add('bg-gray-100', 'text-gray-700');
+    });
+    
+    event.target.classList.remove('bg-gray-100', 'text-gray-700', 'bg-blue-100', 'text-blue-700');
+    event.target.classList.add('active', 'bg-blue-600', 'text-white');
+    
+    filterProjectItems();
+}
+
+function selectProjectItem(cardElement) {
+    // Remove previous selection
+    document.querySelectorAll('.project-item-card').forEach(card => {
+        card.classList.remove('bg-blue-100', 'border-blue-500');
+    });
+    
+    // Mark current selection
+    cardElement.classList.add('bg-blue-100', 'border-blue-500');
+    
+    // Store selected item data
+    selectedProjectItemData = {
+        id: cardElement.getAttribute('data-item-id'),
+        brand: cardElement.querySelector('.text-sm.font-medium').textContent,
+        model: cardElement.querySelector('.text-sm.text-gray-600').textContent,
+        category: cardElement.querySelector('.text-xs.text-gray-500').textContent,
+        price: parseFloat(cardElement.getAttribute('data-price')),
+        basePrice: parseFloat(cardElement.getAttribute('data-base-price')),
+        stock: parseInt(cardElement.getAttribute('data-stock'))
+    };
+    
+    // Update form
+    document.getElementById('selected_project_inventory_item_id').value = selectedProjectItemData.id;
+    document.getElementById('selected-project-item-display').innerHTML = 
+        `<strong>${selectedProjectItemData.brand}</strong> - ${selectedProjectItemData.model}<br>
+         <span class="text-gray-600">${selectedProjectItemData.category}</span><br>
+         Cost: ${formatCurrency(selectedProjectItemData.basePrice)} | Price: ${formatCurrency(selectedProjectItemData.price)}`;
+    
+    document.getElementById('available-stock').textContent = selectedProjectItemData.stock;
+    
+    // Show form and update preview
+    document.getElementById('add-project-item-form').classList.remove('hidden');
+    updateProjectTotalPreview();
+    
+    // Update quantity max
+    document.getElementById('project_quantity').max = selectedProjectItemData.stock;
+}
+
+function clearProjectSelection() {
+    // Clear visual selection
+    document.querySelectorAll('.project-item-card').forEach(card => {
+        card.classList.remove('bg-blue-100', 'border-blue-500');
+    });
+    
+    // Hide form
+    document.getElementById('add-project-item-form').classList.add('hidden');
+    selectedProjectItemData = null;
+}
+
+function updateProjectTotalPreview() {
+    if (!selectedProjectItemData) return;
+    
+    const quantity = parseInt(document.getElementById('project_quantity').value) || 0;
+    
+    const totalCost = selectedProjectItemData.basePrice * quantity;
+    const totalPrice = selectedProjectItemData.price * quantity;
+    const profitMargin = totalPrice - totalCost;
+    
+    document.getElementById('unit-cost').textContent = formatCurrency(selectedProjectItemData.basePrice);
+    document.getElementById('unit-price').textContent = formatCurrency(selectedProjectItemData.price);
+    document.getElementById('total-cost').textContent = formatCurrency(totalCost);
+    document.getElementById('total-price').textContent = formatCurrency(totalPrice);
+    document.getElementById('profit-margin').textContent = formatCurrency(profitMargin);
+    
+    document.getElementById('project-total-preview').classList.remove('hidden');
+}
+
+function formatCurrency(amount) {
+    return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+</script>
 
 <?php endif; ?>
 

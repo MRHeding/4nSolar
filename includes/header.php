@@ -24,13 +24,13 @@
     <?php if (isLoggedIn()): ?>
     <!-- Navigation -->
     <nav class="bg-solar-blue shadow-lg">
-        <div class="max-w-7xl mx-auto px-4">
+        <div class="px-4">
             <div class="flex justify-between items-center py-4">
-                <div class="flex items-center space-x-4">
-                    <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-8 w-auto">
-                    <div>
-                        <h1 class="text-white text-xl font-bold">4NSOLAR ELECTRICZ</h1>
-                        <p class="text-blue-200 text-sm">Inventory Management System</p>
+                <div class="flex items-center space-x-3">
+                    <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-12 w-auto">
+                    <div class="flex flex-col justify-start">
+                        <h1 class="text-white text-2xl font-bold leading-tight text-left">4NSOLAR ELECTRICZ</h1>
+                        <p class="text-blue-200 text-sm font-medium text-left">Inventory Management System</p>
                     </div>
                 </div>
                 

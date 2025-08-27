@@ -28,28 +28,6 @@ try {
     $recent_pos_sales = []; // Fallback to empty array if POS function fails
 }
 
-// Helper functions for enhanced revenue calculations
-function getTodayProjectRevenue() {
-    global $pdo;
-    $stmt = $pdo->prepare("SELECT SUM(final_amount) as revenue 
-                          FROM solar_projects 
-                          WHERE project_status IN ('approved', 'completed') 
-                          AND DATE(created_at) = CURDATE()");
-    $stmt->execute();
-    return $stmt->fetchColumn() ?: 0;
-}
-
-function getMonthProjectRevenue() {
-    global $pdo;
-    $stmt = $pdo->prepare("SELECT SUM(final_amount) as revenue 
-                          FROM solar_projects 
-                          WHERE project_status IN ('approved', 'completed') 
-                          AND YEAR(created_at) = YEAR(CURDATE()) 
-                          AND MONTH(created_at) = MONTH(CURDATE())");
-    $stmt->execute();
-    return $stmt->fetchColumn() ?: 0;
-}
-
 include 'includes/header.php';
 ?>
 
@@ -59,8 +37,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Statistics Cards -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
-    <!-- Total Items -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-blue-100">
@@ -73,7 +50,6 @@ include 'includes/header.php';
         </div>
     </div>
 
-    <!-- Low Stock Items -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-red-100">
@@ -86,7 +62,6 @@ include 'includes/header.php';
         </div>
     </div>
 
-    <!-- Total Projects -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-green-100">
@@ -99,7 +74,6 @@ include 'includes/header.php';
         </div>
     </div>
 
-    <!-- Today's Sales -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-purple-100">
@@ -115,7 +89,6 @@ include 'includes/header.php';
         </div>
     </div>
 
-    <!-- Total Revenue (All-Time) -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-yellow-100">
@@ -123,70 +96,7 @@ include 'includes/header.php';
             </div>
             <div class="ml-4">
                 <p class="text-sm font-medium text-gray-600">Total Revenue</p>
-                <?php 
-                $pos_stats_all_time = getPOSStats(); // Get all-time POS stats
-                $total_revenue_all_time = $project_stats['total_revenue'] + $pos_stats_all_time['total_revenue'];
-                ?>
-                <p class="text-2xl font-semibold text-gray-900"><?php echo formatCurrency($total_revenue_all_time, 0); ?></p>
-                <p class="text-xs text-gray-500">
-                    All-time total
-                </p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Revenue Summary Cards -->
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-    <!-- Today's Revenue Summary -->
-    <div class="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg p-6 text-white">
-        <div class="flex items-center justify-between">
-            <div>
-                <h2 class="text-xl font-bold mb-2">
-                    <i class="fas fa-calendar-day mr-2"></i>
-                    Today's Revenue
-                </h2>
-                <?php 
-                $today_project_revenue = getTodayProjectRevenue();
-                $today_total_revenue = $today_project_revenue + $pos_stats['today_revenue'];
-                ?>
-                <p class="text-3xl font-bold"><?php echo formatCurrency($today_total_revenue); ?></p>
-                <p class="text-blue-100">
-                    Projects: <?php echo formatCurrency($today_project_revenue); ?> | 
-                    POS: <?php echo formatCurrency($pos_stats['today_revenue']); ?>
-                </p>
-            </div>
-            <div class="text-right">
-                <p class="text-blue-100">Sales Today</p>
-                <p class="text-2xl font-bold"><?php echo $pos_stats['today_sales']; ?></p>
-                <p class="text-blue-100">transactions</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- This Month's Revenue Summary -->
-    <div class="bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg shadow-lg p-6 text-white">
-        <div class="flex items-center justify-between">
-            <div>
-                <h2 class="text-xl font-bold mb-2">
-                    <i class="fas fa-chart-line mr-2"></i>
-                    This Month's Performance
-                </h2>
-                <?php 
-                $pos_stats_month = getPOSStats(date('Y-m-01'), date('Y-m-d')); // This month
-                $month_project_revenue = getMonthProjectRevenue();
-                $month_total_revenue = $month_project_revenue + $pos_stats_month['total_revenue'];
-                ?>
-                <p class="text-3xl font-bold"><?php echo formatCurrency($month_total_revenue); ?></p>
-                <p class="text-purple-100">
-                    Projects: <?php echo formatCurrency($month_project_revenue); ?> | 
-                    POS: <?php echo formatCurrency($pos_stats_month['total_revenue']); ?>
-                </p>
-            </div>
-            <div class="text-right">
-                <p class="text-purple-100">Sales This Month</p>
-                <p class="text-2xl font-bold"><?php echo $pos_stats_month['total_sales']; ?></p>
-                <p class="text-purple-100">transactions</p>
+                <p class="text-2xl font-semibold text-gray-900"><?php echo formatCurrency($project_stats['total_revenue'] + $pos_stats['today_revenue'], 0); ?></p>
             </div>
         </div>
     </div>
@@ -318,10 +228,8 @@ include 'includes/header.php';
             <?php endif; ?>
         </div>
     </div>
-</div>
 
-<!-- Recent POS Transactions -->
-<div class="mt-8">
+    <!-- Quick Actions -->
     <div class="bg-white rounded-lg shadow">
         <div class="p-6 border-b border-gray-200">
             <h2 class="text-lg font-semibold text-gray-800">
