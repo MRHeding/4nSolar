@@ -2,7 +2,7 @@
 require_once 'config.php';
 
 // Get all inventory items with supplier info
-function getInventoryItems($category_id = null, $active_only = true) {
+function getInventoryItems($category_id = null, $brand_filter = null, $active_only = true) {
     global $pdo;
     
     $sql = "SELECT i.*, s.name as supplier_name, c.name as category_name 
@@ -20,6 +20,11 @@ function getInventoryItems($category_id = null, $active_only = true) {
     if ($category_id) {
         $sql .= " AND i.category_id = ?";
         $params[] = $category_id;
+    }
+    
+    if ($brand_filter) {
+        $sql .= " AND i.brand = ?";
+        $params[] = $brand_filter;
     }
     
     $sql .= " ORDER BY i.brand, i.model";
@@ -154,6 +159,15 @@ function getLowStockItems() {
                         WHERE i.stock_quantity <= i.minimum_stock AND i.is_active = 1 
                         ORDER BY (i.stock_quantity - i.minimum_stock)");
     return $stmt->fetchAll();
+}
+
+// Get available brands
+function getAvailableBrands() {
+    global $pdo;
+    $stmt = $pdo->query("SELECT DISTINCT brand FROM inventory_items 
+                        WHERE is_active = 1 AND brand IS NOT NULL AND brand != '' 
+                        ORDER BY brand");
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
 // Update stock quantity

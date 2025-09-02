@@ -93,13 +93,13 @@ function addPOSSaleItem($sale_id, $inventory_item_id, $quantity, $discount_perce
     global $pdo;
     
     try {
-        // Get item details
+        // Get item details - only for active items
         $stmt = $pdo->prepare("SELECT base_price, selling_price, stock_quantity, brand, model 
-                              FROM inventory_items WHERE id = ?");
+                              FROM inventory_items WHERE id = ? AND is_active = 1");
         $stmt->execute([$inventory_item_id]);
         $item = $stmt->fetch();
         
-        if (!$item) return ['success' => false, 'message' => 'Item not found'];
+        if (!$item) return ['success' => false, 'message' => 'Item not found or has been removed'];
         
         // Check stock availability
         if ($item['stock_quantity'] < $quantity) {
@@ -184,9 +184,9 @@ function updatePOSSaleItemQuantity($sale_item_id, $new_quantity) {
     global $pdo;
     
     try {
-        // Get current item details
+        // Get current item details - check if inventory item is still active
         $stmt = $pdo->prepare("SELECT si.sale_id, si.unit_price, si.discount_percentage, 
-                              si.inventory_item_id, i.stock_quantity, i.brand, i.model
+                              si.inventory_item_id, i.stock_quantity, i.brand, i.model, i.is_active
                               FROM pos_sale_items si
                               LEFT JOIN inventory_items i ON si.inventory_item_id = i.id
                               WHERE si.id = ?");
@@ -194,6 +194,10 @@ function updatePOSSaleItemQuantity($sale_item_id, $new_quantity) {
         $item = $stmt->fetch();
         
         if (!$item) return ['success' => false, 'message' => 'Item not found'];
+        
+        if (!$item['is_active']) {
+            return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
+        }
         
         // Check stock availability
         if ($item['stock_quantity'] < $new_quantity) {
@@ -416,7 +420,7 @@ function getPOSInventoryItems() {
     $stmt = $pdo->prepare("SELECT i.*, c.name as category_name 
                           FROM inventory_items i 
                           LEFT JOIN categories c ON i.category_id = c.id 
-                          WHERE i.stock_quantity > 0 
+                          WHERE i.stock_quantity > 0 AND i.is_active = 1 
                           ORDER BY i.brand, i.model");
     $stmt->execute();
     return $stmt->fetchAll();

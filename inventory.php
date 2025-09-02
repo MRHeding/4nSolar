@@ -132,13 +132,15 @@ switch ($action) {
     default:
         $filter = $_GET['filter'] ?? null;
         $category_filter = $_GET['category'] ?? null;
+        $brand_filter = $_GET['brand'] ?? null;
         
         if ($filter == 'low_stock') {
             $items = getLowStockItems();
         } else {
-            $items = getInventoryItems($category_filter);
+            $items = getInventoryItems($category_filter, $brand_filter);
         }
         $categories = getCategories();
+        $available_brands = getAvailableBrands();
         break;
 }
 
@@ -177,11 +179,11 @@ include 'includes/header.php';
 
 <!-- Filters -->
 <div class="bg-white rounded-lg shadow p-6 mb-6">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <!-- Category Filter Section -->
         <div class="space-y-1">
             <label class="block text-sm font-medium text-gray-700">Category Filter</label>
-            <select onchange="window.location.href='?category=' + this.value" 
+            <select onchange="updateFilters('category', this.value)" 
                     class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                 <option value="">All Categories</option>
                 <?php foreach ($categories as $category): ?>
@@ -192,15 +194,54 @@ include 'includes/header.php';
             </select>
         </div>
         
+        <!-- Brand Filter Section -->
+        <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-700">Brand Filter</label>
+            <select onchange="updateFilters('brand', this.value)" 
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                <option value="">All Brands</option>
+                <?php 
+                $priority_brands = ['Canadian Solar', 'OSDA', 'SUNRI'];
+                // Show priority brands first
+                foreach ($priority_brands as $priority_brand): 
+                    if (in_array($priority_brand, $available_brands)): ?>
+                    <option value="<?php echo htmlspecialchars($priority_brand); ?>" <?php echo ($brand_filter == $priority_brand) ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($priority_brand); ?>
+                    </option>
+                    <?php endif;
+                endforeach; 
+                
+                // Then show other brands
+                foreach ($available_brands as $brand): 
+                    if (!in_array($brand, $priority_brands)): ?>
+                    <option value="<?php echo htmlspecialchars($brand); ?>" <?php echo ($brand_filter == $brand) ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($brand); ?>
+                    </option>
+                    <?php endif;
+                endforeach; ?>
+            </select>
+        </div>
+        
         <!-- Quick Filter Buttons -->
         <div class="space-y-1">
             <label class="block text-sm font-medium text-gray-700">Quick Filters</label>
-            <div class="flex gap-2">
-                <a href="?" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition text-sm">
+            <div class="flex gap-2 flex-wrap">
+                <a href="?" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition text-xs">
                     <i class="fas fa-list mr-1"></i>All Items
                 </a>
-                <a href="?filter=low_stock" class="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition text-sm">
+                <a href="?filter=low_stock" class="px-3 py-1.5 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition text-xs">
                     <i class="fas fa-exclamation-triangle mr-1"></i>Low Stock
+                </a>
+            </div>
+            <div class="flex gap-2 flex-wrap mt-2">
+                <a href="?brand=Canadian+Solar" class="px-3 py-1.5 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition text-xs">
+                    Canadian Solar
+                </a>
+                <a href="?brand=OSDA" class="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-xs">
+                    OSDA
+                </a>
+                <a href="?brand=SUNRI" class="px-3 py-1.5 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition text-xs">
+                    SUNRI
                 </a>
             </div>
         </div>
@@ -219,11 +260,11 @@ include 'includes/header.php';
                         <i class="fas fa-file-export mr-1"></i>Export <i class="fas fa-chevron-down ml-1"></i>
                     </button>
                     <div id="export-menu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-40">
-                        <a href="export_inventory.php?format=csv<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
+                        <a href="export_inventory.php?format=csv<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo $brand_filter ? '&brand=' . urlencode($brand_filter) : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                             <i class="fas fa-file-csv mr-2"></i>Full CSV Export
                         </a>
-                        <a href="export_inventory.php?format=json<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
+                        <a href="export_inventory.php?format=json<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo $brand_filter ? '&brand=' . urlencode($brand_filter) : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                             <i class="fas fa-file-code mr-2"></i>JSON Export
                         </a>
@@ -234,7 +275,7 @@ include 'includes/header.php';
     </div>
     
     <!-- Filter Status Display -->
-    <?php if ($category_filter || isset($_GET['filter'])): ?>
+    <?php if ($category_filter || $brand_filter || isset($_GET['filter'])): ?>
     <div class="mt-4 pt-4 border-t border-gray-200">
         <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2">
@@ -248,6 +289,11 @@ include 'includes/header.php';
                     ?>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         Category: <?php echo htmlspecialchars($active_category['name']); ?>
+                    </span>
+                <?php endif; ?>
+                <?php if ($brand_filter): ?>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Brand: <?php echo htmlspecialchars($brand_filter); ?>
                     </span>
                 <?php endif; ?>
                 <?php if (isset($_GET['filter']) && $_GET['filter'] == 'low_stock'): ?>
@@ -708,6 +754,25 @@ include 'includes/header.php';
 </div>
 
 <script>
+function updateFilters(filterType, filterValue) {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    if (filterValue) {
+        urlParams.set(filterType, filterValue);
+    } else {
+        urlParams.delete(filterType);
+    }
+    
+    // Remove low_stock filter when changing other filters
+    if (filterType !== 'filter') {
+        urlParams.delete('filter');
+    }
+    
+    // Construct new URL
+    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+    window.location.href = newUrl;
+}
+
 function openImageModal(imageSrc) {
     document.getElementById('modal-image').src = imageSrc;
     document.getElementById('image-modal').classList.remove('hidden');
