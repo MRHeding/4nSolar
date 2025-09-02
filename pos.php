@@ -33,12 +33,18 @@ if (isset($_GET['success'])) {
 if ($_POST) {
     switch ($action) {
         case 'create':
-            $sale_id = createPOSSale($_POST['customer_name'] ?? null, $_POST['customer_phone'] ?? null);
-            if ($sale_id) {
-                $message = 'New sale created successfully!';
-                $action = 'sale';
+            // Check if inventory is available before creating sale
+            $available_inventory = getPOSInventoryItems();
+            if (empty($available_inventory)) {
+                $error = 'Cannot create sale: No inventory items available. Please add inventory items with stock before creating a sale.';
             } else {
-                $error = 'Failed to create sale.';
+                $sale_id = createPOSSale($_POST['customer_name'] ?? null, $_POST['customer_phone'] ?? null);
+                if ($sale_id) {
+                    $message = 'New sale created successfully!';
+                    $action = 'sale';
+                } else {
+                    $error = 'Failed to create sale.';
+                }
             }
             break;
             
@@ -136,6 +142,12 @@ switch ($action) {
         break;
 }
 
+// Check if inventory is empty (no items with stock > 0)
+$has_inventory = !empty($inventory_items);
+if (!$has_inventory && in_array($action, ['new', 'sale'])) {
+    $inventory_warning = 'No inventory items available for sale. Please add inventory items with stock before using POS.';
+}
+
 $page_title = 'Point of Sale (POS)';
 $content_start = true;
 include 'includes/header.php';
@@ -150,6 +162,22 @@ include 'includes/header.php';
 <?php if ($error): ?>
 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 alert-auto-hide">
     <?php echo htmlspecialchars($error); ?>
+</div>
+<?php endif; ?>
+
+<?php if (isset($inventory_warning)): ?>
+<div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
+    <div class="flex items-center">
+        <i class="fas fa-exclamation-triangle mr-3"></i>
+        <div>
+            <strong>Warning:</strong> <?php echo htmlspecialchars($inventory_warning); ?>
+            <div class="mt-2">
+                <a href="inventory.php" class="text-yellow-800 underline hover:text-yellow-900">
+                    <i class="fas fa-arrow-right mr-1"></i>Go to Inventory Management
+                </a>
+            </div>
+        </div>
+    </div>
 </div>
 <?php endif; ?>
 
@@ -225,9 +253,13 @@ include 'includes/header.php';
             </div>
         </div>
         <div class="flex justify-end">
-            <button type="submit" class="bg-solar-blue text-white px-6 py-3 rounded-lg hover:bg-blue-800 transition text-lg">
+            <button type="submit" <?php echo !$has_inventory ? 'disabled' : ''; ?>
+                    class="<?php echo $has_inventory ? 'bg-solar-blue hover:bg-blue-800' : 'bg-gray-400 cursor-not-allowed'; ?> text-white px-6 py-3 rounded-lg transition text-lg">
                 <i class="fas fa-plus mr-2"></i>Start Sale
             </button>
+            <?php if (!$has_inventory): ?>
+            <p class="text-sm text-gray-500 mt-2">Cannot start sale without inventory items</p>
+            <?php endif; ?>
         </div>
     </form>
 </div>
@@ -268,10 +300,17 @@ include 'includes/header.php';
         <div class="bg-white rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-gray-800">Sale Items</h2>
+                <?php if (!empty($inventory_items)): ?>
                 <button onclick="document.getElementById('add-item-modal').classList.remove('hidden')" 
                         class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition text-sm">
                     <i class="fas fa-plus mr-2"></i>Add Item
                 </button>
+                <?php else: ?>
+                <button disabled class="bg-gray-400 text-white px-4 py-2 rounded-lg cursor-not-allowed text-sm">
+                    <i class="fas fa-plus mr-2"></i>Add Item
+                </button>
+                <p class="text-xs text-gray-500 mt-1">No inventory available</p>
+                <?php endif; ?>
             </div>
             
             <?php if (!empty($sale['items'])): ?>
@@ -435,6 +474,7 @@ include 'includes/header.php';
             
             <!-- Items Grid -->
             <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                <?php if (!empty($inventory_items)): ?>
                 <div id="items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
                     <?php foreach ($inventory_items as $inv_item): ?>
                     <div class="item-card border border-gray-200 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
@@ -483,6 +523,16 @@ include 'includes/header.php';
                     </div>
                     <?php endforeach; ?>
                 </div>
+                <?php else: ?>
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-box-open text-3xl mb-3"></i>
+                    <h3 class="text-lg font-medium text-gray-700 mb-2">No Inventory Available</h3>
+                    <p class="text-sm text-gray-500 mb-4">There are no items with stock available for sale.</p>
+                    <a href="inventory.php" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                        <i class="fas fa-plus mr-2"></i>Add Inventory Items
+                    </a>
+                </div>
+                <?php endif; ?>
                 
                 <div id="no-items-message" class="hidden text-center py-8 text-gray-500">
                     <i class="fas fa-search text-2xl mb-2"></i>
