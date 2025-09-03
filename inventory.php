@@ -14,6 +14,11 @@ $error = '';
 $action = $_GET['action'] ?? 'list';
 $item_id = $_GET['id'] ?? null;
 
+// Check for success messages from redirects
+if (isset($_GET['message'])) {
+    $message = $_GET['message'];
+}
+
 // Handle form submissions
 if ($_POST) {
     switch ($action) {
@@ -36,8 +41,8 @@ if ($_POST) {
                 $image_file = isset($_FILES['product_image']) ? $_FILES['product_image'] : null;
                 
                 if (addInventoryItem($data, $image_file)) {
-                    $message = 'Item added successfully!';
-                    $action = 'list';
+                    header("Location: inventory.php?message=" . urlencode('Item added successfully!'));
+                    exit();
                 } else {
                     $error = 'Failed to add item. Please check the image format and size.';
                 }
@@ -69,8 +74,8 @@ if ($_POST) {
                 $image_file = isset($_FILES['product_image']) ? $_FILES['product_image'] : null;
                 
                 if (updateInventoryItem($item_id, $data, $image_file)) {
-                    $message = 'Item updated successfully!';
-                    $action = 'list';
+                    header("Location: inventory.php?message=" . urlencode('Item updated successfully!'));
+                    exit();
                 } else {
                     $error = 'Failed to update item. Please check the image format and size.';
                 }
@@ -84,7 +89,8 @@ if ($_POST) {
                 $notes = $_POST['notes'] ?? '';
                 
                 if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes)) {
-                    $message = 'Stock updated successfully!';
+                    header("Location: inventory.php?action=view&id=" . $item_id . "&message=" . urlencode('Stock updated successfully!'));
+                    exit();
                 } else {
                     $error = 'Failed to update stock.';
                 }
@@ -96,11 +102,12 @@ if ($_POST) {
 // Handle delete action
 if ($action == 'delete' && $item_id && hasPermission([ROLE_ADMIN])) {
     if (deleteInventoryItem($item_id)) {
-        $message = 'Item deleted successfully!';
+        header("Location: inventory.php?message=" . urlencode('Item deleted successfully!'));
+        exit();
     } else {
         $error = 'Failed to delete item.';
+        $action = 'list';
     }
-    $action = 'list';
 }
 
 // Get data based on action
