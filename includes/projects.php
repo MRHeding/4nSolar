@@ -57,13 +57,13 @@ function createSolarProject($data) {
     try {
         $stmt = $pdo->prepare("INSERT INTO solar_projects 
                               (project_name, customer_name, customer_email, customer_phone, 
-                               customer_address, system_size_kw, created_by) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?)");
+                               customer_address, remarks, system_size_kw, created_by) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         
         $stmt->execute([
             $data['project_name'], $data['customer_name'], $data['customer_email'],
-            $data['customer_phone'], $data['customer_address'], $data['system_size_kw'],
-            $_SESSION['user_id']
+            $data['customer_phone'], $data['customer_address'], $data['remarks'] ?? '',
+            $data['system_size_kw'], $_SESSION['user_id']
         ]);
         
         return $pdo->lastInsertId();
@@ -107,14 +107,14 @@ function updateSolarProject($id, $data) {
         // Update the project
         $stmt = $pdo->prepare("UPDATE solar_projects SET 
                               project_name = ?, customer_name = ?, customer_email = ?, 
-                              customer_phone = ?, customer_address = ?, system_size_kw = ?, 
+                              customer_phone = ?, customer_address = ?, remarks = ?, system_size_kw = ?, 
                               project_status = ? 
                               WHERE id = ?");
         
         $update_result = $stmt->execute([
             $data['project_name'], $data['customer_name'], $data['customer_email'],
-            $data['customer_phone'], $data['customer_address'], $data['system_size_kw'],
-            $data['project_status'], $id
+            $data['customer_phone'], $data['customer_address'], $data['remarks'] ?? '',
+            $data['system_size_kw'], $data['project_status'], $id
         ]);
         
         if (!$update_result) {

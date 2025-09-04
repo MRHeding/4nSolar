@@ -36,6 +36,7 @@ if ($_POST) {
                 'customer_email' => $_POST['customer_email'],
                 'customer_phone' => $_POST['customer_phone'],
                 'customer_address' => $_POST['customer_address'],
+                'remarks' => $_POST['remarks'] ?? '',
                 'system_size_kw' => $_POST['system_size_kw']
             ];
             
@@ -57,6 +58,7 @@ if ($_POST) {
                     'customer_email' => $_POST['customer_email'],
                     'customer_phone' => $_POST['customer_phone'],
                     'customer_address' => $_POST['customer_address'],
+                    'remarks' => $_POST['remarks'] ?? '',
                     'system_size_kw' => $_POST['system_size_kw'],
                     'project_status' => $_POST['project_status']
                 ];
@@ -217,6 +219,7 @@ include 'includes/header.php';
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">System Size</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                 <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Actions</th>
             </tr>
@@ -254,6 +257,15 @@ include 'includes/header.php';
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <?php echo formatCurrency($project['final_amount']); ?>
                     </td>
+                    <td class="px-6 py-4 text-sm text-gray-500 max-w-xs">
+                        <?php if (!empty($project['remarks'])): ?>
+                            <div class="truncate" title="<?php echo htmlspecialchars($project['remarks']); ?>">
+                                <?php echo htmlspecialchars(substr($project['remarks'], 0, 50)) . (strlen($project['remarks']) > 50 ? '...' : ''); ?>
+                            </div>
+                        <?php else: ?>
+                            <span class="text-gray-400">-</span>
+                        <?php endif; ?>
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <?php echo date('M j, Y', strtotime($project['created_at'])); ?>
                     </td>
@@ -284,7 +296,7 @@ include 'includes/header.php';
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="7" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    <td colspan="8" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                         No projects found.
                     </td>
                 </tr>
@@ -337,6 +349,12 @@ include 'includes/header.php';
         <div>
             <label for="customer_address" class="block text-sm font-medium text-gray-700 mb-2">Customer Address</label>
             <textarea id="customer_address" name="customer_address" rows="3"
+                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"></textarea>
+        </div>
+        
+        <div>
+            <label for="remarks" class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
+            <textarea id="remarks" name="remarks" rows="3" placeholder="Additional notes, special requirements, installation details, etc."
                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"></textarea>
         </div>
         
@@ -448,6 +466,12 @@ include 'includes/header.php';
             <label for="customer_address" class="block text-sm font-medium text-gray-700 mb-2">Customer Address</label>
             <textarea id="customer_address" name="customer_address" rows="3"
                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"><?php echo htmlspecialchars($project['customer_address']); ?></textarea>
+        </div>
+        
+        <div>
+            <label for="remarks" class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
+            <textarea id="remarks" name="remarks" rows="3" placeholder="Additional notes, special requirements, installation details, etc."
+                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"><?php echo htmlspecialchars($project['remarks'] ?? ''); ?></textarea>
         </div>
         
         <div class="flex justify-end space-x-4">
@@ -574,6 +598,15 @@ include 'includes/header.php';
                         <span class="text-solar-blue"><?php echo formatCurrency($project['final_amount']); ?></span>
                     </div>
                 </div>
+                
+                <?php if (!empty($project['remarks'])): ?>
+                <div class="border-t pt-4">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Remarks</h3>
+                    <div class="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
+                        <?php echo nl2br(htmlspecialchars($project['remarks'])); ?>
+                    </div>
+                </div>
+                <?php endif; ?>
                 
                 <div class="border-t pt-4 text-sm text-gray-600">
                     <p><strong>Created:</strong> <?php echo date('M j, Y g:i A', strtotime($project['created_at'])); ?></p>

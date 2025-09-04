@@ -3,11 +3,28 @@
             <?php endif; ?>
             
         <?php if (isLoggedIn()): ?>
+            <?php 
+            // Determine if we're in the payroll section
+            $payroll_pages = ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php'];
+            $current_page = basename($_SERVER['PHP_SELF']);
+            $use_bootstrap = in_array($current_page, $payroll_pages);
+            ?>
+            
+            <?php if ($use_bootstrap): ?>
+                </main>
+            </div>
+        </div>
+            <?php else: ?>
         </div>
     </div>
-    <?php endif; ?>
+            <?php endif; ?>
+        <?php endif; ?>
 
     <!-- Scripts -->
+    <?php if ($use_bootstrap): ?>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <?php endif; ?>
+    
     <script>
         // Auto-hide alerts after 5 seconds
         setTimeout(function() {

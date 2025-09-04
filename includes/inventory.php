@@ -261,4 +261,335 @@ function getProductImageUrl($image_path) {
     }
     return 'images/no-image.png'; // Default placeholder image
 }
+
+// ================== QUOTATION FUNCTIONS ==================
+
+// Create new quotation
+function createQuote($customer_name = null, $customer_phone = null, $proposal_name = null) {
+    global $pdo;
+    
+    try {
+        $quote_number = generateQuoteNumber();
+        
+        $stmt = $pdo->prepare("INSERT INTO quotations 
+                              (quote_number, customer_name, customer_phone, proposal_name, status, created_by) 
+                              VALUES (?, ?, ?, ?, 'draft', ?)");
+        
+        $stmt->execute([
+            $quote_number, $customer_name, $customer_phone, $proposal_name, $_SESSION['user_id']
+        ]);
+        
+        return $pdo->lastInsertId();
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Generate unique quote number
+function generateQuoteNumber() {
+    return 'QTE' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+}
+
+// Get all quotations
+function getQuotes($status = null) {
+    global $pdo;
+    
+    $sql = "SELECT q.*, u.full_name as created_by_name,
+            (SELECT COUNT(*) FROM quote_items WHERE quote_id = q.id) as items_count
+            FROM quotations q 
+            LEFT JOIN users u ON q.created_by = u.id 
+            WHERE 1=1";
+    
+    $params = [];
+    
+    if ($status) {
+        $sql .= " AND q.status = ?";
+        $params[] = $status;
+    }
+    
+    $sql .= " ORDER BY q.created_at DESC";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
+// Get single quotation with items
+function getQuote($id) {
+    global $pdo;
+    
+    // Get quote details
+    $stmt = $pdo->prepare("SELECT q.*, u.full_name as created_by_name 
+                          FROM quotations q 
+                          LEFT JOIN users u ON q.created_by = u.id 
+                          WHERE q.id = ?");
+    $stmt->execute([$id]);
+    $quote = $stmt->fetch();
+    
+    if ($quote) {
+        // Get quote items
+        $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.size_specification, 
+                              c.name as category_name, i.stock_quantity, i.selling_price as current_price
+                              FROM quote_items qi 
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
+                              LEFT JOIN categories c ON i.category_id = c.id 
+                              WHERE qi.quote_id = ?");
+        $stmt->execute([$id]);
+        $quote['items'] = $stmt->fetchAll();
+    }
+    
+    return $quote;
+}
+
+// Add item to quotation
+function addQuoteItem($quote_id, $inventory_item_id, $quantity, $discount_percentage = 0) {
+    global $pdo;
+    
+    try {
+        // Get item details
+        $stmt = $pdo->prepare("SELECT brand, model, selling_price, stock_quantity 
+                              FROM inventory_items WHERE id = ? AND is_active = 1");
+        $stmt->execute([$inventory_item_id]);
+        $item = $stmt->fetch();
+        
+        if (!$item) return ['success' => false, 'message' => 'Item not found or has been removed'];
+        
+        // Check if item already exists in this quote
+        $stmt = $pdo->prepare("SELECT id, quantity FROM quote_items WHERE quote_id = ? AND inventory_item_id = ?");
+        $stmt->execute([$quote_id, $inventory_item_id]);
+        $existing_item = $stmt->fetch();
+        
+        $unit_price = $item['selling_price'];
+        $discount_amount = ($unit_price * $discount_percentage / 100) * $quantity;
+        $total_amount = ($unit_price * $quantity) - $discount_amount;
+        
+        if ($existing_item) {
+            // Update existing item
+            $new_quantity = $existing_item['quantity'] + $quantity;
+            $new_discount_amount = ($unit_price * $discount_percentage / 100) * $new_quantity;
+            $new_total_amount = ($unit_price * $new_quantity) - $new_discount_amount;
+            
+            $stmt = $pdo->prepare("UPDATE quote_items SET 
+                                  quantity = ?, discount_percentage = ?, discount_amount = ?, total_amount = ? 
+                                  WHERE id = ?");
+            $result = $stmt->execute([$new_quantity, $discount_percentage, $new_discount_amount, $new_total_amount, $existing_item['id']]);
+        } else {
+            // Add new item
+            $stmt = $pdo->prepare("INSERT INTO quote_items 
+                                  (quote_id, inventory_item_id, quantity, unit_price, 
+                                   discount_percentage, discount_amount, total_amount) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?)");
+            
+            $result = $stmt->execute([
+                $quote_id, $inventory_item_id, $quantity, $unit_price,
+                $discount_percentage, $discount_amount, $total_amount
+            ]);
+        }
+        
+        if ($result) {
+            updateQuoteTotals($quote_id);
+            return ['success' => true, 'message' => 'Item added successfully'];
+        }
+        
+        return ['success' => false, 'message' => 'Failed to add item'];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
+}
+
+// Get or create a labor fee inventory item
+function getLaborFeeItem() {
+    global $pdo;
+    
+    try {
+        // First check if labor fee item exists
+        $stmt = $pdo->prepare("SELECT id FROM inventory_items WHERE brand = 'LABOR' AND model = 'Labor Fee' LIMIT 1");
+        $stmt->execute();
+        $item = $stmt->fetch();
+        
+        if ($item) {
+            return $item['id'];
+        }
+        
+        // Create labor fee item if it doesn't exist
+        $stmt = $pdo->prepare("INSERT INTO inventory_items 
+                              (brand, model, category_id, size_specification, base_price, selling_price, 
+                               supplier_id, stock_quantity, minimum_stock, description, is_active) 
+                              VALUES ('LABOR', 'Labor Fee', 1, 'Per KW', 0, 0, NULL, 9999, 0, 'Labor fee calculation item', 1)");
+        
+        if ($stmt->execute()) {
+            return $pdo->lastInsertId();
+        }
+        
+        return false;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Add custom quote item (like labor fee) using a special inventory item
+function addCustomQuoteItem($quote_id, $item_name, $quantity, $unit_price, $discount_percentage = 0) {
+    global $pdo;
+    
+    try {
+        // Get or create labor fee inventory item
+        $labor_item_id = getLaborFeeItem();
+        if (!$labor_item_id) {
+            return ['success' => false, 'message' => 'Failed to create labor fee item'];
+        }
+        
+        $discount_amount = ($unit_price * $discount_percentage / 100) * $quantity;
+        $total_amount = ($unit_price * $quantity) - $discount_amount;
+        
+        $stmt = $pdo->prepare("INSERT INTO quote_items 
+                              (quote_id, inventory_item_id, quantity, unit_price, 
+                               discount_percentage, discount_amount, total_amount) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?)");
+        
+        $result = $stmt->execute([
+            $quote_id, $labor_item_id, $quantity, $unit_price,
+            $discount_percentage, $discount_amount, $total_amount
+        ]);
+        
+        if ($result) {
+            updateQuoteTotals($quote_id);
+            return ['success' => true, 'message' => 'Custom item added successfully'];
+        } else {
+            return ['success' => false, 'message' => 'Failed to add custom item'];
+        }
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
+}
+
+// Remove item from quotation
+function removeQuoteItem($quote_item_id) {
+    global $pdo;
+    
+    try {
+        // Get quote ID before deleting
+        $stmt = $pdo->prepare("SELECT quote_id FROM quote_items WHERE id = ?");
+        $stmt->execute([$quote_item_id]);
+        $quote_id = $stmt->fetchColumn();
+        
+        // Delete the item
+        $stmt = $pdo->prepare("DELETE FROM quote_items WHERE id = ?");
+        $result = $stmt->execute([$quote_item_id]);
+        
+        if ($result && $quote_id) {
+            updateQuoteTotals($quote_id);
+        }
+        
+        return $result;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Update quote item quantity
+function updateQuoteItemQuantity($quote_item_id, $new_quantity) {
+    global $pdo;
+    
+    try {
+        // Get current item details
+        $stmt = $pdo->prepare("SELECT qi.quote_id, qi.unit_price, qi.discount_percentage, 
+                              qi.inventory_item_id, i.brand, i.model, i.is_active
+                              FROM quote_items qi
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id
+                              WHERE qi.id = ?");
+        $stmt->execute([$quote_item_id]);
+        $item = $stmt->fetch();
+        
+        if (!$item) return ['success' => false, 'message' => 'Item not found'];
+        
+        if (!$item['is_active']) {
+            return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
+        }
+        
+        $discount_amount = ($item['unit_price'] * $item['discount_percentage'] / 100) * $new_quantity;
+        $total_amount = ($item['unit_price'] * $new_quantity) - $discount_amount;
+        
+        // Update the item
+        $stmt = $pdo->prepare("UPDATE quote_items SET 
+                              quantity = ?, discount_amount = ?, total_amount = ? 
+                              WHERE id = ?");
+        
+        $result = $stmt->execute([$new_quantity, $discount_amount, $total_amount, $quote_item_id]);
+        
+        if ($result) {
+            updateQuoteTotals($item['quote_id']);
+            return ['success' => true, 'message' => 'Quantity updated successfully'];
+        }
+        
+        return ['success' => false, 'message' => 'Failed to update quantity'];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
+}
+
+// Update quotation totals
+function updateQuoteTotals($quote_id) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("SELECT 
+                              SUM(unit_price * quantity) as subtotal,
+                              SUM(discount_amount) as total_discount,
+                              SUM(total_amount) as total_amount
+                              FROM quote_items WHERE quote_id = ?");
+        $stmt->execute([$quote_id]);
+        $totals = $stmt->fetch();
+        
+        $stmt = $pdo->prepare("UPDATE quotations SET 
+                              subtotal = ?, total_discount = ?, total_amount = ? 
+                              WHERE id = ?");
+        
+        return $stmt->execute([
+            $totals['subtotal'] ?: 0,
+            $totals['total_discount'] ?: 0,
+            $totals['total_amount'] ?: 0,
+            $quote_id
+        ]);
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Delete quotation
+function deleteQuote($quote_id) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Delete quote items first
+        $stmt = $pdo->prepare("DELETE FROM quote_items WHERE quote_id = ?");
+        $stmt->execute([$quote_id]);
+        
+        // Delete quotation
+        $stmt = $pdo->prepare("DELETE FROM quotations WHERE id = ?");
+        $result = $stmt->execute([$quote_id]);
+        
+        $pdo->commit();
+        return $result;
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return false;
+    }
+}
+
+// Get available inventory items for quotes (all active items)
+function getQuoteInventoryItems() {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT i.*, c.name as category_name 
+                          FROM inventory_items i 
+                          LEFT JOIN categories c ON i.category_id = c.id 
+                          WHERE i.is_active = 1 
+                          ORDER BY i.brand, i.model");
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
 ?>
