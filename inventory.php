@@ -291,7 +291,8 @@ include 'includes/header.php';
         <div class="space-y-1">
             <label class="block text-sm font-medium text-gray-700">Category Filter</label>
             <select onchange="updateFilters('category', this.value)" 
-                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent category-select"
+                    style="max-height: 200px; overflow-y: auto;">
                 <option value="">All Categories</option>
                 <?php foreach ($categories as $category): ?>
                 <option value="<?php echo $category['id']; ?>" <?php echo ($category_filter == $category['id']) ? 'selected' : ''; ?>>
@@ -305,7 +306,8 @@ include 'includes/header.php';
         <div class="space-y-1">
             <label class="block text-sm font-medium text-gray-700">Brand Filter</label>
             <select onchange="updateFilters('brand', this.value)" 
-                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent brand-select"
+                    style="max-height: 200px; overflow-y: auto;">
                 <option value="">All Brands</option>
                 <?php 
                 $priority_brands = ['Canadian Solar', 'OSDA', 'SUNRI'];
@@ -355,7 +357,7 @@ include 'includes/header.php';
         
         <!-- Export Section -->
         <div class="space-y-1">
-            <label class="block text-sm font-medium text-gray-700">Export Data</label>
+            <label class="block text-sm font-medium text-gray-700">Export & Print</label>
             <div class="flex gap-2">
                 <button onclick="exportToCSV('inventory-table', 'inventory')" 
                         class="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm">
@@ -366,15 +368,96 @@ include 'includes/header.php';
                             class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm">
                         <i class="fas fa-file-export mr-1"></i>Export <i class="fas fa-chevron-down ml-1"></i>
                     </button>
-                    <div id="export-menu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-40">
+                    <div id="export-menu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-56 max-h-80 overflow-y-auto">
+                        <!-- Category-specific exports -->
+                        <div class="px-4 py-2 border-b border-gray-200 sticky top-0 bg-white z-10">
+                            <div class="text-xs font-medium text-gray-500 uppercase">By Category</div>
+                        </div>
+                        
+                        <!-- All Items Export -->
                         <a href="export_inventory.php?format=csv<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo $brand_filter ? '&brand=' . urlencode($brand_filter) : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
-                           class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i class="fas fa-file-csv mr-2"></i>Full CSV Export
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i class="fas fa-file-csv text-green-600 mr-2"></i>
+                            All Items (CSV)
                         </a>
+                        
+                        <!-- All Category CSV Exports -->
+                        <?php foreach ($categories as $category): ?>
+                        <a href="export_inventory.php?format=csv&category=<?php echo $category['id']; ?>" 
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i class="fas fa-file-csv text-blue-600 mr-2"></i>
+                            <?php echo htmlspecialchars($category['name']); ?> (CSV)
+                        </a>
+                        <?php endforeach; ?>
+                        
+                        <div class="border-t border-gray-200"></div>
+                        
+                        <!-- JSON Exports -->
+                        <div class="px-4 py-2 border-b border-gray-200 sticky top-0 bg-white z-10">
+                            <div class="text-xs font-medium text-gray-500 uppercase">JSON Format</div>
+                        </div>
+                        
                         <a href="export_inventory.php?format=json<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo $brand_filter ? '&brand=' . urlencode($brand_filter) : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
-                           class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i class="fas fa-file-code mr-2"></i>JSON Export
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i class="fas fa-file-code text-purple-600 mr-2"></i>
+                            All Items (JSON)
                         </a>
+                        
+                        <!-- All Category JSON Exports -->
+                        <?php foreach ($categories as $category): ?>
+                        <a href="export_inventory.php?format=json&category=<?php echo $category['id']; ?>" 
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i class="fas fa-file-code text-indigo-600 mr-2"></i>
+                            <?php echo htmlspecialchars($category['name']); ?> (JSON)
+                        </a>
+                        <?php endforeach; ?>
+                        
+                        <div class="border-t border-gray-200"></div>
+                        
+                        <!-- Print Options -->
+                        <div class="px-4 py-2 border-b border-gray-200 sticky top-0 bg-white z-10">
+                            <div class="text-xs font-medium text-gray-500 uppercase">Print Options</div>
+                        </div>
+                        
+                        <button onclick="printInventoryReport('all')" 
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                            <i class="fas fa-print text-gray-600 mr-2"></i>
+                            Print All Items
+                        </button>
+                        
+                        <button onclick="printInventoryReport('current')" 
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                            <i class="fas fa-print text-blue-600 mr-2"></i>
+                            Print Current View
+                        </button>
+                        
+                        <!-- All Category Print Options -->
+                        <?php foreach ($categories as $category): ?>
+                        <button onclick="printInventoryReport('category', <?php echo $category['id']; ?>, '<?php echo htmlspecialchars($category['name']); ?>')" 
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                            <i class="fas fa-print text-orange-600 mr-2"></i>
+                            Print <?php echo htmlspecialchars($category['name']); ?>
+                        </button>
+                        <?php endforeach; ?>
+                        
+                        <div class="border-t border-gray-200"></div>
+                        
+                        <!-- Special Reports -->
+                        <div class="px-4 py-2 border-b border-gray-200">
+                            <div class="text-xs font-medium text-gray-500 uppercase">Special Reports</div>
+                        </div>
+                        
+                        <a href="export_inventory.php?format=csv&filter=low_stock" 
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                            Low Stock Report (CSV)
+                        </a>
+                        
+                        <button onclick="printInventoryReport('low_stock')" 
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                            <i class="fas fa-print text-red-600 mr-2"></i>
+                            Print Low Stock Report
+                        </button>
                     </div>
                 </div>
             </div>
@@ -472,12 +555,24 @@ include 'includes/header.php';
     
     <!-- Search Results Info -->
     <div id="search-results-info" class="hidden mt-2 pt-2 border-t border-blue-200">
-        <div class="text-sm text-blue-700">
-            <i class="fas fa-filter mr-2"></i>
-            <span id="search-results-text"></span>
-            <button onclick="clearInventorySearch()" class="ml-2 text-blue-600 hover:text-blue-800 underline">
-                Clear search
-            </button>
+        <div class="flex items-center justify-between">
+            <div class="text-sm text-blue-700">
+                <i class="fas fa-filter mr-2"></i>
+                <span id="search-results-text"></span>
+                <button onclick="clearInventorySearch()" class="ml-2 text-blue-600 hover:text-blue-800 underline">
+                    Clear search
+                </button>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="exportFilteredToCSV()" 
+                        class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition">
+                    <i class="fas fa-download mr-1"></i>Export Results
+                </button>
+                <button onclick="printInventoryReport('filtered')" 
+                        class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+                    <i class="fas fa-print mr-1"></i>Print Results
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1531,6 +1626,40 @@ function toggleExportMenu() {
     menu.classList.toggle('hidden');
 }
 
+// Enhanced CSV export with current search results
+function exportFilteredToCSV() {
+    const visibleRows = document.querySelectorAll('.inventory-item-row:not([style*="display: none"])');
+    const headers = ['Brand', 'Model', 'Category', 'Size/Specification', 'Base Price', 'Selling Price', 'Stock Quantity', 'Minimum Stock', 'Supplier'];
+    
+    let csvContent = '\uFEFF'; // BOM for UTF-8
+    csvContent += headers.join(',') + '\n';
+    
+    visibleRows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length > 0) {
+            const rowData = [
+                cells[0].querySelector('.text-sm.font-medium a') ? cells[0].querySelector('.text-sm.font-medium a').textContent.trim() : '',
+                cells[0].querySelector('.text-sm.text-gray-500') ? cells[0].querySelector('.text-sm.text-gray-500').textContent.trim() : '',
+                cells[1].textContent.trim(),
+                cells[2].textContent.trim(),
+                cells[3].querySelector('div:first-child') ? cells[3].querySelector('div:first-child').textContent.replace('Base: ', '').trim() : '',
+                cells[3].querySelector('div:nth-child(2)') ? cells[3].querySelector('div:nth-child(2)').textContent.replace('Sell: ', '').trim() : '',
+                cells[4].querySelector('.text-sm.text-gray-900') ? cells[4].querySelector('.text-sm.text-gray-900').textContent.trim() : '',
+                '', // Min stock not easily accessible in this view
+                cells[5].textContent.trim()
+            ];
+            csvContent += rowData.map(field => '"' + field.replace(/"/g, '""') + '"').join(',') + '\n';
+        }
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'filtered_inventory_' + new Date().toISOString().slice(0, 10) + '.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
 // Close export menu when clicking outside
 document.addEventListener('click', function(event) {
     const menu = document.getElementById('export-menu');
@@ -1629,8 +1758,99 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Initialize search functionality
         initializeInventorySearch();
+        
+        // Initialize enhanced select dropdowns
+        initializeEnhancedSelects();
     }
 });
+
+// Initialize enhanced select dropdowns
+function initializeEnhancedSelects() {
+    const categorySelect = document.querySelector('.category-select');
+    const brandSelect = document.querySelector('.brand-select');
+    
+    // Add keyboard navigation for category select
+    if (categorySelect) {
+        categorySelect.addEventListener('keydown', function(event) {
+            // Allow typing to search within select options
+            if (event.key.length === 1) {
+                const options = this.querySelectorAll('option');
+                const currentIndex = this.selectedIndex;
+                const searchLetter = event.key.toLowerCase();
+                
+                // Find next option starting with the typed letter
+                for (let i = currentIndex + 1; i < options.length; i++) {
+                    if (options[i].textContent.toLowerCase().startsWith(searchLetter)) {
+                        this.selectedIndex = i;
+                        event.preventDefault();
+                        break;
+                    }
+                }
+                
+                // If not found after current, search from beginning
+                if (this.selectedIndex === currentIndex) {
+                    for (let i = 0; i < currentIndex; i++) {
+                        if (options[i].textContent.toLowerCase().startsWith(searchLetter)) {
+                            this.selectedIndex = i;
+                            event.preventDefault();
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Add visual feedback when scrolling in select
+        categorySelect.addEventListener('mouseenter', function() {
+            this.style.borderColor = '#3b82f6';
+        });
+        
+        categorySelect.addEventListener('mouseleave', function() {
+            if (!this.matches(':focus')) {
+                this.style.borderColor = '#d1d5db';
+            }
+        });
+    }
+    
+    // Same enhancements for brand select
+    if (brandSelect) {
+        brandSelect.addEventListener('keydown', function(event) {
+            if (event.key.length === 1) {
+                const options = this.querySelectorAll('option');
+                const currentIndex = this.selectedIndex;
+                const searchLetter = event.key.toLowerCase();
+                
+                for (let i = currentIndex + 1; i < options.length; i++) {
+                    if (options[i].textContent.toLowerCase().startsWith(searchLetter)) {
+                        this.selectedIndex = i;
+                        event.preventDefault();
+                        break;
+                    }
+                }
+                
+                if (this.selectedIndex === currentIndex) {
+                    for (let i = 0; i < currentIndex; i++) {
+                        if (options[i].textContent.toLowerCase().startsWith(searchLetter)) {
+                            this.selectedIndex = i;
+                            event.preventDefault();
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        
+        brandSelect.addEventListener('mouseenter', function() {
+            this.style.borderColor = '#3b82f6';
+        });
+        
+        brandSelect.addEventListener('mouseleave', function() {
+            if (!this.matches(':focus')) {
+                this.style.borderColor = '#d1d5db';
+            }
+        });
+    }
+}
 
 // Initialize inventory search functionality
 function initializeInventorySearch() {
@@ -1782,6 +2002,67 @@ function focusInventorySearch() {
         searchInput.select();
     }
 }
+
+// Print inventory report functionality
+function printInventoryReport(type, categoryId = null, categoryName = null) {
+    let url = 'print_inventory_report.php?';
+    
+    switch (type) {
+        case 'all':
+            url += 'type=all';
+            break;
+        case 'current':
+            // Get current filters
+            const urlParams = new URLSearchParams(window.location.search);
+            url += 'type=all';
+            if (urlParams.get('category')) {
+                url += '&category=' + urlParams.get('category');
+            }
+            if (urlParams.get('brand')) {
+                url += '&brand=' + encodeURIComponent(urlParams.get('brand'));
+            }
+            if (urlParams.get('filter')) {
+                url += '&type=' + urlParams.get('filter');
+            }
+            break;
+        case 'filtered':
+            // Create a temporary form with filtered data
+            const searchTerm = document.getElementById('inventory-search').value;
+            if (searchTerm) {
+                url += 'type=search&search=' + encodeURIComponent(searchTerm);
+                // Also include current page filters
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('category')) {
+                    url += '&category=' + urlParams.get('category');
+                }
+                if (urlParams.get('brand')) {
+                    url += '&brand=' + encodeURIComponent(urlParams.get('brand'));
+                }
+            } else {
+                // No search term, fall back to current view
+                return printInventoryReport('current');
+            }
+            break;
+        case 'category':
+            url += 'type=category&category=' + categoryId;
+            break;
+        case 'low_stock':
+            url += 'type=low_stock';
+            break;
+        case 'brand':
+            url += 'type=brand&brand=' + encodeURIComponent(categoryName);
+            break;
+    }
+    
+    // Open print window
+    const printWindow = window.open(url, '_blank', 'width=1024,height=768,scrollbars=yes,resizable=yes');
+    
+    if (printWindow) {
+        printWindow.focus();
+    } else {
+        alert('Please allow popups to print reports.');
+    }
+}
 </script>
 
 <style>
@@ -1813,6 +2094,56 @@ function focusInventorySearch() {
 
 .inventory-scroll-container::-webkit-scrollbar-thumb:active {
     background: #718096;
+}
+
+/* Enhanced select dropdown styling */
+.category-select, .brand-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+.category-select:focus, .brand-select:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Export menu scrollbar styling */
+#export-menu {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+#export-menu::-webkit-scrollbar {
+    width: 8px;
+}
+
+#export-menu::-webkit-scrollbar-track {
+    background: #f7fafc;
+    border-radius: 4px;
+}
+
+#export-menu::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+#export-menu::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+}
+
+/* Sticky headers in export menu */
+#export-menu .sticky {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+/* Smooth scrolling for export menu */
+#export-menu {
+    scroll-behavior: smooth;
 }
 
 /* Search input enhancements */
@@ -1893,10 +2224,21 @@ function focusInventorySearch() {
     .inventory-scroll-container {
         max-height: 60vh;
     }
+    
+    #export-menu {
+        max-height: 60vh;
+        max-width: 90vw;
+        left: auto;
+        right: 0;
+    }
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
     .inventory-scroll-container {
+        max-height: 70vh;
+    }
+    
+    #export-menu {
         max-height: 70vh;
     }
 }
@@ -1904,6 +2246,10 @@ function focusInventorySearch() {
 @media (min-width: 1025px) {
     .inventory-scroll-container {
         max-height: 80vh;
+    }
+    
+    #export-menu {
+        max-height: 75vh;
     }
 }
 

@@ -13,6 +13,7 @@ if (!isLoggedIn()) {
 // Get export parameters
 $format = $_GET['format'] ?? 'csv';
 $category_filter = $_GET['category'] ?? null;
+$brand_filter = $_GET['brand'] ?? null;
 $filter = $_GET['filter'] ?? null;
 
 // Get the data based on filters
@@ -20,7 +21,7 @@ if ($filter == 'low_stock') {
     $items = getLowStockItems();
     $filename = 'low_stock_inventory';
 } else {
-    $items = getInventoryItems($category_filter);
+    $items = getInventoryItems($category_filter, $brand_filter);
     $filename = 'inventory';
 }
 
@@ -37,6 +38,11 @@ if ($category_filter) {
     if ($category_name) {
         $filename .= '_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', strtolower($category_name));
     }
+}
+
+// Add brand name to filename if filtered
+if ($brand_filter) {
+    $filename .= '_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', strtolower($brand_filter));
 }
 
 // Add timestamp to filename
@@ -110,6 +116,7 @@ if ($format === 'csv') {
             'total_items' => count($items),
             'filters_applied' => [
                 'category' => $category_filter,
+                'brand' => $brand_filter,
                 'type' => $filter
             ]
         ],
