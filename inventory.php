@@ -417,24 +417,102 @@ include 'includes/header.php';
     <?php endif; ?>
 </div>
 
+<!-- Search Bar for Inventory Items -->
+<div class="bg-white rounded-lg shadow p-4 mb-4">
+    <div class="flex items-center space-x-4">
+        <div class="flex-1">
+            <label for="inventory-search" class="block text-sm font-medium text-gray-700 mb-2">
+                <i class="fas fa-search mr-2"></i>Search Inventory Items
+            </label>
+            <input type="text" 
+                   id="inventory-search" 
+                   placeholder="Search by brand, model, category, or size specification..." 
+                   class="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                   oninput="filterInventoryItems()">
+            <p class="text-xs text-gray-500 mt-1">
+                <i class="fas fa-lightbulb mr-1"></i>
+                Tip: Use <kbd class="px-1 py-0.5 bg-gray-100 rounded text-xs">Ctrl+F</kbd> to focus search, <kbd class="px-1 py-0.5 bg-gray-100 rounded text-xs">Esc</kbd> to clear
+            </p>
+        </div>
+        <div class="flex flex-col">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Quick Actions</label>
+            <div class="flex space-x-2 search-actions">
+                <button onclick="clearInventorySearch()" 
+                        class="px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition text-sm">
+                    <i class="fas fa-times mr-1"></i>Clear
+                </button>
+                <button onclick="focusInventorySearch()" 
+                        class="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition text-sm">
+                    <i class="fas fa-search mr-1"></i>Focus
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Items Count and Scroll Info -->
+<?php if (!empty($items)): ?>
+<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center">
+            <i class="fas fa-info-circle text-blue-600 mr-2"></i>
+            <span class="text-sm text-blue-800">
+                Showing <strong><span id="visible-items-count"><?php echo count($items); ?></span></strong> of <strong><?php echo count($items); ?></strong> items
+                <?php if (count($items) > 5): ?>
+                - <em>Scroll down in the table below to view all items</em>
+                <?php endif; ?>
+            </span>
+        </div>
+        <?php if (count($items) > 10): ?>
+        <div class="text-xs text-blue-600">
+            <i class="fas fa-mouse mr-1"></i>Use mouse wheel or scroll bar to navigate
+        </div>
+        <?php endif; ?>
+    </div>
+    
+    <!-- Search Results Info -->
+    <div id="search-results-info" class="hidden mt-2 pt-2 border-t border-blue-200">
+        <div class="text-sm text-blue-700">
+            <i class="fas fa-filter mr-2"></i>
+            <span id="search-results-text"></span>
+            <button onclick="clearInventorySearch()" class="ml-2 text-blue-600 hover:text-blue-800 underline">
+                Clear search
+            </button>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Inventory Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
-    <table id="inventory-table" class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
-            <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pricing</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="bg-white divide-y divide-gray-200">
+<div class="bg-white rounded-lg shadow overflow-hidden inventory-table-container relative">
+    <!-- Fixed Table Header -->
+    <div class="bg-gray-50 border-b border-gray-200">
+        <div class="min-w-full">
+            <div class="grid grid-cols-7 gap-4 px-6 py-3">
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</div>
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</div>
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</div>
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pricing</div>
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</div>
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</div>
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scrollable Table Body -->
+    <div class="overflow-y-auto max-h-96 inventory-scroll-container">
+        <table id="inventory-table" class="min-w-full divide-y divide-gray-200">
+            <tbody class="bg-white divide-y divide-gray-200">
             <?php if (!empty($items)): ?>
                 <?php foreach ($items as $item): ?>
-                <tr class="hover:bg-gray-50">
+                <tr class="hover:bg-gray-50 inventory-item-row" 
+                    data-brand="<?php echo strtolower(htmlspecialchars($item['brand'])); ?>"
+                    data-model="<?php echo strtolower(htmlspecialchars($item['model'])); ?>"
+                    data-category="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
+                    data-size="<?php echo strtolower(htmlspecialchars($item['size_specification'])); ?>"
+                    data-supplier="<?php echo strtolower(htmlspecialchars($item['supplier_name'] ?? '')); ?>"
+                    data-full-text="<?php echo strtolower(htmlspecialchars($item['brand'] . ' ' . $item['model'] . ' ' . ($item['category_name'] ?? '') . ' ' . $item['size_specification'] . ' ' . ($item['supplier_name'] ?? '') . ' ' . ($item['description'] ?? ''))); ?>">
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="flex items-center">
                             <div class="flex-shrink-0 h-16 w-16">
@@ -496,14 +574,35 @@ include 'includes/header.php';
                 </tr>
                 <?php endforeach; ?>
             <?php else: ?>
-                <tr>
+                <tr id="no-items-row">
                     <td colspan="7" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                         No items found.
                     </td>
                 </tr>
             <?php endif; ?>
-        </tbody>
-    </table>
+            
+            <!-- Search No Results Message -->
+            <tr id="no-search-results" class="hidden">
+                <td colspan="7" class="px-6 py-8 text-center">
+                    <div class="text-gray-500">
+                        <i class="fas fa-search text-3xl mb-3"></i>
+                        <p class="text-lg font-medium mb-2">No items found</p>
+                        <p class="text-sm">Try adjusting your search terms or <button onclick="clearInventorySearch()" class="text-blue-600 hover:text-blue-800 underline">clear the search</button> to see all items.</p>
+                    </div>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Scroll to top button for inventory table -->
+    <div id="scroll-to-top-inventory" class="hidden absolute bottom-4 right-4 z-10">
+        <button onclick="scrollInventoryToTop()" 
+                class="bg-blue-600 text-white p-2 rounded-full shadow-lg hover:bg-blue-700 transition-all duration-300 opacity-90 hover:opacity-100" 
+                title="Scroll to top of inventory">
+            <i class="fas fa-arrow-up"></i>
+        </button>
+    </div>
 </div>
 
 <?php elseif ($action == 'add' || $action == 'edit'): ?>
@@ -1449,6 +1548,405 @@ document.addEventListener('keydown', function(event) {
         document.getElementById('export-menu').classList.add('hidden');
     }
 });
+
+// Enhanced inventory table scrolling
+document.addEventListener('DOMContentLoaded', function() {
+    const scrollContainer = document.querySelector('.inventory-scroll-container');
+    
+    if (scrollContainer) {
+        // Check if content is scrollable and add appropriate classes
+        function checkScrollability() {
+            if (scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+                scrollContainer.classList.add('has-scroll');
+            } else {
+                scrollContainer.classList.remove('has-scroll');
+            }
+        }
+        
+        // Add scroll position indicator
+        function updateScrollIndicator() {
+            const scrollTop = scrollContainer.scrollTop;
+            const scrollHeight = scrollContainer.scrollHeight;
+            const clientHeight = scrollContainer.clientHeight;
+            const scrollPercent = (scrollTop / (scrollHeight - clientHeight)) * 100;
+            
+            // Update visual indicators
+            if (scrollPercent > 0 && scrollPercent < 100) {
+                scrollContainer.style.borderBottom = '3px solid #3b82f6';
+            } else {
+                scrollContainer.style.borderBottom = 'none';
+            }
+        }
+        
+        // Smooth scrolling behavior
+        scrollContainer.addEventListener('scroll', function() {
+            updateScrollIndicator();
+            
+            // Show/hide scroll to top button
+            const scrollToTopButton = document.getElementById('scroll-to-top-inventory');
+            if (scrollToTopButton) {
+                if (scrollContainer.scrollTop > 200) {
+                    scrollToTopButton.classList.remove('hidden');
+                } else {
+                    scrollToTopButton.classList.add('hidden');
+                }
+            }
+        });
+        
+        // Keyboard navigation for accessibility
+        scrollContainer.addEventListener('keydown', function(event) {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                scrollContainer.scrollTop += 100;
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                scrollContainer.scrollTop -= 100;
+            } else if (event.key === 'PageDown') {
+                event.preventDefault();
+                scrollContainer.scrollTop += scrollContainer.clientHeight;
+            } else if (event.key === 'PageUp') {
+                event.preventDefault();
+                scrollContainer.scrollTop -= scrollContainer.clientHeight;
+            } else if (event.key === 'Home') {
+                event.preventDefault();
+                scrollContainer.scrollTop = 0;
+            } else if (event.key === 'End') {
+                event.preventDefault();
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            }
+        });
+        
+        // Make container focusable for keyboard navigation
+        scrollContainer.setAttribute('tabindex', '0');
+        scrollContainer.setAttribute('aria-label', 'Inventory items table - use arrow keys to scroll');
+        
+        // Initial setup
+        checkScrollability();
+        updateScrollIndicator();
+        
+        // Update on window resize
+        window.addEventListener('resize', checkScrollability);
+        
+        // Initialize search functionality
+        initializeInventorySearch();
+    }
+});
+
+// Initialize inventory search functionality
+function initializeInventorySearch() {
+    const searchInput = document.getElementById('inventory-search');
+    
+    if (searchInput) {
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            // Ctrl+F or Cmd+F to focus search
+            if ((event.ctrlKey || event.metaKey) && event.key === 'f' && !event.shiftKey) {
+                event.preventDefault();
+                focusInventorySearch();
+            }
+            
+            // Escape to clear search when focused on search input
+            if (event.key === 'Escape' && document.activeElement === searchInput) {
+                clearInventorySearch();
+            }
+        });
+        
+        // Real-time search with debouncing
+        let searchTimeout;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(filterInventoryItems, 300);
+        });
+        
+        // Search on Enter key
+        searchInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                filterInventoryItems();
+            }
+        });
+        
+        // Add search icon animation
+        searchInput.addEventListener('focus', function() {
+            this.parentElement.classList.add('ring-2', 'ring-solar-blue');
+        });
+        
+        searchInput.addEventListener('blur', function() {
+            this.parentElement.classList.remove('ring-2', 'ring-solar-blue');
+        });
+    }
+}
+
+// Scroll to top function for inventory table
+function scrollInventoryToTop() {
+    const scrollContainer = document.querySelector('.inventory-scroll-container');
+    if (scrollContainer) {
+        scrollContainer.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }
+}
+
+// Inventory search functionality
+function filterInventoryItems() {
+    const searchTerm = document.getElementById('inventory-search').value.toLowerCase().trim();
+    const itemRows = document.querySelectorAll('.inventory-item-row');
+    const noItemsRow = document.getElementById('no-items-row');
+    const noSearchResults = document.getElementById('no-search-results');
+    const searchResultsInfo = document.getElementById('search-results-info');
+    const searchResultsText = document.getElementById('search-results-text');
+    const visibleItemsCount = document.getElementById('visible-items-count');
+    
+    let visibleCount = 0;
+    let totalItems = itemRows.length;
+    
+    if (searchTerm === '') {
+        // Show all items
+        itemRows.forEach(row => {
+            row.style.display = 'table-row';
+            visibleCount++;
+        });
+        
+        // Hide search-specific elements
+        if (noSearchResults) noSearchResults.style.display = 'none';
+        if (searchResultsInfo) searchResultsInfo.classList.add('hidden');
+        
+        // Show original no items message if no items exist
+        if (noItemsRow && totalItems === 0) {
+            noItemsRow.style.display = 'table-row';
+        }
+    } else {
+        // Filter items based on search term
+        itemRows.forEach(row => {
+            const fullText = row.getAttribute('data-full-text') || '';
+            const brand = row.getAttribute('data-brand') || '';
+            const model = row.getAttribute('data-model') || '';
+            const category = row.getAttribute('data-category') || '';
+            const size = row.getAttribute('data-size') || '';
+            const supplier = row.getAttribute('data-supplier') || '';
+            
+            const matchesSearch = fullText.includes(searchTerm) ||
+                                brand.includes(searchTerm) ||
+                                model.includes(searchTerm) ||
+                                category.includes(searchTerm) ||
+                                size.includes(searchTerm) ||
+                                supplier.includes(searchTerm);
+            
+            if (matchesSearch) {
+                row.style.display = 'table-row';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Hide original no items message
+        if (noItemsRow) noItemsRow.style.display = 'none';
+        
+        // Show/hide search results info
+        if (searchResultsInfo && searchResultsText) {
+            if (visibleCount === 0) {
+                searchResultsInfo.classList.add('hidden');
+                if (noSearchResults) noSearchResults.style.display = 'table-row';
+            } else {
+                searchResultsInfo.classList.remove('hidden');
+                searchResultsText.textContent = `Found ${visibleCount} item${visibleCount !== 1 ? 's' : ''} matching "${searchTerm}"`;
+                if (noSearchResults) noSearchResults.style.display = 'none';
+            }
+        }
+    }
+    
+    // Update visible items count
+    if (visibleItemsCount) {
+        visibleItemsCount.textContent = visibleCount;
+    }
+    
+    // Scroll to top of results
+    scrollInventoryToTop();
+}
+
+function clearInventorySearch() {
+    const searchInput = document.getElementById('inventory-search');
+    if (searchInput) {
+        searchInput.value = '';
+        filterInventoryItems();
+        searchInput.focus();
+    }
+}
+
+function focusInventorySearch() {
+    const searchInput = document.getElementById('inventory-search');
+    if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+    }
+}
 </script>
+
+<style>
+/* Custom scrollbar styling for inventory table */
+.inventory-scroll-container {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f7fafc;
+    transition: border-bottom 0.3s ease;
+}
+
+.inventory-scroll-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.inventory-scroll-container::-webkit-scrollbar-track {
+    background: #f7fafc;
+    border-radius: 4px;
+}
+
+.inventory-scroll-container::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+.inventory-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+}
+
+.inventory-scroll-container::-webkit-scrollbar-thumb:active {
+    background: #718096;
+}
+
+/* Search input enhancements */
+#inventory-search {
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+#inventory-search:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #3b82f6;
+}
+
+#inventory-search::placeholder {
+    transition: opacity 0.3s ease;
+}
+
+#inventory-search:focus::placeholder {
+    opacity: 0.7;
+}
+
+/* Search results highlighting */
+.inventory-item-row {
+    transition: all 0.3s ease;
+}
+
+.inventory-item-row.search-match {
+    background-color: #eff6ff;
+    border-left: 3px solid #3b82f6;
+}
+
+/* Search animation */
+@keyframes searchPulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.searching {
+    animation: searchPulse 1.5s infinite;
+}
+
+/* Quick action buttons */
+.search-actions button {
+    transition: all 0.2s ease;
+    transform: translateY(0);
+}
+
+.search-actions button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.search-actions button:active {
+    transform: translateY(0);
+}
+
+/* Ensure table maintains proper spacing */
+.inventory-table-container table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.inventory-table-container th,
+.inventory-table-container td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Focus styles for accessibility */
+.inventory-scroll-container:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+}
+
+/* Responsive scroll height */
+@media (max-width: 768px) {
+    .inventory-scroll-container {
+        max-height: 60vh;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .inventory-scroll-container {
+        max-height: 70vh;
+    }
+}
+
+@media (min-width: 1025px) {
+    .inventory-scroll-container {
+        max-height: 80vh;
+    }
+}
+
+/* Shadow effects to indicate scrollable content */
+.inventory-scroll-container {
+    position: relative;
+}
+
+.inventory-scroll-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.1), transparent);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 1;
+}
+
+.inventory-scroll-container.has-scroll::before {
+    opacity: 1;
+}
+
+.inventory-scroll-container::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: linear-gradient(to top, rgba(0,0,0,0.1), transparent);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 1;
+}
+
+.inventory-scroll-container.has-scroll::after {
+    opacity: 1;
+}
+</style>
 
 <?php include 'includes/footer.php'; ?>
