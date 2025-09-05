@@ -76,7 +76,7 @@ if ($_POST) {
             break;
             
         case 'add':
-            if (hasPermission([ROLE_ADMIN, ROLE_HR])) {
+            if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])) {
                 $data = [
                     'brand' => $_POST['brand'],
                     'model' => $_POST['model'],
@@ -105,7 +105,7 @@ if ($_POST) {
             break;
             
         case 'edit':
-            if (hasPermission([ROLE_ADMIN, ROLE_HR]) && $item_id) {
+            if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
                 // Get current item to preserve existing image path
                 $current_item = getInventoryItem($item_id);
                 
@@ -136,7 +136,7 @@ if ($_POST) {
             break;
             
         case 'update_stock':
-            if (hasPermission([ROLE_ADMIN, ROLE_HR]) && $item_id) {
+            if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
                 $new_quantity = $_POST['new_quantity'];
                 $movement_type = $new_quantity > $_POST['current_quantity'] ? 'in' : 'out';
                 $notes = $_POST['notes'] ?? '';
@@ -275,7 +275,7 @@ include 'includes/header.php';
                 <a href="?action=new_quote" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
                     <i class="fas fa-plus mr-2"></i>New Quote
                 </a>
-                <?php if (hasPermission([ROLE_ADMIN, ROLE_HR])): ?>
+                <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
                 <a href="?action=add" class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition">
                     <i class="fas fa-plus mr-2"></i>Add Item
                 </a>
@@ -654,7 +654,7 @@ include 'includes/header.php';
                         <a href="?action=view&id=<?php echo $item['id']; ?>" class="text-blue-600 hover:text-blue-900">
                             <i class="fas fa-eye"></i>
                         </a>
-                        <?php if (hasPermission([ROLE_ADMIN, ROLE_HR])): ?>
+                        <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
                         <a href="?action=edit&id=<?php echo $item['id']; ?>" class="text-indigo-600 hover:text-indigo-900">
                             <i class="fas fa-edit"></i>
                         </a>
@@ -835,7 +835,7 @@ include 'includes/header.php';
             <p class="text-gray-600"><?php echo htmlspecialchars($item['description']); ?></p>
         </div>
         <div class="space-x-2">
-            <?php if (hasPermission([ROLE_ADMIN, ROLE_HR])): ?>
+            <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
             <a href="?action=edit&id=<?php echo $item['id']; ?>" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
                 <i class="fas fa-edit mr-2"></i>Edit
             </a>
@@ -1006,7 +1006,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Stock Update Modal -->
-<?php if (hasPermission([ROLE_ADMIN, ROLE_HR])): ?>
+<?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
 <div id="stock-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
         <div class="mt-3">
