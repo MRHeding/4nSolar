@@ -557,6 +557,129 @@ function updateQuoteTotals($quote_id) {
     }
 }
 
+// Update quotation status
+function updateQuoteStatus($quote_id, $new_status) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE quotations SET status = ?, updated_at = NOW() WHERE id = ?");
+        $result = $stmt->execute([$new_status, $quote_id]);
+        
+        // If status is being set to 'accepted', convert to solar project
+        if ($result && $new_status === 'accepted') {
+            $conversion_result = convertQuotationToProject($quote_id);
+            if (!$conversion_result['success']) {
+                // Log error but don't fail the status update
+                error_log("Failed to convert quotation $quote_id to project: " . $conversion_result['message']);
+            }
+        }
+        
+        return $result;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Convert quotation to solar project
+function convertQuotationToProject($quote_id) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get quotation details
+        $quote = getQuote($quote_id);
+        if (!$quote) {
+            throw new Exception("Quotation not found");
+        }
+        
+        // Prepare project data from quotation
+        $project_data = [
+            'project_name' => $quote['proposal_name'] ?? $quote['quote_number'] . ' - Solar Project',
+            'customer_name' => $quote['customer_name'],
+            'customer_email' => '', // quotations table doesn't have email field
+            'customer_phone' => $quote['customer_phone'],
+            'customer_address' => '', // quotations table doesn't have address field
+            'remarks' => 'Converted from quotation ' . $quote['quote_number'],
+            'system_size_kw' => calculateSystemSize($quote['items']),
+            'quote_id' => $quote_id, // Link back to quotation
+            'project_status' => 'approved', // Set as approved since quotation was accepted
+        ];
+        
+        // Create solar project
+        include_once 'projects.php';
+        $project_id = createSolarProject($project_data);
+        
+        if (!$project_id) {
+            throw new Exception("Failed to create solar project");
+        }
+        
+        // Copy quote items to project items
+        foreach ($quote['items'] as $item) {
+            $stmt = $pdo->prepare("INSERT INTO solar_project_items 
+                                  (project_id, inventory_item_id, quantity, unit_base_price, unit_selling_price, discount_amount, total_amount) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?)");
+            
+            $stmt->execute([
+                $project_id,
+                $item['inventory_item_id'],
+                $item['quantity'],
+                $item['base_price'] ?? $item['current_price'], // Use base price if available
+                $item['unit_price'],
+                $item['discount_amount'],
+                $item['total_amount']
+            ]);
+        }
+        
+        // Update quotation to link to project (if column exists)
+        try {
+            $stmt = $pdo->prepare("UPDATE quotations SET project_id = ? WHERE id = ?");
+            $stmt->execute([$project_id, $quote_id]);
+        } catch(PDOException $e) {
+            // Column might not exist yet, continue without failing
+            error_log("Could not update quotation project_id: " . $e->getMessage());
+        }
+        
+        // Update project totals
+        updateProjectTotals($project_id);
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'project_id' => $project_id,
+            'message' => 'Quotation successfully converted to solar project'
+        ];
+        
+    } catch(Exception $e) {
+        $pdo->rollback();
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+// Calculate system size from solar panels in quote items
+function calculateSystemSize($items) {
+    $total_watts = 0;
+    
+    foreach ($items as $item) {
+        // Check if item is a solar panel (category_id = 1)
+        if ($item['category_name'] === 'Solar Panels') {
+            // Extract wattage from size_specification (e.g., "550w" -> 550)
+            $wattage = 0;
+            if (preg_match('/(\d+)w/i', $item['size_specification'], $matches)) {
+                $wattage = intval($matches[1]);
+            }
+            $total_watts += $wattage * $item['quantity'];
+        }
+    }
+    
+    // Convert watts to kilowatts
+    return $total_watts / 1000;
+}
+
 // Delete quotation
 function deleteQuote($quote_id) {
     global $pdo;

@@ -55,16 +55,44 @@ function createSolarProject($data) {
     global $pdo;
     
     try {
-        $stmt = $pdo->prepare("INSERT INTO solar_projects 
-                              (project_name, customer_name, customer_email, customer_phone, 
-                               customer_address, remarks, system_size_kw, created_by) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        
-        $stmt->execute([
-            $data['project_name'], $data['customer_name'], $data['customer_email'],
-            $data['customer_phone'], $data['customer_address'], $data['remarks'] ?? '',
-            $data['system_size_kw'], $_SESSION['user_id']
-        ]);
+        // Check if quote_id is provided (for quotation conversions)
+        if (isset($data['quote_id'])) {
+            try {
+                $stmt = $pdo->prepare("INSERT INTO solar_projects 
+                                      (project_name, customer_name, customer_email, customer_phone, 
+                                       customer_address, remarks, system_size_kw, project_status, quote_id, created_by) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                
+                $stmt->execute([
+                    $data['project_name'], $data['customer_name'], $data['customer_email'],
+                    $data['customer_phone'], $data['customer_address'], $data['remarks'] ?? '',
+                    $data['system_size_kw'], $data['project_status'] ?? 'draft', $data['quote_id'], $_SESSION['user_id']
+                ]);
+            } catch(PDOException $e) {
+                // If quote_id column doesn't exist, create without it
+                $stmt = $pdo->prepare("INSERT INTO solar_projects 
+                                      (project_name, customer_name, customer_email, customer_phone, 
+                                       customer_address, remarks, system_size_kw, project_status, created_by) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                
+                $stmt->execute([
+                    $data['project_name'], $data['customer_name'], $data['customer_email'],
+                    $data['customer_phone'], $data['customer_address'], $data['remarks'] ?? '',
+                    $data['system_size_kw'], $data['project_status'] ?? 'draft', $_SESSION['user_id']
+                ]);
+            }
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO solar_projects 
+                                  (project_name, customer_name, customer_email, customer_phone, 
+                                   customer_address, remarks, system_size_kw, project_status, created_by) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            
+            $stmt->execute([
+                $data['project_name'], $data['customer_name'], $data['customer_email'],
+                $data['customer_phone'], $data['customer_address'], $data['remarks'] ?? '',
+                $data['system_size_kw'], $data['project_status'] ?? 'draft', $_SESSION['user_id']
+            ]);
+        }
         
         return $pdo->lastInsertId();
     } catch(PDOException $e) {
@@ -486,5 +514,102 @@ function getProjectStats() {
     $stats['monthly_revenue'] = $stmt->fetchAll();
     
     return $stats;
+}
+
+// Create solar project from quotation
+function createProjectFromQuotation($quote_id) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get quotation details with items
+        $quote = getQuote($quote_id);
+        if (!$quote) {
+            error_log("Quotation not found for ID: " . $quote_id);
+            throw new Exception('Quotation not found');
+        }
+        
+        error_log("Creating project from quotation: " . json_encode([
+            'quote_id' => $quote_id,
+            'quote_number' => $quote['quote_number'] ?? 'N/A',
+            'customer_name' => $quote['customer_name'] ?? 'N/A',
+            'items_count' => count($quote['items'] ?? [])
+        ]));
+        
+        // Generate project name from quote number and customer
+        $project_name = "Solar Project - " . $quote['quote_number'] . " - " . $quote['customer_name'];
+        
+        // Create the solar project
+        $stmt = $pdo->prepare("INSERT INTO solar_projects 
+                              (project_name, customer_name, customer_email, customer_phone, 
+                               customer_address, system_size_kw, project_status, quote_id,
+                               created_by, created_at) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+        
+        $stmt->execute([
+            $project_name,
+            $quote['customer_name'],
+            '', // email - can be added to quotations table later if needed
+            $quote['customer_phone'] ?? '',
+            '', // address - can be added to quotations table later if needed
+            0, // system_size_kw - can be calculated from items
+            'draft', // initial status
+            $quote_id, // reference to quotation
+            $_SESSION['user_id']
+        ]);
+        
+        $project_id = $pdo->lastInsertId();
+        error_log("Created project with ID: " . $project_id);
+        
+        // Copy quote items to project items
+        if (!empty($quote['items'])) {
+            $stmt = $pdo->prepare("INSERT INTO solar_project_items 
+                                  (project_id, inventory_item_id, quantity, unit_base_price, unit_selling_price, discount_amount, total_amount) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?)");
+            
+            foreach ($quote['items'] as $item) {
+                // Calculate discount amount
+                $unit_price = floatval($item['unit_price']);
+                $discount_percentage = floatval($item['discount_percentage'] ?? 0);
+                $discount_amount = ($unit_price * $discount_percentage) / 100;
+                $unit_selling_price = $unit_price - $discount_amount;
+                
+                error_log("Adding project item: " . json_encode([
+                    'inventory_item_id' => $item['inventory_item_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $unit_price,
+                    'total_amount' => $item['total_amount']
+                ]));
+                
+                $stmt->execute([
+                    $project_id,
+                    $item['inventory_item_id'],
+                    $item['quantity'],
+                    $unit_price, // unit_base_price
+                    $unit_selling_price, // unit_selling_price after discount
+                    $discount_amount, // discount_amount per unit
+                    $item['total_amount'] // total_amount
+                ]);
+            }
+            error_log("Added " . count($quote['items']) . " items to project");
+        } else {
+            error_log("No items found in quotation");
+        }
+        
+        // Update quotation to mark it as converted to project
+        $stmt = $pdo->prepare("UPDATE quotations SET project_id = ?, updated_at = NOW() WHERE id = ?");
+        $stmt->execute([$project_id, $quote_id]);
+        
+        $pdo->commit();
+        error_log("Successfully created project " . $project_id . " from quotation " . $quote_id);
+        return $project_id;
+        
+    } catch (Exception $e) {
+        $pdo->rollback();
+        error_log("Error creating project from quotation: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
+        return false;
+    }
 }
 ?>

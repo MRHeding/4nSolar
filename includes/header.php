@@ -97,6 +97,11 @@
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'quotations.php' ? 'active' : ''; ?>" href="quotations.php">
+                                    <i class="fas fa-file-invoice me-2"></i> Quotations
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'projects.php' ? 'active' : ''; ?>" href="projects.php">
                                     <i class="fas fa-project-diagram me-2"></i> Solar Projects
                                 </a>
@@ -176,6 +181,12 @@
                             <a href="inventory.php" class="flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white <?php echo basename($_SERVER['PHP_SELF']) == 'inventory.php' ? 'bg-solar-blue text-white' : ''; ?>">
                                 <i class="fas fa-boxes"></i>
                                 <span>Inventory</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="quotations.php" class="flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white <?php echo basename($_SERVER['PHP_SELF']) == 'quotations.php' ? 'bg-solar-blue text-white' : ''; ?>">
+                                <i class="fas fa-file-invoice"></i>
+                                <span>Quotations</span>
                             </a>
                         </li>
                         <li>
