@@ -703,6 +703,53 @@ function deleteQuote($quote_id) {
     }
 }
 
+// Update quote item discount percentage
+function updateQuoteItemDiscount($quote_item_id, $new_discount_percentage) {
+    global $pdo;
+    
+    try {
+        // Get current item details
+        $stmt = $pdo->prepare("SELECT qi.quote_id, qi.unit_price, qi.quantity, 
+                              qi.inventory_item_id, i.brand, i.model, i.is_active
+                              FROM quote_items qi
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id
+                              WHERE qi.id = ?");
+        $stmt->execute([$quote_item_id]);
+        $item = $stmt->fetch();
+        
+        if (!$item) return ['success' => false, 'message' => 'Item not found'];
+        
+        if (!$item['is_active']) {
+            return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
+        }
+        
+        // Validate discount percentage
+        if ($new_discount_percentage < 0 || $new_discount_percentage > 100) {
+            return ['success' => false, 'message' => 'Discount percentage must be between 0 and 100'];
+        }
+        
+        $discount_amount = ($item['unit_price'] * $new_discount_percentage / 100) * $item['quantity'];
+        $total_amount = ($item['unit_price'] * $item['quantity']) - $discount_amount;
+        
+        // Update the item
+        $stmt = $pdo->prepare("UPDATE quote_items SET 
+                              discount_percentage = ?, discount_amount = ?, total_amount = ? 
+                              WHERE id = ?");
+        
+        $result = $stmt->execute([$new_discount_percentage, $discount_amount, $total_amount, $quote_item_id]);
+        
+        if ($result) {
+            updateQuoteTotals($item['quote_id']);
+            return ['success' => true, 'message' => 'Discount updated successfully'];
+        }
+        
+        return ['success' => false, 'message' => 'Failed to update discount'];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
+}
+
 // Get available inventory items for quotes (all active items)
 function getQuoteInventoryItems() {
     global $pdo;
@@ -714,5 +761,33 @@ function getQuoteInventoryItems() {
                           ORDER BY i.brand, i.model");
     $stmt->execute();
     return $stmt->fetchAll();
+}
+
+// Get quote with profit data for profit analysis
+function getQuoteWithProfitData($id) {
+    global $pdo;
+    
+    // Get quote details
+    $stmt = $pdo->prepare("SELECT q.*, u.full_name as created_by_name 
+                          FROM quotations q 
+                          LEFT JOIN users u ON q.created_by = u.id 
+                          WHERE q.id = ?");
+    $stmt->execute([$id]);
+    $quote = $stmt->fetch();
+    
+    if ($quote) {
+        // Get quote items with base price for profit calculation
+        $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.size_specification, 
+                              i.base_price, i.selling_price as current_price,
+                              c.name as category_name, i.stock_quantity
+                              FROM quote_items qi 
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
+                              LEFT JOIN categories c ON i.category_id = c.id 
+                              WHERE qi.quote_id = ?");
+        $stmt->execute([$id]);
+        $quote['items'] = $stmt->fetchAll();
+    }
+    
+    return $quote;
 }
 ?>

@@ -14,6 +14,32 @@ $error = '';
 $action = $_GET['action'] ?? 'list';
 $quote_id = $_GET['quote_id'] ?? null;
 
+// Handle AJAX request for profit data
+if ($action === 'get_profit_data' && $quote_id) {
+    header('Content-Type: application/json');
+    
+    try {
+        $quote = getQuoteWithProfitData($quote_id);
+        if ($quote) {
+            echo json_encode([
+                'success' => true,
+                'profit_data' => $quote
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Quotation not found'
+            ]);
+        }
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error loading profit data: ' . $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
 // Check for success messages from redirects
 if (isset($_GET['message'])) {
     $message = $_GET['message'];
@@ -67,6 +93,18 @@ if ($_POST) {
                 $result = updateQuoteItemQuantity($_POST['quote_item_id'], $_POST['new_quantity']);
                 if ($result['success']) {
                     header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Quantity updated successfully!'));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'update_quote_discount':
+            if (isset($_POST['quote_item_id']) && isset($_POST['new_discount_percentage'])) {
+                $result = updateQuoteItemDiscount($_POST['quote_item_id'], $_POST['new_discount_percentage']);
+                if ($result['success']) {
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Discount updated successfully!'));
                     exit();
                 } else {
                     $error = $result['message'];
@@ -142,6 +180,42 @@ $content_start = true;
 include 'includes/header.php';
 ?>
 
+<style>
+/* Compact action buttons layout */
+.action-buttons {
+    min-width: 140px;
+}
+
+.action-buttons .inline-block {
+    margin: 0;
+}
+
+.action-buttons button,
+.action-buttons a {
+    display: inline-block;
+    min-width: 18px;
+    padding: 2px 4px;
+    text-align: center;
+    font-size: 12px;
+}
+
+/* Compact actions column */
+.actions-column {
+    width: 140px;
+    min-width: 140px;
+    padding: 8px 4px;
+}
+
+/* Make table more compact */
+.compact-table td {
+    padding: 8px 12px;
+}
+
+.compact-table th {
+    padding: 8px 12px;
+}
+</style>
+
 <?php if ($message): ?>
 <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4 alert-auto-hide">
     <?php echo htmlspecialchars($message); ?>
@@ -172,42 +246,42 @@ include 'includes/header.php';
 
 <!-- Quotations Table -->
 <div class="bg-white rounded-lg shadow overflow-hidden">
-    <table class="min-w-full divide-y divide-gray-200">
+    <table class="min-w-full divide-y divide-gray-200 compact-table">
         <thead class="bg-gray-50">
             <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quote #</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proposal</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quote #</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proposal</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th class="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider actions-column">Actions</th>
             </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
             <?php if (!empty($quotes)): ?>
                 <?php foreach ($quotes as $quote): ?>
                 <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td class="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                         <?php echo htmlspecialchars($quote['quote_number']); ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                         <?php echo htmlspecialchars($quote['customer_name']); ?>
                         <?php if ($quote['customer_phone']): ?>
                         <div class="text-xs text-gray-500"><?php echo htmlspecialchars($quote['customer_phone']); ?></div>
                         <?php endif; ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                         <?php echo htmlspecialchars($quote['proposal_name'] ?? '-'); ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                         <?php echo $quote['items_count']; ?> items
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                         <?php echo formatCurrency($quote['total_amount']); ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
+                    <td class="px-3 py-3 whitespace-nowrap">
                         <span class="px-2 py-1 text-xs font-medium rounded-full 
                             <?php 
                             switch($quote['status']) {
@@ -223,61 +297,61 @@ include 'includes/header.php';
                             <?php echo ucfirst(str_replace('_', ' ', $quote['status'])); ?>
                         </span>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
                         <?php echo date('M j, Y', strtotime($quote['created_at'])); ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-center">
-                        <div class="flex justify-center items-center space-x-2">
+                    <td class="px-2 py-3 whitespace-nowrap text-center actions-column">
+                        <div class="flex justify-center items-center space-x-0 flex-wrap action-buttons">
                             <a href="?action=quote&quote_id=<?php echo $quote['id']; ?>" 
-                               class="text-blue-600 hover:text-blue-900 p-1" title="View/Edit Quote">
-                                <i class="fas fa-eye"></i>
+                               class="text-blue-600 hover:text-blue-900 p-1 inline-block" title="View/Edit Quote">
+                                <i class="fas fa-eye text-xs"></i>
                             </a>
                             
                             <!-- Status Update Buttons -->
                             <?php if ($quote['status'] == 'draft'): ?>
-                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="sent">
                                 <button type="submit" class="text-purple-600 hover:text-purple-900 p-1" title="Mark as Sent">
-                                    <i class="fas fa-paper-plane"></i>
+                                    <i class="fas fa-paper-plane text-xs"></i>
                                 </button>
                             </form>
-                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="accepted">
                                 <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote">
-                                    <i class="fas fa-check"></i>
+                                    <i class="fas fa-check text-xs"></i>
                                 </button>
                             </form>
                             <?php elseif ($quote['status'] == 'sent'): ?>
-                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="accepted">
                                 <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote">
-                                    <i class="fas fa-check"></i>
+                                    <i class="fas fa-check text-xs"></i>
                                 </button>
                             </form>
-                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="rejected">
                                 <button type="submit" class="text-red-600 hover:text-red-900 p-1" title="Reject Quote">
-                                    <i class="fas fa-times"></i>
+                                    <i class="fas fa-times text-xs"></i>
                                 </button>
                             </form>
                             <?php elseif ($quote['status'] == 'accepted' || $quote['status'] == 'approved'): ?>
-                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="draft">
                                 <button type="submit" class="text-gray-600 hover:text-gray-900 p-1" title="Revert to Draft">
-                                    <i class="fas fa-undo"></i>
+                                    <i class="fas fa-undo text-xs"></i>
                                 </button>
                             </form>
                             <?php endif; ?>
                             
                             <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>" target="_blank"
-                               class="text-orange-600 hover:text-orange-900 p-1" title="Print Quote">
-                                <i class="fas fa-print"></i>
+                               class="text-orange-600 hover:text-orange-900 p-1 inline-block" title="Print Quote">
+                                <i class="fas fa-print text-xs"></i>
                             </a>
                             <a href="?action=delete_quote&quote_id=<?php echo $quote['id']; ?>" 
-                               class="text-red-600 hover:text-red-900 p-1"
+                               class="text-red-600 hover:text-red-900 p-1 inline-block"
                                onclick="return confirm('Are you sure you want to delete this quotation?')"
                                title="Delete Quote">
-                                <i class="fas fa-trash"></i>
+                                <i class="fas fa-trash text-xs"></i>
                             </a>
                         </div>
                     </td>
@@ -285,7 +359,7 @@ include 'includes/header.php';
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="8" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    <td colspan="8" class="px-3 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                         No quotations found. <a href="?action=new_quote" class="text-blue-600 hover:text-blue-800">Create your first quotation</a>
                     </td>
                 </tr>
@@ -452,7 +526,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <?php echo formatCurrency($item['unit_price']); ?>
                             </td>
                             <td class="px-3 py-4 text-sm text-gray-900">
-                                <?php echo $item['discount_percentage']; ?>%
+                                <form method="POST" action="?action=update_quote_discount&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                                    <input type="hidden" name="quote_item_id" value="<?php echo $item['id']; ?>">
+                                    <input type="number" name="new_discount_percentage" value="<?php echo $item['discount_percentage']; ?>" 
+                                           min="0" max="100" step="0.01" class="w-16 px-2 py-1 border rounded text-center text-sm"
+                                           onchange="this.form.submit()">
+                                </form>
                             </td>
                             <td class="px-3 py-4 text-sm font-medium text-gray-900">
                                 <?php echo formatCurrency($item['total_amount']); ?>
@@ -493,6 +572,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span>Total:</span>
                     <span class="text-solar-blue"><?php echo formatCurrency($quote['total_amount']); ?></span>
                 </div>
+            </div>
+            
+            <!-- View Profit Button -->
+            <div class="mt-6 pt-6 border-t">
+                <button onclick="showProfitModal()" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition mb-4">
+                    <i class="fas fa-chart-line mr-2"></i>View Profit Breakdown
+                </button>
             </div>
             
             <div class="mt-6 pt-6 border-t">
@@ -755,6 +841,36 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
+<!-- Profit Breakdown Modal -->
+<div id="profit-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-10 mx-auto p-5 border w-full max-w-6xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Profit Breakdown - <?php echo htmlspecialchars($quote['quote_number']); ?></h3>
+                <button type="button" onclick="closeProfitModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div id="profit-content" class="mb-4">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <div class="flex items-center justify-center">
+                        <i class="fas fa-spinner fa-spin text-blue-600 mr-2"></i>
+                        <span class="text-blue-800">Loading profit data...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end">
+                <button type="button" onclick="closeProfitModal()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 let selectedQuoteItemData = null;
 
@@ -848,6 +964,189 @@ function updateQuoteTotalPreview() {
 
 function formatCurrency(amount) {
     return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// Profit Modal Functions
+function showProfitModal() {
+    const modal = document.getElementById('profit-modal');
+    modal.classList.remove('hidden');
+    loadProfitData();
+}
+
+function closeProfitModal() {
+    const modal = document.getElementById('profit-modal');
+    modal.classList.add('hidden');
+}
+
+function loadProfitData() {
+    const quote_id = <?php echo $quote['id']; ?>;
+    const contentDiv = document.getElementById('profit-content');
+    
+    // Show loading state
+    contentDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div class="flex items-center justify-center">
+                <i class="fas fa-spinner fa-spin text-blue-600 mr-2"></i>
+                <span class="text-blue-800">Loading profit data...</span>
+            </div>
+        </div>
+    `;
+    
+    // Make AJAX request to get profit data
+    fetch(`quotations.php?action=get_profit_data&quote_id=${quote_id}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayProfitData(data.profit_data);
+            } else {
+                showProfitError(data.message || 'Failed to load profit data');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showProfitError('Network error occurred while loading profit data');
+        });
+}
+
+function displayProfitData(profitData) {
+    const contentDiv = document.getElementById('profit-content');
+    
+    let totalBaseCost = 0;
+    let totalSellingPrice = 0;
+    let totalProfit = 0;
+    let totalProfitAfterDiscount = 0;
+    
+    let itemsHtml = '';
+    
+    profitData.items.forEach(item => {
+        const baseCost = item.base_price * item.quantity;
+        const sellingPrice = item.unit_price * item.quantity;
+        const profit = sellingPrice - baseCost;
+        const profitAfterDiscount = item.total_amount - baseCost;
+        const profitMargin = baseCost > 0 ? ((profit / baseCost) * 100) : 0;
+        const profitMarginAfterDiscount = baseCost > 0 ? ((profitAfterDiscount / baseCost) * 100) : 0;
+        
+        totalBaseCost += baseCost;
+        totalSellingPrice += sellingPrice;
+        totalProfit += profit;
+        totalProfitAfterDiscount += profitAfterDiscount;
+        
+        itemsHtml += `
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 border-b">
+                    <div class="text-sm font-medium text-gray-900">${item.brand} ${item.model}</div>
+                    <div class="text-xs text-gray-500">${item.size_specification || ''}</div>
+                </td>
+                <td class="px-3 py-3 border-b text-center text-sm">${item.quantity}</td>
+                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(item.base_price)}</td>
+                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(item.unit_price)}</td>
+                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(baseCost)}</td>
+                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(sellingPrice)}</td>
+                <td class="px-3 py-3 border-b text-sm text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${formatCurrency(profit)}
+                    <div class="text-xs ${profitMargin >= 0 ? 'text-green-500' : 'text-red-500'}">(${profitMargin.toFixed(1)}%)</div>
+                </td>
+                <td class="px-3 py-3 border-b text-sm text-center">
+                    <span class="text-xs ${item.discount_percentage > 0 ? 'text-orange-600' : 'text-gray-400'}">${item.discount_percentage}%</span>
+                </td>
+                <td class="px-3 py-3 border-b text-sm text-right font-medium ${profitAfterDiscount >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${formatCurrency(profitAfterDiscount)}
+                    <div class="text-xs ${profitMarginAfterDiscount >= 0 ? 'text-green-500' : 'text-red-500'}">(${profitMarginAfterDiscount.toFixed(1)}%)</div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    const overallProfitMargin = totalBaseCost > 0 ? ((totalProfit / totalBaseCost) * 100) : 0;
+    const overallProfitMarginAfterDiscount = totalBaseCost > 0 ? ((totalProfitAfterDiscount / totalBaseCost) * 100) : 0;
+    
+    contentDiv.innerHTML = `
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-blue-800">Total Base Cost</div>
+                <div class="text-xl font-bold text-blue-900">${formatCurrency(totalBaseCost)}</div>
+            </div>
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-green-800">Total Selling Price</div>
+                <div class="text-xl font-bold text-green-900">${formatCurrency(totalSellingPrice)}</div>
+            </div>
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-purple-800">Gross Profit</div>
+                <div class="text-xl font-bold ${totalProfit >= 0 ? 'text-purple-900' : 'text-red-600'}">${formatCurrency(totalProfit)}</div>
+                <div class="text-sm ${overallProfitMargin >= 0 ? 'text-purple-600' : 'text-red-500'}">(${overallProfitMargin.toFixed(1)}% margin)</div>
+            </div>
+            <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-orange-800">Net Profit (After Discounts)</div>
+                <div class="text-xl font-bold ${totalProfitAfterDiscount >= 0 ? 'text-orange-900' : 'text-red-600'}">${formatCurrency(totalProfitAfterDiscount)}</div>
+                <div class="text-sm ${overallProfitMarginAfterDiscount >= 0 ? 'text-orange-600' : 'text-red-500'}">(${overallProfitMarginAfterDiscount.toFixed(1)}% margin)</div>
+            </div>
+        </div>
+        
+        <!-- Detailed Item Breakdown -->
+        <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h4 class="text-sm font-medium text-gray-900">Item-wise Profit Breakdown</h4>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
+                            <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Base Price</th>
+                            <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Selling Price</th>
+                            <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Base Cost</th>
+                            <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Selling</th>
+                            <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Gross Profit</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Discount</th>
+                            <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+                        ${itemsHtml}
+                    </tbody>
+                    <tfoot class="bg-gray-50 border-t-2 border-gray-300">
+                        <tr class="font-medium">
+                            <td class="px-4 py-3 text-sm font-bold text-gray-900" colspan="4">TOTAL</td>
+                            <td class="px-3 py-3 text-sm font-bold text-gray-900 text-right">${formatCurrency(totalBaseCost)}</td>
+                            <td class="px-3 py-3 text-sm font-bold text-gray-900 text-right">${formatCurrency(totalSellingPrice)}</td>
+                            <td class="px-3 py-3 text-sm font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'} text-right">
+                                ${formatCurrency(totalProfit)}
+                                <div class="text-xs ${overallProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}">(${overallProfitMargin.toFixed(1)}%)</div>
+                            </td>
+                            <td class="px-3 py-3 text-sm text-center">-</td>
+                            <td class="px-3 py-3 text-sm font-bold ${totalProfitAfterDiscount >= 0 ? 'text-orange-600' : 'text-red-600'} text-right">
+                                ${formatCurrency(totalProfitAfterDiscount)}
+                                <div class="text-xs ${overallProfitMarginAfterDiscount >= 0 ? 'text-orange-500' : 'text-red-500'}">(${overallProfitMarginAfterDiscount.toFixed(1)}%)</div>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        
+        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div class="flex">
+                <i class="fas fa-info-circle text-yellow-600 mr-2 mt-0.5"></i>
+                <div class="text-sm text-yellow-800">
+                    <strong>Note:</strong> Gross Profit = Selling Price - Base Price. Net Profit accounts for discounts applied to individual items.
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function showProfitError(message) {
+    const contentDiv = document.getElementById('profit-content');
+    contentDiv.innerHTML = `
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                <span class="text-red-800">${message}</span>
+            </div>
+        </div>
+    `;
 }
 </script>
 
