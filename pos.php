@@ -827,9 +827,19 @@ function formatCurrency(amount) {
         <?php endif; ?>
     </div>
     
-    <div class="text-center text-sm text-gray-500">
+    <div class="text-center text-sm text-gray-500 mb-8">
         <p>Thank you for your business!</p>
         <p>For warranty and support, please keep this receipt.</p>
+    </div>
+    
+    <!-- Signature Section -->
+    <div class="mt-8 pt-6 border-t border-gray-300">
+        <div class="flex justify-center">
+            <div class="text-center" style="width: 45%;">
+                <div class="border-b border-gray-400 mb-2 pb-8"></div>
+                <p class="text-sm text-gray-700 font-medium">Cashier Authorized Representative</p>
+            </div>
+        </div>
     </div>
 </div>
 

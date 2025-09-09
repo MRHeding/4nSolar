@@ -143,6 +143,8 @@ switch ($action) {
         
         if ($filter == 'low_stock') {
             $items = getLowStockItems();
+        } elseif ($filter == 'available_stock') {
+            $items = getAvailableStockItems();
         } else {
             $items = getInventoryItems($category_filter, $brand_filter);
         }
@@ -242,6 +244,9 @@ include 'includes/header.php';
                 </a>
                 <a href="?filter=low_stock" class="px-3 py-1.5 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition text-xs">
                     <i class="fas fa-exclamation-triangle mr-1"></i>Low Stock
+                </a>
+                <a href="?filter=available_stock" class="px-3 py-1.5 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition text-xs">
+                    <i class="fas fa-check-circle mr-1"></i>Available Stock
                 </a>
             </div>
             <div class="flex gap-2 flex-wrap mt-2">
@@ -393,6 +398,11 @@ include 'includes/header.php';
                         Low Stock Items
                     </span>
                 <?php endif; ?>
+                <?php if (isset($_GET['filter']) && $_GET['filter'] == 'available_stock'): ?>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Available Stock Items
+                    </span>
+                <?php endif; ?>
             </div>
             <a href="?" class="text-sm text-gray-500 hover:text-gray-700 transition">
                 <i class="fas fa-times mr-1"></i>Clear all filters
@@ -488,7 +498,7 @@ include 'includes/header.php';
             <div class="grid grid-cols-7 gap-4 px-6 py-3">
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</div>
-                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</div>
+                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size/Specification</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pricing</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</div>
@@ -510,7 +520,7 @@ include 'includes/header.php';
                     data-size="<?php echo strtolower(htmlspecialchars($item['size_specification'])); ?>"
                     data-supplier="<?php echo strtolower(htmlspecialchars($item['supplier_name'] ?? '')); ?>"
                     data-full-text="<?php echo strtolower(htmlspecialchars($item['brand'] . ' ' . $item['model'] . ' ' . ($item['category_name'] ?? '') . ' ' . $item['size_specification'] . ' ' . ($item['supplier_name'] ?? '') . ' ' . ($item['description'] ?? ''))); ?>">
-                    <td class="px-6 py-4 whitespace-nowrap">
+                    <td class="px-6 py-4">
                         <div class="flex items-center">
                             <div class="flex-shrink-0 h-16 w-16">
                                 <a href="?action=view&id=<?php echo $item['id']; ?>">
@@ -520,21 +530,21 @@ include 'includes/header.php';
                                          title="Click to view details">
                                 </a>
                             </div>
-                            <div class="ml-4">
+                            <div class="ml-4 min-w-0 flex-1">
                                 <div class="text-sm font-medium text-gray-900">
                                     <a href="?action=view&id=<?php echo $item['id']; ?>" class="hover:text-solar-blue transition">
                                         <?php echo htmlspecialchars($item['brand']); ?>
                                     </a>
                                 </div>
-                                <div class="text-sm text-gray-500"><?php echo htmlspecialchars($item['model']); ?></div>
+                                <div class="text-sm text-gray-500 break-words"><?php echo htmlspecialchars($item['model']); ?></div>
                             </div>
                         </div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <?php echo htmlspecialchars($item['category_name'] ?? 'N/A'); ?>
+                    <td class="px-6 py-4 text-sm text-gray-900">
+                        <span class="break-words"><?php echo htmlspecialchars($item['category_name'] ?? 'N/A'); ?></span>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <?php echo htmlspecialchars($item['size_specification']); ?>
+                    <td class="px-6 py-4 text-sm text-gray-900">
+                        <span class="break-words"><?php echo htmlspecialchars($item['size_specification']); ?></span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <div>Base: <?php echo formatCurrency($item['base_price']); ?></div>
@@ -1568,16 +1578,29 @@ function printInventoryReport(type, categoryId = null, categoryName = null) {
     transform: translateY(0);
 }
 
-/* Ensure table maintains proper spacing */
+/* Ensure table maintains proper spacing and text wrapping */
 .inventory-table-container table {
-    table-layout: fixed;
+    table-layout: auto;
     width: 100%;
 }
 
 .inventory-table-container th,
 .inventory-table-container td {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: none;
+}
+
+/* Ensure text in inventory table can wrap */
+.inventory-item-row td {
+    white-space: normal !important;
+    word-break: break-word;
+}
+
+/* Specific styling for the Size/Specification column to allow more space */
+.inventory-table-container td:nth-child(3) {
+    min-width: 200px;
+    max-width: 300px;
 }
 
 /* Focus styles for accessibility */

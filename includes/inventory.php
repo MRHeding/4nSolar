@@ -161,6 +161,18 @@ function getLowStockItems() {
     return $stmt->fetchAll();
 }
 
+// Get available stock items (items with stock above minimum)
+function getAvailableStockItems() {
+    global $pdo;
+    $stmt = $pdo->query("SELECT i.*, s.name as supplier_name, c.name as category_name 
+                        FROM inventory_items i 
+                        LEFT JOIN suppliers s ON i.supplier_id = s.id 
+                        LEFT JOIN categories c ON i.category_id = c.id 
+                        WHERE i.stock_quantity > i.minimum_stock AND i.is_active = 1 
+                        ORDER BY i.stock_quantity DESC, i.brand, i.model");
+    return $stmt->fetchAll();
+}
+
 // Get available brands
 function getAvailableBrands() {
     global $pdo;
@@ -789,5 +801,167 @@ function getQuoteWithProfitData($id) {
     }
     
     return $quote;
+}
+
+// Save customer information for a quote
+function saveCustomerInfo($quote_id, $data) {
+    global $pdo;
+    
+    try {
+        // Check if customer info already exists for this quote
+        $stmt = $pdo->prepare("SELECT id FROM quote_customer_info WHERE quote_id = ?");
+        $stmt->execute([$quote_id]);
+        $existing = $stmt->fetch();
+        
+        $contact_methods = $data['contact_method'] ?? [];
+        
+        if ($existing) {
+            // Update existing record
+            $stmt = $pdo->prepare("UPDATE quote_customer_info SET 
+                                  full_name = ?, phone_number = ?, address = ?, 
+                                  contact_method_email = ?, contact_method_phone = ?, contact_method_sms = ?,
+                                  account_creation_date = ?, updated_at = NOW()
+                                  WHERE quote_id = ?");
+            $stmt->execute([
+                $data['full_name'] ?? null,
+                $data['phone_number'] ?? null,
+                $data['address'] ?? null,
+                in_array('email', $contact_methods) ? 1 : 0,
+                in_array('phone', $contact_methods) ? 1 : 0,
+                in_array('sms', $contact_methods) ? 1 : 0,
+                $data['account_creation_date'] ?? null,
+                $quote_id
+            ]);
+        } else {
+            // Insert new record
+            $stmt = $pdo->prepare("INSERT INTO quote_customer_info 
+                                  (quote_id, full_name, phone_number, address, 
+                                   contact_method_email, contact_method_phone, contact_method_sms, account_creation_date) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $quote_id,
+                $data['full_name'] ?? null,
+                $data['phone_number'] ?? null,
+                $data['address'] ?? null,
+                in_array('email', $contact_methods) ? 1 : 0,
+                in_array('phone', $contact_methods) ? 1 : 0,
+                in_array('sms', $contact_methods) ? 1 : 0,
+                $data['account_creation_date'] ?? null
+            ]);
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        error_log("Error saving customer info: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Save solar project details for a quote
+function saveSolarProjectDetails($quote_id, $data) {
+    global $pdo;
+    
+    try {
+        // Check if solar details already exist for this quote
+        $stmt = $pdo->prepare("SELECT id FROM quote_solar_details WHERE quote_id = ?");
+        $stmt->execute([$quote_id]);
+        $existing = $stmt->fetch();
+        
+        $system_types = $data['system_type'] ?? [];
+        $installation_types = $data['installation_type'] ?? [];
+        $installation_statuses = $data['installation_status'] ?? [];
+        
+        if ($existing) {
+            // Update existing record
+            $stmt = $pdo->prepare("UPDATE quote_solar_details SET 
+                                  system_type_grid_tie = ?, system_type_off_grid = ?, system_type_hybrid = ?,
+                                  system_size_kw = ?, 
+                                  installation_type_rooftop = ?, installation_type_ground_mounted = ?, installation_type_carport = ?,
+                                  panel_brand_model = ?, inverter_brand_model = ?, estimated_installation_date = ?,
+                                  installation_status_planned = ?, installation_status_in_progress = ?, 
+                                  installation_status_completed = ?, installation_status_maintenance = ?,
+                                  battery_backup_capacity = ?, battery_capacity_value = ?, net_metering = ?, confirmed = ?, client_signature = ?, remarks = ?, updated_at = NOW()
+                                  WHERE quote_id = ?");
+            $stmt->execute([
+                in_array('grid_tie', $system_types) ? 1 : 0,
+                in_array('off_grid', $system_types) ? 1 : 0,
+                in_array('hybrid', $system_types) ? 1 : 0,
+                $data['system_size'] ?? null,
+                in_array('rooftop', $installation_types) ? 1 : 0,
+                in_array('ground_mounted', $installation_types) ? 1 : 0,
+                in_array('carport', $installation_types) ? 1 : 0,
+                $data['panel_brand_model'] ?? null,
+                $data['inverter_brand_model'] ?? null,
+                $data['estimated_installation_date'] ?? null,
+                in_array('planned', $installation_statuses) ? 1 : 0,
+                in_array('in_progress', $installation_statuses) ? 1 : 0,
+                in_array('completed', $installation_statuses) ? 1 : 0,
+                in_array('maintenance', $installation_statuses) ? 1 : 0,
+                $data['battery_backup_capacity'] ?? null,
+                $data['battery_capacity_value'] ?? null,
+                $data['net_metering'] ?? null,
+                $data['confirmed'] ?? null,
+                $data['client_signature'] ?? null,
+                $data['remarks'] ?? null,
+                $quote_id
+            ]);
+        } else {
+            // Insert new record
+            $stmt = $pdo->prepare("INSERT INTO quote_solar_details 
+                                  (quote_id, system_type_grid_tie, system_type_off_grid, system_type_hybrid,
+                                   system_size_kw, installation_type_rooftop, installation_type_ground_mounted, installation_type_carport,
+                                   panel_brand_model, inverter_brand_model, estimated_installation_date,
+                                   installation_status_planned, installation_status_in_progress, 
+                                   installation_status_completed, installation_status_maintenance,
+                                   battery_backup_capacity, battery_capacity_value, net_metering, confirmed, client_signature, remarks) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $quote_id,
+                in_array('grid_tie', $system_types) ? 1 : 0,
+                in_array('off_grid', $system_types) ? 1 : 0,
+                in_array('hybrid', $system_types) ? 1 : 0,
+                $data['system_size'] ?? null,
+                in_array('rooftop', $installation_types) ? 1 : 0,
+                in_array('ground_mounted', $installation_types) ? 1 : 0,
+                in_array('carport', $installation_types) ? 1 : 0,
+                $data['panel_brand_model'] ?? null,
+                $data['inverter_brand_model'] ?? null,
+                $data['estimated_installation_date'] ?? null,
+                in_array('planned', $installation_statuses) ? 1 : 0,
+                in_array('in_progress', $installation_statuses) ? 1 : 0,
+                in_array('completed', $installation_statuses) ? 1 : 0,
+                in_array('maintenance', $installation_statuses) ? 1 : 0,
+                $data['battery_backup_capacity'] ?? null,
+                $data['battery_capacity_value'] ?? null,
+                $data['net_metering'] ?? null,
+                $data['confirmed'] ?? null,
+                $data['client_signature'] ?? null,
+                $data['remarks'] ?? null
+            ]);
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        error_log("Error saving solar project details: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Get customer information for a quote
+function getCustomerInfo($quote_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT * FROM quote_customer_info WHERE quote_id = ?");
+    $stmt->execute([$quote_id]);
+    return $stmt->fetch();
+}
+
+// Get solar project details for a quote
+function getSolarProjectDetails($quote_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT * FROM quote_solar_details WHERE quote_id = ?");
+    $stmt->execute([$quote_id]);
+    return $stmt->fetch();
 }
 ?>

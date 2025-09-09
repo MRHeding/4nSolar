@@ -40,6 +40,35 @@ if ($action === 'get_profit_data' && $quote_id) {
     exit();
 }
 
+// Handle AJAX request for customer details
+if ($action === 'get_customer_details' && $quote_id) {
+    header('Content-Type: application/json');
+    
+    try {
+        // Get quote information
+        $quote = getQuote($quote_id);
+        
+        // Get customer information
+        $customer_info = getCustomerInfo($quote_id);
+        
+        // Get solar project details
+        $solar_details = getSolarProjectDetails($quote_id);
+        
+        echo json_encode([
+            'success' => true,
+            'quote_info' => $quote,
+            'customer_info' => $customer_info,
+            'solar_details' => $solar_details
+        ]);
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error loading customer details: ' . $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
 // Check for success messages from redirects
 if (isset($_GET['message'])) {
     $message = $_GET['message'];
@@ -51,6 +80,12 @@ if ($_POST) {
         case 'create_quote':
             $quote_id = createQuote($_POST['customer_name'] ?? null, $_POST['customer_phone'] ?? null, $_POST['proposal_name'] ?? null);
             if ($quote_id) {
+                // Save customer information
+                saveCustomerInfo($quote_id, $_POST);
+                
+                // Save solar project details
+                saveSolarProjectDetails($quote_id, $_POST);
+                
                 // Check if KW and Labor Fee are provided
                 $kw = floatval($_POST['kw'] ?? 0);
                 $labor_fee = floatval($_POST['labor_fee'] ?? 0);
@@ -63,12 +98,12 @@ if ($_POST) {
                     $labor_result = addCustomQuoteItem($quote_id, $labor_item_name, $kw, $labor_fee);
                     
                     if ($labor_result['success']) {
-                        $message = 'New quotation created successfully with labor fee!';
+                        $message = 'New quotation created successfully with labor fee and additional details!';
                     } else {
-                        $message = 'Quotation created, but failed to add labor fee: ' . $labor_result['message'];
+                        $message = 'Quotation created with additional details, but failed to add labor fee: ' . $labor_result['message'];
                     }
                 } else {
-                    $message = 'New quotation created successfully!';
+                    $message = 'New quotation created successfully with additional details!';
                 }
                 $action = 'quote';
             } else {
@@ -108,6 +143,20 @@ if ($_POST) {
                     exit();
                 } else {
                     $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'update_customer_details':
+            if ($quote_id) {
+                $customer_updated = saveCustomerInfo($quote_id, $_POST);
+                $solar_updated = saveSolarProjectDetails($quote_id, $_POST);
+                
+                if ($customer_updated && $solar_updated) {
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Customer and solar project details updated successfully!'));
+                    exit();
+                } else {
+                    $error = 'Failed to update customer or solar project details.';
                 }
             }
             break;
@@ -306,6 +355,14 @@ include 'includes/header.php';
                                class="text-blue-600 hover:text-blue-900 p-1 inline-block" title="View/Edit Quote">
                                 <i class="fas fa-eye text-xs"></i>
                             </a>
+                            <button onclick="viewCustomerDetails(<?php echo $quote['id']; ?>)" 
+                                    class="text-green-600 hover:text-green-900 p-1 inline-block" title="View Customer Details">
+                                <i class="fas fa-user text-xs"></i>
+                            </button>
+                            <button onclick="editCustomerDetails(<?php echo $quote['id']; ?>)" 
+                                    class="text-orange-600 hover:text-orange-900 p-1 inline-block" title="Edit Customer Details">
+                                <i class="fas fa-edit text-xs"></i>
+                            </button>
                             
                             <!-- Status Update Buttons -->
                             <?php if ($quote['status'] == 'draft'): ?>
@@ -387,7 +444,8 @@ include 'includes/header.php';
 <!-- Create New Quote -->
 <div class="bg-white rounded-lg shadow p-6">
     <h2 class="text-xl font-semibold text-gray-800 mb-4">Create New Quotation</h2>
-    <form method="POST" action="?action=create_quote" class="space-y-4">
+    <form method="POST" action="?action=create_quote" class="space-y-6">
+        <!-- Basic Quotation Info -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <label for="customer_name" class="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
@@ -426,13 +484,225 @@ include 'includes/header.php';
                        value="" placeholder="Total will appear here">
             </div>
         </div>
-        <div class="flex justify-end">
+        
+        <!-- Customer Information Section -->
+        <div class="border-t pt-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Customer Information</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                    <label for="full_name" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                    <input type="text" id="full_name" name="full_name"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter full name">
+                </div>
+                <div>
+                    <label for="phone_number" class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                    <input type="tel" id="phone_number" name="phone_number"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter phone number">
+                </div>
+                <div>
+                    <label for="account_creation_date" class="block text-sm font-medium text-gray-700 mb-2">Account Creation Date</label>
+                    <input type="date" id="account_creation_date" name="account_creation_date"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <label for="address" class="block text-sm font-medium text-gray-700 mb-2">Address</label>
+                <textarea id="address" name="address" rows="2"
+                          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                          placeholder="Enter complete address"></textarea>
+            </div>
+            
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Preferred Contact Method</label>
+                <div class="flex flex-wrap gap-4">
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" name="contact_method[]" value="email" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                        <span class="ml-2 text-sm text-gray-700">Email</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" name="contact_method[]" value="phone" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                        <span class="ml-2 text-sm text-gray-700">Phone</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" name="contact_method[]" value="sms" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                        <span class="ml-2 text-sm text-gray-700">SMS</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Solar Project Details Section -->
+        <div class="border-t pt-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Solar Project Details</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">System Type</label>
+                    <div class="space-y-2">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="system_type[]" value="grid_tie" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Grid Tie</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="system_type[]" value="off_grid" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Off Grid</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="system_type[]" value="hybrid" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Hybrid</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="system_size" class="block text-sm font-medium text-gray-700 mb-2">System Size (kW)</label>
+                    <input type="number" id="system_size" name="system_size" min="0" step="0.01"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter system size in kW">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Installation Type</label>
+                    <div class="space-y-2">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="installation_type[]" value="rooftop" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Rooftop</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="installation_type[]" value="ground_mounted" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Ground Mounted</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="installation_type[]" value="carport" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Carport</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label for="panel_brand_model" class="block text-sm font-medium text-gray-700 mb-2">Panel Brand/Model</label>
+                    <input type="text" id="panel_brand_model" name="panel_brand_model"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter panel brand and model">
+                </div>
+                <div>
+                    <label for="inverter_brand_model" class="block text-sm font-medium text-gray-700 mb-2">Inverter Brand/Model</label>
+                    <input type="text" id="inverter_brand_model" name="inverter_brand_model"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter inverter brand and model">
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                <div>
+                    <label for="estimated_installation_date" class="block text-sm font-medium text-gray-700 mb-2">Estimated Installation Date</label>
+                    <input type="date" id="estimated_installation_date" name="estimated_installation_date"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Installation Status</label>
+                    <div class="space-y-2">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="installation_status[]" value="planned" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Planned</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="installation_status[]" value="in_progress" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">In Progress</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="installation_status[]" value="completed" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Completed</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="installation_status[]" value="maintenance" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                            <span class="ml-2 text-sm text-gray-700">Maintenance</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Battery Backup Capacity</label>
+                        <div class="flex gap-4 mb-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="battery_backup_capacity" value="yes" class="border-gray-300 text-solar-blue focus:ring-solar-blue" onchange="toggleBatteryCapacityInput()">
+                                <span class="ml-2 text-sm text-gray-700">Yes</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="battery_backup_capacity" value="no" class="border-gray-300 text-solar-blue focus:ring-solar-blue" onchange="toggleBatteryCapacityInput()">
+                                <span class="ml-2 text-sm text-gray-700">No</span>
+                            </label>
+                        </div>
+                        <div id="battery_capacity_input" class="hidden">
+                            <input type="text" name="battery_capacity_value" placeholder="Enter battery capacity (e.g., 10kWh, 5000Wh)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-solar-blue focus:border-transparent text-sm">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Net Metering</label>
+                        <div class="flex gap-4">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="net_metering" value="yes" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                <span class="ml-2 text-sm text-gray-700">Yes</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="net_metering" value="no" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                <span class="ml-2 text-sm text-gray-700">No</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Confirmed</label>
+                        <div class="flex gap-4">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="confirmed" value="yes" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                <span class="ml-2 text-sm text-gray-700">Yes</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="confirmed" value="no" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                <span class="ml-2 text-sm text-gray-700">No</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label for="client_signature" class="block text-sm font-medium text-gray-700 mb-2">Client Signature Line</label>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-gray-50">
+                        <p class="text-sm text-gray-500 mb-2">Client Signature</p>
+                        <div class="border-b-2 border-gray-400 w-full h-12"></div>
+                        <input type="text" id="client_signature" name="client_signature" placeholder="Type signature or leave blank for manual signing"
+                               class="w-full mt-2 border-0 bg-transparent text-center focus:ring-0 text-sm text-gray-600">
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="remarks" class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
+                    <textarea id="remarks" name="remarks" rows="4"
+                              class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                              placeholder="Enter any additional remarks or notes"></textarea>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex justify-end pt-6 border-t">
             <button type="submit" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition text-lg">
                 <i class="fas fa-plus mr-2"></i>Create Quotation
             </button>
         </div>
     </form>
 </div>
+
+
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -463,6 +733,10 @@ document.addEventListener('DOMContentLoaded', function() {
             </p>
         </div>
         <div class="space-x-2">
+            <button onclick="editCustomerDetails(<?php echo $quote['id']; ?>)" 
+                    class="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition">
+                <i class="fas fa-edit mr-2"></i>Edit Details
+            </button>
             <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>" target="_blank"
                class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
                 <i class="fas fa-print mr-2"></i>Print Quote
@@ -576,8 +850,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             <!-- View Profit Button -->
             <div class="mt-6 pt-6 border-t">
-                <button onclick="showProfitModal()" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition mb-4">
+                <button onclick="showProfitModal()" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition mb-2">
                     <i class="fas fa-chart-line mr-2"></i>View Profit Breakdown
+                </button>
+                <button onclick="editCustomerDetails(<?php echo $quote['id']; ?>)" class="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition mb-4">
+                    <i class="fas fa-edit mr-2"></i>Edit Customer Details
                 </button>
             </div>
             
@@ -1151,5 +1428,583 @@ function showProfitError(message) {
 </script>
 
 <?php endif; ?>
+
+<!-- Customer Details Modal -->
+<div id="customer-details-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-10 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Customer & Solar Project Details</h3>
+                <button type="button" onclick="closeCustomerDetailsModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div id="customer-details-content" class="mb-4">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <div class="flex items-center justify-center">
+                        <i class="fas fa-spinner fa-spin text-blue-600 mr-2"></i>
+                        <span class="text-blue-800">Loading customer details...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end">
+                <button type="button" onclick="closeCustomerDetailsModal()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Customer Details Modal -->
+<div id="edit-customer-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-5 mx-auto p-5 border w-full max-w-6xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Edit Customer & Solar Project Details</h3>
+                <button type="button" onclick="closeEditCustomerModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="edit-customer-form" method="POST" class="space-y-6">
+                <input type="hidden" id="edit_quote_id" name="quote_id" value="">
+                
+                <!-- Customer Information Section -->
+                <div class="border-b pb-6">
+                    <h4 class="text-lg font-semibold text-gray-800 mb-4">Customer Information</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                            <label for="edit_full_name" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                            <input type="text" id="edit_full_name" name="full_name"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                   placeholder="Enter full name">
+                        </div>
+                        <div>
+                            <label for="edit_phone_number" class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                            <input type="tel" id="edit_phone_number" name="phone_number"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                   placeholder="Enter phone number">
+                        </div>
+                        <div>
+                            <label for="edit_account_creation_date" class="block text-sm font-medium text-gray-700 mb-2">Account Creation Date</label>
+                            <input type="date" id="edit_account_creation_date" name="account_creation_date"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <label for="edit_address" class="block text-sm font-medium text-gray-700 mb-2">Address</label>
+                        <textarea id="edit_address" name="address" rows="2"
+                                  class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                  placeholder="Enter complete address"></textarea>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Preferred Contact Method</label>
+                        <div class="flex flex-wrap gap-4">
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" id="edit_contact_email" name="contact_method[]" value="email" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                <span class="ml-2 text-sm text-gray-700">Email</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" id="edit_contact_phone" name="contact_method[]" value="phone" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                <span class="ml-2 text-sm text-gray-700">Phone</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" id="edit_contact_sms" name="contact_method[]" value="sms" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                <span class="ml-2 text-sm text-gray-700">SMS</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Solar Project Details Section -->
+                <div class="pb-6">
+                    <h4 class="text-lg font-semibold text-gray-800 mb-4">Solar Project Details</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">System Type</label>
+                            <div class="space-y-2">
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_system_grid_tie" name="system_type[]" value="grid_tie" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Grid Tie</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_system_off_grid" name="system_type[]" value="off_grid" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Off Grid</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_system_hybrid" name="system_type[]" value="hybrid" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Hybrid</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="edit_system_size" class="block text-sm font-medium text-gray-700 mb-2">System Size (kW)</label>
+                            <input type="number" id="edit_system_size" name="system_size" min="0" step="0.01"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                   placeholder="Enter system size in kW">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Installation Type</label>
+                            <div class="space-y-2">
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_install_rooftop" name="installation_type[]" value="rooftop" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Rooftop</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_install_ground" name="installation_type[]" value="ground_mounted" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Ground Mounted</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_install_carport" name="installation_type[]" value="carport" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Carport</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <label for="edit_panel_brand_model" class="block text-sm font-medium text-gray-700 mb-2">Panel Brand/Model</label>
+                            <input type="text" id="edit_panel_brand_model" name="panel_brand_model"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                   placeholder="Enter panel brand and model">
+                        </div>
+                        <div>
+                            <label for="edit_inverter_brand_model" class="block text-sm font-medium text-gray-700 mb-2">Inverter Brand/Model</label>
+                            <input type="text" id="edit_inverter_brand_model" name="inverter_brand_model"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                   placeholder="Enter inverter brand and model">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                        <div>
+                            <label for="edit_estimated_installation_date" class="block text-sm font-medium text-gray-700 mb-2">Estimated Installation Date</label>
+                            <input type="date" id="edit_estimated_installation_date" name="estimated_installation_date"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Installation Status</label>
+                            <div class="space-y-2">
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_status_planned" name="installation_status[]" value="planned" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Planned</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_status_progress" name="installation_status[]" value="in_progress" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">In Progress</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_status_completed" name="installation_status[]" value="completed" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Completed</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="edit_status_maintenance" name="installation_status[]" value="maintenance" class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                    <span class="ml-2 text-sm text-gray-700">Maintenance</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Battery Backup Capacity</label>
+                                <div class="flex gap-4 mb-2">
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" id="edit_battery_backup_capacity_yes" name="battery_backup_capacity" value="yes" class="border-gray-300 text-solar-blue focus:ring-solar-blue" onchange="toggleEditBatteryCapacityInput()">
+                                        <span class="ml-2 text-sm text-gray-700">Yes</span>
+                                    </label>
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" id="edit_battery_backup_capacity_no" name="battery_backup_capacity" value="no" class="border-gray-300 text-solar-blue focus:ring-solar-blue" onchange="toggleEditBatteryCapacityInput()">
+                                        <span class="ml-2 text-sm text-gray-700">No</span>
+                                    </label>
+                                </div>
+                                <div id="edit_battery_capacity_input" class="hidden">
+                                    <input type="text" id="edit_battery_capacity_value" name="battery_capacity_value" placeholder="Enter battery capacity (e.g., 10kWh, 5000Wh)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-solar-blue focus:border-transparent text-sm">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Net Metering</label>
+                                <div class="flex gap-4">
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" id="edit_net_metering_yes" name="net_metering" value="yes" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                        <span class="ml-2 text-sm text-gray-700">Yes</span>
+                                    </label>
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" id="edit_net_metering_no" name="net_metering" value="no" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                        <span class="ml-2 text-sm text-gray-700">No</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Confirmed</label>
+                                <div class="flex gap-4">
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" id="edit_confirmed_yes" name="confirmed" value="yes" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                        <span class="ml-2 text-sm text-gray-700">Yes</span>
+                                    </label>
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" id="edit_confirmed_no" name="confirmed" value="no" class="border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                        <span class="ml-2 text-sm text-gray-700">No</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <label for="edit_client_signature" class="block text-sm font-medium text-gray-700 mb-2">Client Signature</label>
+                            <input type="text" id="edit_client_signature" name="client_signature"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                   placeholder="Type signature or leave blank for manual signing">
+                        </div>
+                        
+                        <div>
+                            <label for="edit_remarks" class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
+                            <textarea id="edit_remarks" name="remarks" rows="4"
+                                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                      placeholder="Enter any additional remarks or notes"></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 pt-6 border-t">
+                    <button type="button" onclick="closeEditCustomerModal()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+                        <i class="fas fa-save mr-2"></i>Update Details
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Customer Details Modal Functions
+function viewCustomerDetails(quoteId) {
+    const modal = document.getElementById('customer-details-modal');
+    modal.classList.remove('hidden');
+    loadCustomerDetails(quoteId);
+}
+
+function closeCustomerDetailsModal() {
+    const modal = document.getElementById('customer-details-modal');
+    modal.classList.add('hidden');
+}
+
+function loadCustomerDetails(quoteId) {
+    const contentDiv = document.getElementById('customer-details-content');
+    
+    // Show loading state
+    contentDiv.innerHTML = `
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div class="flex items-center justify-center">
+                <i class="fas fa-spinner fa-spin text-blue-600 mr-2"></i>
+                <span class="text-blue-800">Loading customer details...</span>
+            </div>
+        </div>
+    `;
+    
+    // Make AJAX request to get customer details
+    fetch(`quotations.php?action=get_customer_details&quote_id=${quoteId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayCustomerDetails(data.customer_info, data.solar_details, data.quote_info);
+            } else {
+                showCustomerDetailsError(data.message || 'Failed to load customer details');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showCustomerDetailsError('Network error occurred while loading customer details');
+        });
+}
+
+function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
+    const contentDiv = document.getElementById('customer-details-content');
+    
+    // Helper function to display boolean as Yes/No
+    const boolToYesNo = (value) => value ? 'Yes' : 'No';
+    
+    // Helper function to display checkbox arrays
+    const displayCheckboxes = (obj, prefix) => {
+        const values = [];
+        for (const key in obj) {
+            if (key.startsWith(prefix) && obj[key]) {
+                values.push(key.replace(prefix, '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
+            }
+        }
+        return values.length > 0 ? values.join(', ') : 'None selected';
+    };
+    
+    contentDiv.innerHTML = `
+        <!-- Quote Information -->
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+            <h4 class="text-lg font-semibold text-gray-800 mb-3">Quote Information</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div><strong>Quote Number:</strong> ${quoteInfo?.quote_number || 'N/A'}</div>
+                <div><strong>Customer Name:</strong> ${quoteInfo?.customer_name || 'N/A'}</div>
+                <div><strong>Proposal:</strong> ${quoteInfo?.proposal_name || 'N/A'}</div>
+            </div>
+        </div>
+        
+        <!-- Customer Information -->
+        <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+            <h4 class="text-lg font-semibold text-gray-800 mb-3">Customer Information</h4>
+            ${customerInfo ? `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div><strong>Full Name:</strong> ${customerInfo.full_name || 'Not provided'}</div>
+                    <div><strong>Phone Number:</strong> ${customerInfo.phone_number || 'Not provided'}</div>
+                    <div><strong>Account Creation Date:</strong> ${customerInfo.account_creation_date || 'Not provided'}</div>
+                    <div class="md:col-span-2"><strong>Address:</strong> ${customerInfo.address || 'Not provided'}</div>
+                    <div class="md:col-span-2">
+                        <strong>Preferred Contact Methods:</strong> 
+                        ${[
+                            customerInfo.contact_method_email ? 'Email' : null,
+                            customerInfo.contact_method_phone ? 'Phone' : null,
+                            customerInfo.contact_method_sms ? 'SMS' : null
+                        ].filter(Boolean).join(', ') || 'None selected'}
+                    </div>
+                </div>
+            ` : `
+                <p class="text-gray-500 italic">No customer information provided for this quote.</p>
+            `}
+        </div>
+        
+        <!-- Solar Project Details -->
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
+            <h4 class="text-lg font-semibold text-gray-800 mb-3">Solar Project Details</h4>
+            ${solarDetails ? `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                    <div>
+                        <div class="mb-3">
+                            <strong>System Type:</strong><br>
+                            <span class="text-gray-600">
+                                ${[
+                                    solarDetails.system_type_grid_tie ? 'Grid Tie' : null,
+                                    solarDetails.system_type_off_grid ? 'Off Grid' : null,
+                                    solarDetails.system_type_hybrid ? 'Hybrid' : null
+                                ].filter(Boolean).join(', ') || 'Not specified'}
+                            </span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>System Size:</strong> ${solarDetails.system_size_kw ? solarDetails.system_size_kw + ' kW' : 'Not specified'}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Installation Type:</strong><br>
+                            <span class="text-gray-600">
+                                ${[
+                                    solarDetails.installation_type_rooftop ? 'Rooftop' : null,
+                                    solarDetails.installation_type_ground_mounted ? 'Ground Mounted' : null,
+                                    solarDetails.installation_type_carport ? 'Carport' : null
+                                ].filter(Boolean).join(', ') || 'Not specified'}
+                            </span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Panel Brand/Model:</strong> ${solarDetails.panel_brand_model || 'Not specified'}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Inverter Brand/Model:</strong> ${solarDetails.inverter_brand_model || 'Not specified'}
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div class="mb-3">
+                            <strong>Estimated Installation Date:</strong> ${solarDetails.estimated_installation_date || 'Not specified'}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Installation Status:</strong><br>
+                            <span class="text-gray-600">
+                                ${[
+                                    solarDetails.installation_status_planned ? 'Planned' : null,
+                                    solarDetails.installation_status_in_progress ? 'In Progress' : null,
+                                    solarDetails.installation_status_completed ? 'Completed' : null,
+                                    solarDetails.installation_status_maintenance ? 'Maintenance' : null
+                                ].filter(Boolean).join(', ') || 'Not specified'}
+                            </span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Battery Backup Capacity:</strong> ${solarDetails.battery_backup_capacity ? solarDetails.battery_backup_capacity.charAt(0).toUpperCase() + solarDetails.battery_backup_capacity.slice(1) : 'Not specified'}${solarDetails.battery_backup_capacity === 'yes' && solarDetails.battery_capacity_value ? ' - ' + solarDetails.battery_capacity_value : ''}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Net Metering:</strong> ${solarDetails.net_metering ? solarDetails.net_metering.charAt(0).toUpperCase() + solarDetails.net_metering.slice(1) : 'Not specified'}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Confirmed:</strong> ${solarDetails.confirmed ? solarDetails.confirmed.charAt(0).toUpperCase() + solarDetails.confirmed.slice(1) : 'Not specified'}
+                        </div>
+                        <div class="mb-3">
+                            <strong>Client Signature:</strong> ${solarDetails.client_signature || 'Not provided'}
+                        </div>
+                    </div>
+                </div>
+                
+                ${solarDetails.remarks ? `
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <strong>Remarks:</strong><br>
+                        <p class="text-gray-600 mt-1 whitespace-pre-line">${solarDetails.remarks}</p>
+                    </div>
+                ` : ''}
+            ` : `
+                <p class="text-gray-500 italic">No solar project details provided for this quote.</p>
+            `}
+        </div>
+    `;
+}
+
+function showCustomerDetailsError(message) {
+    const contentDiv = document.getElementById('customer-details-content');
+    contentDiv.innerHTML = `
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                <span class="text-red-800">${message}</span>
+            </div>
+        </div>
+    `;
+}
+
+// Edit Customer Details Modal Functions
+function editCustomerDetails(quoteId) {
+    const modal = document.getElementById('edit-customer-modal');
+    modal.classList.remove('hidden');
+    loadCustomerDetailsForEdit(quoteId);
+}
+
+function closeEditCustomerModal() {
+    const modal = document.getElementById('edit-customer-modal');
+    modal.classList.add('hidden');
+}
+
+function loadCustomerDetailsForEdit(quoteId) {
+    // Set the quote ID in the form
+    document.getElementById('edit_quote_id').value = quoteId;
+    
+    // Set form action
+    const form = document.getElementById('edit-customer-form');
+    form.action = `?action=update_customer_details&quote_id=${quoteId}`;
+    
+    // Load existing data
+    fetch(`quotations.php?action=get_customer_details&quote_id=${quoteId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                populateEditForm(data.customer_info, data.solar_details);
+            } else {
+                alert('Failed to load customer details for editing');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Network error occurred while loading customer details');
+        });
+}
+
+function populateEditForm(customerInfo, solarDetails) {
+    // Populate customer information
+    if (customerInfo) {
+        document.getElementById('edit_full_name').value = customerInfo.full_name || '';
+        document.getElementById('edit_phone_number').value = customerInfo.phone_number || '';
+        document.getElementById('edit_account_creation_date').value = customerInfo.account_creation_date || '';
+        document.getElementById('edit_address').value = customerInfo.address || '';
+        
+        // Contact methods
+        document.getElementById('edit_contact_email').checked = customerInfo.contact_method_email == 1;
+        document.getElementById('edit_contact_phone').checked = customerInfo.contact_method_phone == 1;
+        document.getElementById('edit_contact_sms').checked = customerInfo.contact_method_sms == 1;
+    }
+    
+    // Populate solar project details
+    if (solarDetails) {
+        document.getElementById('edit_system_size').value = solarDetails.system_size_kw || '';
+        document.getElementById('edit_panel_brand_model').value = solarDetails.panel_brand_model || '';
+        document.getElementById('edit_inverter_brand_model').value = solarDetails.inverter_brand_model || '';
+        document.getElementById('edit_estimated_installation_date').value = solarDetails.estimated_installation_date || '';
+        document.getElementById('edit_client_signature').value = solarDetails.client_signature || '';
+        document.getElementById('edit_remarks').value = solarDetails.remarks || '';
+        
+        // System types
+        document.getElementById('edit_system_grid_tie').checked = solarDetails.system_type_grid_tie == 1;
+        document.getElementById('edit_system_off_grid').checked = solarDetails.system_type_off_grid == 1;
+        document.getElementById('edit_system_hybrid').checked = solarDetails.system_type_hybrid == 1;
+        
+        // Installation types
+        document.getElementById('edit_install_rooftop').checked = solarDetails.installation_type_rooftop == 1;
+        document.getElementById('edit_install_ground').checked = solarDetails.installation_type_ground_mounted == 1;
+        document.getElementById('edit_install_carport').checked = solarDetails.installation_type_carport == 1;
+        
+        // Installation statuses
+        document.getElementById('edit_status_planned').checked = solarDetails.installation_status_planned == 1;
+        document.getElementById('edit_status_progress').checked = solarDetails.installation_status_in_progress == 1;
+        document.getElementById('edit_status_completed').checked = solarDetails.installation_status_completed == 1;
+        document.getElementById('edit_status_maintenance').checked = solarDetails.installation_status_maintenance == 1;
+        
+        // Battery backup capacity radio buttons
+        if (solarDetails.battery_backup_capacity === 'yes') {
+            document.getElementById('edit_battery_backup_capacity_yes').checked = true;
+        } else if (solarDetails.battery_backup_capacity === 'no') {
+            document.getElementById('edit_battery_backup_capacity_no').checked = true;
+        }
+        
+        // Net metering and confirmed radio buttons
+        if (solarDetails.net_metering === 'yes') {
+            document.getElementById('edit_net_metering_yes').checked = true;
+        } else if (solarDetails.net_metering === 'no') {
+            document.getElementById('edit_net_metering_no').checked = true;
+        }
+        
+        if (solarDetails.confirmed === 'yes') {
+            document.getElementById('edit_confirmed_yes').checked = true;
+        } else if (solarDetails.confirmed === 'no') {
+            document.getElementById('edit_confirmed_no').checked = true;
+        }
+        
+        // Populate battery capacity value if exists
+        if (solarDetails.battery_capacity_value) {
+            document.getElementById('edit_battery_capacity_value').value = solarDetails.battery_capacity_value;
+        }
+        
+        // Show/hide battery capacity input based on selection
+        toggleEditBatteryCapacityInput();
+    }
+}
+
+// Battery Backup Capacity Input Toggle Functions
+function toggleBatteryCapacityInput() {
+    const yesRadio = document.querySelector('input[name="battery_backup_capacity"][value="yes"]');
+    const inputDiv = document.getElementById('battery_capacity_input');
+    
+    if (yesRadio && yesRadio.checked) {
+        inputDiv.classList.remove('hidden');
+    } else {
+        inputDiv.classList.add('hidden');
+    }
+}
+
+function toggleEditBatteryCapacityInput() {
+    const yesRadio = document.getElementById('edit_battery_backup_capacity_yes');
+    const inputDiv = document.getElementById('edit_battery_capacity_input');
+    
+    if (yesRadio && yesRadio.checked) {
+        inputDiv.classList.remove('hidden');
+    } else {
+        inputDiv.classList.add('hidden');
+    }
+}
+</script>
 
 <?php include 'includes/footer.php'; ?>
