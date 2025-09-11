@@ -215,6 +215,19 @@ switch ($action) {
         }
         break;
         
+    case 'order_fulfillment':
+        if ($quote_id) {
+            $quote = getQuote($quote_id);
+            if (!$quote) {
+                $error = 'Quotation not found.';
+                $action = 'list';
+            } else {
+                // Get customer information for the order fulfillment
+                $customer_info = getCustomerInfo($quote_id);
+            }
+        }
+        break;
+        
     case 'new_quote':
         $inventory_items = getQuoteInventoryItems();
         break;
@@ -737,6 +750,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     class="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition">
                 <i class="fas fa-edit mr-2"></i>Edit Details
             </button>
+            <a href="?action=order_fulfillment&quote_id=<?php echo $quote['id']; ?>" 
+               class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                <i class="fas fa-clipboard-check mr-2"></i>Order Fulfillment
+            </a>
             <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>" target="_blank"
                class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
                 <i class="fas fa-print mr-2"></i>Print Quote
@@ -1426,6 +1443,282 @@ function showProfitError(message) {
     `;
 }
 </script>
+
+<?php elseif ($action == 'order_fulfillment' && isset($quote)): ?>
+<!-- Order Fulfillment Checklist Screen -->
+<div class="mb-6 order-fulfillment-page-header">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800">Order Fulfillment Checklist</h1>
+            <p class="text-gray-600">Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?></p>
+        </div>
+        <div class="space-x-2">
+            <button onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                <i class="fas fa-print mr-2"></i>Print Checklist
+            </button>
+            <a href="?action=quote&quote_id=<?php echo $quote['id']; ?>" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
+                <i class="fas fa-arrow-left mr-2"></i>Back to Quote
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Order Fulfillment Form -->
+<div id="order-fulfillment-form-container" class="bg-white rounded-lg shadow-lg p-8 print:shadow-none print:p-0">
+    <form id="fulfillment-form" method="POST" action="">
+        <!-- Header Section -->
+        <div class="text-center mb-8 border-b-2 border-gray-300 pb-4">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Order Fulfillment Checklist</h2>
+            <p class="text-gray-600">Date: <?php echo date('Y-m-d'); ?></p>
+        </div>
+
+        <!-- Customer Information -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Quotation Code:</label>
+                    <p class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($quote['quote_number']); ?></p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer Name:</label>
+                    <p class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($quote['customer_name']); ?></p>
+                </div>
+            </div>
+            <div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Location:</label>
+                    <p class="text-gray-900"><?php echo $customer_info && $customer_info['address'] ? htmlspecialchars($customer_info['address']) : 'Not specified'; ?></p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Contact Number:</label>
+                    <p class="text-gray-900"><?php echo $quote['customer_phone'] ? htmlspecialchars($quote['customer_phone']) : ($customer_info && $customer_info['phone_number'] ? htmlspecialchars($customer_info['phone_number']) : 'Not specified'); ?></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items Checklist Table -->
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 border border-gray-300">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            No.
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Description
+                        </th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Check
+                        </th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Quantity
+                        </th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Unit Amount
+                        </th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Total Amount
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <?php if (!empty($quote['items'])): ?>
+                        <?php $item_no = 1; ?>
+                        <?php foreach ($quote['items'] as $item): ?>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium"><?php echo htmlspecialchars($item['brand'] ?? 'Custom Item'); ?></div>
+                                <div class="text-gray-500"><?php echo htmlspecialchars($item['model'] ?? $item['custom_item_name'] ?? ''); ?></div>
+                                <?php if (!empty($item['category'])): ?>
+                                <div class="text-xs text-blue-600 mt-1"><?php echo htmlspecialchars($item['category']); ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="item_checked[]" value="<?php echo isset($item['quote_item_id']) ? $item['quote_item_id'] : $item['id']; ?>" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo number_format($item['quantity'], 0); ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo formatCurrency($item['unit_price']); ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                <?php echo formatCurrency($item['total_amount']); ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                        
+                        <!-- Total Row -->
+                        <tr class="bg-gray-50 font-semibold border-t-2 border-gray-400">
+                            <td colspan="5" class="px-4 py-4 text-right text-sm text-gray-900 border-r border-gray-300">
+                                <strong>Grand Total:</strong>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-lg font-bold text-green-600">
+                                <?php echo formatCurrency($quote['total_amount']); ?>
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                                No items found in this quotation.
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Footer Section -->
+        <div class="mt-8 pt-6 border-t-2 border-gray-300">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Notes:</h4>
+                    <div class="space-y-2">
+                        <div class="flex items-start">
+                            <input type="checkbox" class="mt-1 mr-2 print:hidden">
+                            <span class="hidden print:inline-block w-4 h-4 border border-gray-400 mr-2 mt-1"></span>
+                            <span class="text-sm text-gray-600">All items checked and verified</span>
+                        </div>
+                        <div class="flex items-start">
+                            <input type="checkbox" class="mt-1 mr-2 print:hidden">
+                            <span class="hidden print:inline-block w-4 h-4 border border-gray-400 mr-2 mt-1"></span>
+                            <span class="text-sm text-gray-600">Customer signature obtained</span>
+                        </div>
+                        <div class="flex items-start">
+                            <input type="checkbox" class="mt-1 mr-2 print:hidden">
+                            <span class="hidden print:inline-block w-4 h-4 border border-gray-400 mr-2 mt-1"></span>
+                            <span class="text-sm text-gray-600">Delivery completed</span>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Signatures:</h4>
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-2">Prepared By:</label>
+                            <div class="border-b-2 border-gray-300 h-12"></div>
+                            <p class="text-xs text-gray-500 mt-1">Name & Signature</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-2">Customer Signature:</label>
+                            <div class="border-b-2 border-gray-300 h-12"></div>
+                            <p class="text-xs text-gray-500 mt-1">Name & Signature</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons (Hidden when printing) -->
+        <div class="mt-8 pt-6 border-t flex justify-between print:hidden">
+            <button type="button" onclick="checkAllItems()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                <i class="fas fa-check-double mr-2"></i>Check All Items
+            </button>
+            <div class="space-x-2">
+                <button type="button" onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                    <i class="fas fa-print mr-2"></i>Print Checklist
+                </button>
+                <button type="submit" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                    <i class="fas fa-save mr-2"></i>Save Progress
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function checkAllItems() {
+    const checkboxes = document.querySelectorAll('input[name="item_checked[]"]');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+    });
+}
+
+// Auto-save functionality
+document.getElementById('fulfillment-form').addEventListener('change', function() {
+    // Could implement auto-save functionality here
+    console.log('Form changed - could auto-save progress');
+});
+</script>
+
+<style>
+@media print {
+    /* Hide everything on the page first */
+    * {
+        visibility: hidden;
+    }
+    
+    /* Show only the order fulfillment form container and its children */
+    #order-fulfillment-form-container,
+    #order-fulfillment-form-container * {
+        visibility: visible;
+    }
+    
+    /* Position the form container at the top-left */
+    #order-fulfillment-form-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: auto;
+        margin: 0;
+        padding: 20px;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        background: white;
+    }
+    
+    /* Hide print-specific elements */
+    .print\:hidden {
+        display: none !important;
+    }
+    .print\:inline-block {
+        display: inline-block !important;
+    }
+    
+    /* Reset body styles for printing */
+    body {
+        font-size: 12px;
+        margin: 0;
+        padding: 0;
+        background: white;
+        color: black;
+    }
+    
+    /* Optimize table printing */
+    table {
+        page-break-inside: auto;
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+    
+    th, td {
+        border: 1px solid #000 !important;
+        padding: 8px !important;
+    }
+    
+    /* Ensure text is black for printing */
+    h1, h2, h3, h4, h5, h6, p, span, div, td, th {
+        color: black !important;
+    }
+    
+    /* Hide action buttons and interactive elements */
+    button, .print\:hidden {
+        display: none !important;
+    }
+}
+</style>
 
 <?php endif; ?>
 
