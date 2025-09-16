@@ -167,9 +167,24 @@ if ($_POST) {
                 if ($result) {
                     $success_message = 'Status updated successfully!';
                     
-                    // If status was changed to accepted, show additional message about project conversion
+                    // If status was changed to accepted, generate and assign a project number
                     if ($_POST['new_status'] === 'accepted') {
-                        $success_message .= ' Quotation has been converted to an approved solar project.';
+                        // Generate project number (format: PRJ-YYYYMM-XXXX)
+                        $yearMonth = date('Ym');
+                        $sql = "SELECT COUNT(*) as count FROM quotations WHERE project_number LIKE ?";
+                        $like = "PRJ-$yearMonth-%";
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute([$like]);
+                        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                        $nextNum = str_pad(($row['count'] ?? 0) + 1, 4, '0', STR_PAD_LEFT);
+                        $projectNumber = "PRJ-$yearMonth-$nextNum";
+                        
+                        // Save project number
+                        $updateSql = "UPDATE quotations SET project_number = ? WHERE id = ?";
+                        $updateStmt = $pdo->prepare($updateSql);
+                        $updateStmt->execute([$projectNumber, $quote_id]);
+                        
+                        $success_message .= " Project Number assigned: $projectNumber";
                     }
                     
                     header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($success_message));
@@ -1034,6 +1049,7 @@ document.addEventListener('DOMContentLoaded', function() {
                          data-model="<?php echo strtolower($inv_item['model']); ?>"
                          data-category="<?php echo strtolower($inv_item['category_name'] ?? ''); ?>"
                          data-price="<?php echo $inv_item['selling_price']; ?>"
+                         data-base-price="<?php echo $inv_item['base_price']; ?>"
                          data-stock="<?php echo $inv_item['stock_quantity']; ?>"
                          onclick="selectQuoteItem(this)">
                         
@@ -1083,7 +1099,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 <input type="hidden" id="selected_quote_inventory_item_id" name="inventory_item_id">
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
                         <label for="quote_quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
                         <input type="number" min="1" id="quote_quantity" name="quantity" required value="1"
@@ -1095,6 +1111,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         <input type="number" min="0" max="100" step="0.01" id="quote_discount_percentage" name="discount_percentage" value="0"
                                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
                                oninput="updateQuoteTotalPreview()">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Price Option</label>
+                        <div class="space-y-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="use_base_price" value="false" checked
+                                       class="text-solar-blue border-gray-300 focus:ring-solar-blue"
+                                       onchange="updateQuoteTotalPreview()">
+                                <span class="ml-2 text-sm text-gray-700">Use Selling Price</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="use_base_price" value="true"
+                                       class="text-solar-blue border-gray-300 focus:ring-solar-blue"
+                                       onchange="updateQuoteTotalPreview()">
+                                <span class="ml-2 text-sm text-gray-700">Use Base Price</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 
@@ -1165,7 +1198,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
-<script>
+        <script>
 let selectedQuoteItemData = null;
 
 function filterQuoteItems() {
@@ -1213,7 +1246,8 @@ function selectQuoteItem(cardElement) {
         id: cardElement.getAttribute('data-item-id'),
         brand: cardElement.querySelector('.text-sm.font-medium').textContent,
         model: cardElement.querySelector('.text-sm.text-gray-500').textContent,
-        price: parseFloat(cardElement.getAttribute('data-price')),
+        basePrice: parseFloat(cardElement.getAttribute('data-base-price')),
+        sellingPrice: parseFloat(cardElement.getAttribute('data-price')),
         stock: parseInt(cardElement.getAttribute('data-stock'))
     };
     
@@ -1221,7 +1255,9 @@ function selectQuoteItem(cardElement) {
     document.getElementById('selected_quote_inventory_item_id').value = selectedQuoteItemData.id;
     document.getElementById('selected-quote-item-display').innerHTML = 
         `<strong>${selectedQuoteItemData.brand}</strong> - ${selectedQuoteItemData.model}<br>
-         Price: ${formatCurrency(selectedQuoteItemData.price)} | Available: ${selectedQuoteItemData.stock}`;
+         Base Price: ${formatCurrency(selectedQuoteItemData.basePrice)}<br>
+         Selling Price: ${formatCurrency(selectedQuoteItemData.sellingPrice)}<br>
+         Available: ${selectedQuoteItemData.stock}`;
     
     // Show form and update preview
     document.getElementById('add-quote-item-form').classList.remove('hidden');
@@ -1244,8 +1280,10 @@ function updateQuoteTotalPreview() {
     
     const quantity = parseInt(document.getElementById('quote_quantity').value) || 0;
     const discountPercent = parseFloat(document.getElementById('quote_discount_percentage').value) || 0;
+    const useBasePrice = document.querySelector('input[name="use_base_price"]:checked').value === 'true';
     
-    const subtotal = selectedQuoteItemData.price * quantity;
+    const price = useBasePrice ? selectedQuoteItemData.basePrice : selectedQuoteItemData.sellingPrice;
+    const subtotal = price * quantity;
     const discountAmount = subtotal * (discountPercent / 100);
     const total = subtotal - discountAmount;
     
@@ -1254,9 +1292,7 @@ function updateQuoteTotalPreview() {
     document.getElementById('quote-total-amount').textContent = formatCurrency(total);
     
     document.getElementById('quote-total-preview').classList.remove('hidden');
-}
-
-function formatCurrency(amount) {
+}function formatCurrency(amount) {
     return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
@@ -1450,7 +1486,12 @@ function showProfitError(message) {
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-3xl font-bold text-gray-800">Order Fulfillment Checklist</h1>
-            <p class="text-gray-600">Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?></p>
+            <p class="text-gray-600">
+                Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
+                <?php if (!empty($quote['project_number'])): ?>
+                <br>Project Number: <span class="font-semibold"><?php echo htmlspecialchars($quote['project_number']); ?></span>
+                <?php endif; ?>
+            </p>
         </div>
         <div class="space-x-2">
             <button onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
@@ -1469,7 +1510,13 @@ function showProfitError(message) {
         <!-- Header Section -->
         <div class="text-center mb-8 border-b-2 border-gray-300 pb-4">
             <h2 class="text-2xl font-bold text-gray-800 mb-2">Order Fulfillment Checklist</h2>
-            <p class="text-gray-600">Date: <?php echo date('Y-m-d'); ?></p>
+            <p class="text-gray-600">
+                Date: <?php echo date('Y-m-d'); ?><br>
+                Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
+                <?php if (!empty($quote['project_number'])): ?>
+                <br>Project Number: <strong><?php echo htmlspecialchars($quote['project_number']); ?></strong>
+                <?php endif; ?>
+            </p>
         </div>
 
         <!-- Customer Information -->

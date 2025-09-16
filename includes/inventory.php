@@ -359,7 +359,7 @@ function addQuoteItem($quote_id, $inventory_item_id, $quantity, $discount_percen
     
     try {
         // Get item details
-        $stmt = $pdo->prepare("SELECT brand, model, selling_price, stock_quantity 
+        $stmt = $pdo->prepare("SELECT brand, model, base_price, selling_price, stock_quantity 
                               FROM inventory_items WHERE id = ? AND is_active = 1");
         $stmt->execute([$inventory_item_id]);
         $item = $stmt->fetch();
@@ -371,7 +371,9 @@ function addQuoteItem($quote_id, $inventory_item_id, $quantity, $discount_percen
         $stmt->execute([$quote_id, $inventory_item_id]);
         $existing_item = $stmt->fetch();
         
-        $unit_price = $item['selling_price'];
+        // Use base price if use_base_price parameter is true
+        $use_base_price = isset($_POST['use_base_price']) && $_POST['use_base_price'] === 'true';
+        $unit_price = $use_base_price ? $item['base_price'] : $item['selling_price'];
         $discount_amount = ($unit_price * $discount_percentage / 100) * $quantity;
         $total_amount = ($unit_price * $quantity) - $discount_amount;
         

@@ -236,31 +236,85 @@ include 'includes/header.php';
         </div>
         
         <!-- Quick Filter Buttons -->
-        <div class="space-y-1">
-            <label class="block text-sm font-medium text-gray-700">Quick Filters</label>
-            <div class="flex gap-2 flex-wrap">
-                <a href="?" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition text-xs">
-                    <i class="fas fa-list mr-1"></i>All Items
-                </a>
-                <a href="?filter=low_stock" class="px-3 py-1.5 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition text-xs">
-                    <i class="fas fa-exclamation-triangle mr-1"></i>Low Stock
-                </a>
-                <a href="?filter=available_stock" class="px-3 py-1.5 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition text-xs">
-                    <i class="fas fa-check-circle mr-1"></i>Available Stock
-                </a>
-            </div>
-            <div class="flex gap-2 flex-wrap mt-2">
-                <a href="?brand=Canadian+Solar" class="px-3 py-1.5 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition text-xs">
-                    Canadian Solar
-                </a>
-                <a href="?brand=OSDA" class="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-xs">
-                    OSDA
-                </a>
-                <a href="?brand=SUNRI" class="px-3 py-1.5 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition text-xs">
-                    SUNRI
-                </a>
+        <div class="relative">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Quick Filters</label>
+            <button onclick="toggleQuickFilters(event)" class="w-full flex items-center justify-between px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 transition text-sm">
+                <span class="flex items-center">
+                    <i class="fas fa-filter w-5 text-gray-400"></i>
+                    <span>Filter Items</span>
+                </span>
+                <i class="fas fa-chevron-down text-gray-400"></i>
+            </button>
+            
+            <!-- Dropdown Menu -->
+            <div id="quickFiltersDropdown" class="hidden absolute left-0 mt-2 w-full bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                <!-- Status Filters -->
+                <div class="p-2">
+                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Status Filters</div>
+                    <a href="?" class="w-full flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition">
+                        <i class="fas fa-list w-5 text-gray-400"></i>
+                        All Items
+                    </a>
+                    <a href="?filter=low_stock" class="w-full flex items-center px-3 py-2 text-sm text-red-700 hover:bg-red-50 rounded-md transition">
+                        <i class="fas fa-exclamation-triangle w-5 text-red-400"></i>
+                        Low Stock
+                    </a>
+                    <a href="?filter=available_stock" class="w-full flex items-center px-3 py-2 text-sm text-green-700 hover:bg-green-50 rounded-md transition">
+                        <i class="fas fa-check-circle w-5 text-green-400"></i>
+                        Available Stock
+                    </a>
+                </div>
+                
+                <!-- Popular Brands -->
+                <div class="border-t border-gray-200 p-2">
+                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Popular Brands</div>
+                    <a href="?brand=Canadian+Solar" class="w-full flex items-center px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded-md transition">
+                        <i class="fas fa-solar-panel w-5 text-blue-400"></i>
+                        Canadian Solar
+                    </a>
+                    <a href="?brand=OSDA" class="w-full flex items-center px-3 py-2 text-sm text-green-700 hover:bg-green-50 rounded-md transition">
+                        <i class="fas fa-battery-full w-5 text-green-400"></i>
+                        OSDA
+                    </a>
+                    <a href="?brand=SUNRI" class="w-full flex items-center px-3 py-2 text-sm text-yellow-700 hover:bg-yellow-50 rounded-md transition">
+                        <i class="fas fa-sun w-5 text-yellow-400"></i>
+                        SUNRI
+                    </a>
+                </div>
             </div>
         </div>
+        
+        <script>
+        // Function to toggle the quick filters dropdown
+        function toggleQuickFilters(event) {
+            event.stopPropagation(); // Prevent event bubbling
+            const dropdown = document.getElementById('quickFiltersDropdown');
+            dropdown.classList.toggle('hidden');
+            
+            // Add click event listener to close dropdown when clicking outside
+            if (!dropdown.classList.contains('hidden')) {
+                document.addEventListener('click', closeQuickFilters);
+            }
+        }
+        
+        // Function to close the quick filters dropdown
+        function closeQuickFilters(event) {
+            const dropdown = document.getElementById('quickFiltersDropdown');
+            if (!event.target.closest('#quickFiltersDropdown')) {
+                dropdown.classList.add('hidden');
+                document.removeEventListener('click', closeQuickFilters);
+            }
+        }
+        
+        // Close dropdown when pressing Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const dropdown = document.getElementById('quickFiltersDropdown');
+                dropdown.classList.add('hidden');
+                document.removeEventListener('click', closeQuickFilters);
+            }
+        });
+        </script>
         
         <!-- Export Section -->
         <div class="space-y-1">
