@@ -25,21 +25,8 @@ $page_title = 'Login';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $page_title; ?> - 4NSOLAR ELECTRICZ</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'solar-blue': '#1E40AF',
-                        'solar-yellow': '#FCD34D',
-                        'solar-green': '#059669',
-                    }
-                }
-            }
-        }
-    </script>
+    <link href="assets/css/output.css" rel="stylesheet">
+    <link href="assets/fontawesome/all.min.css" rel="stylesheet">
 </head>
 <body class="bg-gradient-to-br from-solar-blue to-blue-800 min-h-screen flex items-center justify-center">
     <div class="max-w-md w-full mx-4">

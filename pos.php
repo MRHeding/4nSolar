@@ -1015,6 +1015,25 @@ function formatCurrency(amount) {
         left: 0;
         top: 0;
     }
+    
+    /* Remove browser print headers and footers */
+    @page {
+        margin: 0.5in;
+        size: A4;
+    }
+    
+    /* Hide URL and other browser print info */
+    body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    /* Ensure clean print layout */
+    .print\:shadow-none {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+    }
 }
 </style>
 

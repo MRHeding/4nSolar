@@ -417,15 +417,29 @@ if (!$quote) {
                                         <?php echo htmlspecialchars($item['size_specification']); ?>
                                     </div>
                                     <?php endif; ?>
+                                    <?php if ($item['discount_percentage'] > 0): ?>
+                                    <div class="text-xs text-green-600">
+                                        <?php echo $item['discount_percentage']; ?>% discount applied
+                                    </div>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="border border-gray-300 px-4 py-3 text-center text-sm text-gray-900">
                                     <?php echo $item['quantity']; ?>
                                 </td>
                                 <td class="border border-gray-300 px-4 py-3 text-right text-sm text-gray-900">
-                                    <?php echo formatCurrency($item['unit_price']); ?>
+                                    <?php if ($item['discount_percentage'] > 0): ?>
+                                        <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($item['unit_price']); ?></div>
+                                        <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_price'] * (1 - $item['discount_percentage'] / 100)); ?></div>
+                                    <?php else: ?>
+                                        <?php echo formatCurrency($item['unit_price']); ?>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="border border-gray-300 px-4 py-3 text-center text-sm text-gray-900">
-                                    <?php echo $item['discount_percentage']; ?>%
+                                    <?php if ($item['discount_percentage'] > 0): ?>
+                                        <span class="text-green-600 font-medium"><?php echo $item['discount_percentage']; ?>%</span>
+                                    <?php else: ?>
+                                        <span class="text-gray-400">0%</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="border border-gray-300 px-4 py-3 text-right text-sm font-medium text-gray-900">
                                     <?php echo formatCurrency($item['total_amount']); ?>

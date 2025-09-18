@@ -1,0 +1,16 @@
+{
+  "name": "4nsolar-system",
+  "version": "1.0.0",
+  "description": "4NSOLAR ELECTRICZ Inventory Management System",
+  "scripts": {
+    "build-css": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --watch",
+    "build-css-prod": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "@tailwindcss/forms": "^0.5.7"
+  },
+  "keywords": ["solar", "inventory", "management", "php"],
+  "author": "4NSOLAR ELECTRICZ",
+  "license": "MIT"
+}

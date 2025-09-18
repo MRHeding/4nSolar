@@ -25,7 +25,7 @@ if (!$project) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quote - <?php echo htmlspecialchars($project['project_name']); ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="assets/css/output.css" rel="stylesheet">
     <style>
         @media print {
             .no-print { display: none !important; }
@@ -106,6 +106,7 @@ if (!$project) {
                             <th class="border border-gray-300 px-4 py-3 text-left font-medium text-gray-700">Description</th>
                             <th class="border border-gray-300 px-4 py-3 text-center font-medium text-gray-700">Qty</th>
                             <th class="border border-gray-300 px-4 py-3 text-right font-medium text-gray-700">Unit Price</th>
+                            <th class="border border-gray-300 px-4 py-3 text-center font-medium text-gray-700">Disc %</th>
                             <th class="border border-gray-300 px-4 py-3 text-right font-medium text-gray-700">Discount</th>
                             <th class="border border-gray-300 px-4 py-3 text-right font-medium text-gray-700">Total</th>
                         </tr>
@@ -118,9 +119,45 @@ if (!$project) {
                                     <div class="font-medium"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
                                     <div class="text-sm text-gray-600"><?php echo htmlspecialchars($item['size_specification']); ?></div>
                                     <div class="text-sm text-gray-500"><?php echo htmlspecialchars($item['category_name']); ?></div>
+                                    <?php 
+                                    $discount_percentage = 0;
+                                    if ($item['discount_amount'] > 0 && $item['unit_selling_price'] > 0) {
+                                        $discount_percentage = ($item['discount_amount'] / ($item['unit_selling_price'] * $item['quantity'])) * 100;
+                                    }
+                                    if ($discount_percentage > 0): ?>
+                                    <div class="text-xs text-green-600">
+                                        <?php echo number_format($discount_percentage, 1); ?>% discount applied
+                                    </div>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="border border-gray-300 px-4 py-3 text-center"><?php echo $item['quantity']; ?></td>
-                                <td class="border border-gray-300 px-4 py-3 text-right"><?php echo formatCurrency($item['unit_selling_price']); ?></td>
+                                <td class="border border-gray-300 px-4 py-3 text-right">
+                                    <?php 
+                                    $discount_percentage = 0;
+                                    if ($item['discount_amount'] > 0 && $item['unit_selling_price'] > 0) {
+                                        $discount_percentage = ($item['discount_amount'] / ($item['unit_selling_price'] * $item['quantity'])) * 100;
+                                    }
+                                    if ($discount_percentage > 0): 
+                                        $original_price = $item['unit_selling_price'] / (1 - $discount_percentage / 100);
+                                    ?>
+                                        <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($original_price); ?></div>
+                                        <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_selling_price']); ?></div>
+                                    <?php else: ?>
+                                        <?php echo formatCurrency($item['unit_selling_price']); ?>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="border border-gray-300 px-4 py-3 text-center">
+                                    <?php 
+                                    $discount_percentage = 0;
+                                    if ($item['discount_amount'] > 0 && $item['unit_selling_price'] > 0) {
+                                        $discount_percentage = ($item['discount_amount'] / ($item['unit_selling_price'] * $item['quantity'])) * 100;
+                                    }
+                                    if ($discount_percentage > 0): ?>
+                                        <span class="text-green-600 font-medium"><?php echo number_format($discount_percentage, 1); ?>%</span>
+                                    <?php else: ?>
+                                        <span class="text-gray-400">0%</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="border border-gray-300 px-4 py-3 text-right text-green-600">
                                     <?php if ($item['discount_amount'] > 0): ?>
                                         -<?php echo formatCurrency($item['discount_amount']); ?>
@@ -133,7 +170,7 @@ if (!$project) {
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="5" class="border border-gray-300 px-4 py-8 text-center text-gray-500">
+                                <td colspan="6" class="border border-gray-300 px-4 py-8 text-center text-gray-500">
                                     No items added to this project yet.
                                 </td>
                             </tr>
@@ -141,15 +178,15 @@ if (!$project) {
                         
                         <!-- Totals Section -->
                         <tr class="bg-gray-50">
-                            <td colspan="4" class="border border-gray-300 px-4 py-3 text-right font-medium">Subtotal:</td>
+                            <td colspan="5" class="border border-gray-300 px-4 py-3 text-right font-medium">Subtotal:</td>
                             <td class="border border-gray-300 px-4 py-3 text-right font-medium"><?php echo formatCurrency($project['total_selling_price']); ?></td>
                         </tr>
                         <tr class="bg-gray-50">
-                            <td colspan="4" class="border border-gray-300 px-4 py-3 text-right font-medium">Total Discount:</td>
+                            <td colspan="5" class="border border-gray-300 px-4 py-3 text-right font-medium">Total Discount:</td>
                             <td class="border border-gray-300 px-4 py-3 text-right font-medium text-green-600">-<?php echo formatCurrency($project['total_discount']); ?></td>
                         </tr>
                         <tr class="bg-blue-50">
-                            <td colspan="4" class="border border-gray-300 px-4 py-3 text-right text-lg font-bold">Total Amount:</td>
+                            <td colspan="5" class="border border-gray-300 px-4 py-3 text-right text-lg font-bold">Total Amount:</td>
                             <td class="border border-gray-300 px-4 py-3 text-right text-lg font-bold text-blue-600"><?php echo formatCurrency($project['final_amount']); ?></td>
                         </tr>
                     </tbody>
