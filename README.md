@@ -79,7 +79,8 @@ A comprehensive solar equipment inventory and project management system designed
 - **Project Lifecycle**: From quote to completion tracking
 - **Dynamic Pricing**: Automatic calculations with discounts
 - **Inventory Integration**: Real-time availability checking
-- **Professional Quotes**: Printable project proposals
+- **Enhanced Professional Quotes**: Printable project proposals with visual discount indicators
+- **Cross-System Print Consistency**: Unified discount display across quotations and POS receipts
 - **Status Tracking**: Quote → Under Review → Approved → Completed workflow
 - **Automatic Conversion**: Approved quotes automatically become projects
 - **Battery Backup Planning**: Capacity planning and specifications
@@ -89,11 +90,12 @@ A comprehensive solar equipment inventory and project management system designed
 ### 🛒 Point of Sale (POS) System
 - **Retail Sales Processing**: Complete transaction management
 - **Multiple Payment Methods**: Cash, Credit Card, Bank Transfer, Check
-- **Receipt Generation**: Professional printed receipts
+- **Professional Receipt Generation**: Clean print layouts with optimized margins
+- **Enhanced Discount Display**: Visual indicators showing original price, discount percentage, and final price
 - **Sales History**: Complete transaction tracking
 - **Real-time Inventory**: Automatic stock updates
 - **Customer Management**: Optional customer information capture
-- **Discount Support**: Item-level and percentage discounts
+- **Discount Support**: Item-level and percentage discounts with visual feedback
 
 ### 🏢 Business Management
 - **Supplier Management**: Contact details and relationship tracking
@@ -121,7 +123,8 @@ A comprehensive solar equipment inventory and project management system designed
 ### 📱 User Experience
 - **Responsive Design**: Works on desktop, tablet, and mobile
 - **Modern UI**: Clean interface with Tailwind CSS
-- **Print Support**: Professional document generation
+- **Professional Print Support**: Enhanced document generation with clean layouts
+- **Visual Discount Indicators**: Clear discount display across all print formats
 - **Fast Performance**: Optimized database queries
 - **Intuitive Navigation**: User-friendly menu system
 
@@ -256,6 +259,14 @@ $password = '';
 | **HR** | ✅ View | ✅ Full | ✅ Full | ✅ View | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
 | **Sales** | ✅ View | 👁️ View | ✅ Create/Edit | ✅ Full | ❌ None | ✅ View | ❌ None | 👁️ View |
 
+### Print & Document Features
+- **Professional Print Layouts**: Clean, margin-optimized print formats
+- **Visual Discount Indicators**: Clear display of discounts across all documents
+- **Cross-System Consistency**: Unified discount display in POS receipts and quotations
+- **Browser Print Optimization**: Removed localhost URLs and headers for professional output
+- **Enhanced Receipt Design**: Improved POS receipt layout with proper spacing
+- **Quotation Print Enhancement**: Visual discount indicators in project quotes
+
 ### Customization Options
 - **Company Branding**: Update logos and company information
 - **Product Categories**: Add industry-specific categories
@@ -308,7 +319,14 @@ The test suite automatically:
 
 ## 🔄 Recent Updates & Changelog
 
-### Version 3.0 (Latest - September 2025)
+### Version 3.1 (Latest - December 2024)
+- ✅ **Enhanced Print Functionality**: Improved quotation and receipt printing
+- ✅ **Discount Display System**: Visual discount indicators in all print formats
+- ✅ **Professional Receipt Layout**: Clean print layouts with proper margins
+- ✅ **Cross-System Consistency**: Unified discount display across POS and quotations
+- ✅ **Print Optimization**: Removed browser headers/footers for professional output
+
+### Version 3.0 (September 2025)
 - ✅ **Payroll Management System**: Complete HR and payroll functionality
 - ✅ **Employee Attendance Tracking**: Time tracking with overtime calculations
 - ✅ **Installment Payment System**: Flexible payment plans for projects
@@ -382,9 +400,10 @@ All rights reserved. This software is licensed for use by 4nSolar ELECTRICZ and 
 
 ### Contact Information
 - **System**: 4nSolar Management System
-- **Version**: 3.0
-- **Last Updated**: September 2025
-- **New Features**: Payroll, Installments, Battery Planning, Revenue Analysis
+- **Version**: 3.1
+- **Last Updated**: December 2024
+- **Latest Features**: Enhanced Print Functionality, Visual Discount Indicators, Professional Receipt Layouts
+- **Previous Features**: Payroll, Installments, Battery Planning, Revenue Analysis
 - **Test Suite**: Comprehensive validation included
 
 ---
