@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 12, 2025 at 11:06 AM
+-- Generation Time: Sep 16, 2025 at 07:59 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -49,124 +49,6 @@ INSERT INTO `categories` (`id`, `name`, `description`, `created_at`, `is_active`
 (7, 'Safety Equipment', 'Fuses, breakers, and safety devices', '2025-08-26 02:04:18', 1),
 (8, 'Tools & Accessories', 'Installation tools and miscellaneous accessories', '2025-08-26 02:04:18', 1),
 (9, 'Hybrid Inverter', 'Hybrid inverters that can work with both solar panels and batteries, providing grid-tie and backup functionality', '2025-09-02 06:40:54', 1);
-
--- --------------------------------------------------------
-
---
--- Table structure for table `employees`
---
-
-CREATE TABLE `employees` (
-  `id` int(11) NOT NULL,
-  `employee_code` varchar(20) NOT NULL,
-  `first_name` varchar(50) NOT NULL,
-  `last_name` varchar(50) NOT NULL,
-  `email` varchar(100) DEFAULT NULL,
-  `phone` varchar(20) DEFAULT NULL,
-  `address` text DEFAULT NULL,
-  `date_of_joining` date NOT NULL,
-  `basic_salary` decimal(10,2) NOT NULL,
-  `package_salary` decimal(10,2) NOT NULL,
-  `allowances` decimal(10,2) DEFAULT 0.00,
-  `position` varchar(100) DEFAULT NULL,
-  `department` varchar(100) DEFAULT NULL,
-  `employment_status` enum('active','inactive','terminated') DEFAULT 'active',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `created_by` int(11) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `employees`
---
-
-INSERT INTO `employees` (`id`, `employee_code`, `first_name`, `last_name`, `email`, `phone`, `address`, `date_of_joining`, `basic_salary`, `package_salary`, `allowances`, `position`, `department`, `employment_status`, `created_at`, `updated_at`, `created_by`) VALUES
-(5, '20250009', 'Mohammad Rasheed', 'Heding', 'rasheed121099@gmail.com', '09063272815', 'Brgy Sinunuc Zamboanga City', '2025-08-21', 400.00, 0.00, 0.00, 'IT Specialist', 'Administration', 'active', '2025-09-03 04:21:55', '2025-09-03 04:21:55', 1),
-(6, '2025-001', 'Liddy Lou', 'Orsuga', 'liddylouorsuga506@gmail.com', '09263925674', 'Southcom Village, Zamboanga City', '2025-08-12', 400.00, 0.00, 0.00, 'HR Admin', 'HR', 'active', '2025-09-03 05:34:53', '2025-09-03 06:07:34', 9),
-(7, '2025-004', 'Oliver ', 'Arapan', '', '09367912127', '\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\nTalon-talon,Zamboanga City', '2025-06-15', 400.00, 3500.00, 0.00, 'PV Solar Installer', 'Operations', 'active', '2025-09-04 01:31:40', '2025-09-04 01:31:40', 1),
-(8, '2025-008', 'Ma.Donna', 'Pingoy', 'dp507747@gmail.com', '09535839943', 'San Roque,Zamboanga City', '2025-08-18', 250.00, 0.00, 0.00, 'Sales Consultant', 'Sales', 'active', '2025-09-04 01:34:20', '2025-09-04 01:34:20', 1),
-(15, '2025-005', 'Ar-Jay', 'Ventura', 'altopelec@gmail.com', '09708580154', 'Tumaga,Zamboanga City', '2025-08-06', 400.00, 3500.00, 0.00, 'PV Solar Installer', 'Operations', 'active', '2025-09-04 01:44:14', '2025-09-04 01:45:22', 1),
-(16, '2025-002', 'Ma.Donna', 'Jaime', 'DonnaClaudeline@facebook.com', '09530452875', 'Luyahan,Zamboanga City', '2025-08-12', 250.00, 0.00, 0.00, 'Sales Consultant', 'Sales', 'active', '2025-09-04 01:47:37', '2025-09-04 01:47:37', 1),
-(17, '2025-006', 'Rembranth', 'Dollete', 'rem@gmail.com', '09976689251', 'San Roque, Zamboanga City', '2025-08-11', 300.00, 3500.00, 0.00, 'Pv Solar Installer', 'Operations', 'active', '2025-09-05 01:15:12', '2025-09-05 01:15:32', 9),
-(18, '2025-007', 'Aris', 'Ho', 'aris@gmail.com', '09556426035', 'Mampang, Zamboanga City', '2025-08-11', 400.00, 3500.00, 0.00, 'Pv Solar Installer', 'Operations', 'active', '2025-09-05 01:19:03', '2025-09-05 01:19:03', 9),
-(19, '2025-003', 'Prudencio', 'Garcia', 'prudencio@gmail.com', '09356270602', 'Baliwasan, Zamboanga City', '2024-01-01', 400.00, 3500.00, 0.00, 'Pv Solar Installer', 'Operations', 'active', '2025-09-05 01:24:49', '2025-09-05 01:24:49', 9);
-
--- --------------------------------------------------------
-
---
--- Table structure for table `employee_attendance`
---
-
-CREATE TABLE `employee_attendance` (
-  `id` int(11) NOT NULL,
-  `employee_id` int(11) NOT NULL,
-  `period_id` int(11) NOT NULL,
-  `working_days_attended` int(11) NOT NULL,
-  `leaves_taken` int(11) DEFAULT 0,
-  `overtime_hours` decimal(5,2) DEFAULT 0.00,
-  `late_instances` int(11) DEFAULT 0,
-  `notes` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `employee_attendance`
---
-
-INSERT INTO `employee_attendance` (`id`, `employee_id`, `period_id`, `working_days_attended`, `leaves_taken`, `overtime_hours`, `late_instances`, `notes`, `created_at`, `updated_at`) VALUES
-(1, 6, 4, 15, 0, 0.00, 0, '', '2025-09-05 01:27:25', '2025-09-05 01:27:25');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `employee_leave_balances`
---
-
-CREATE TABLE `employee_leave_balances` (
-  `id` int(11) NOT NULL,
-  `employee_id` int(11) NOT NULL,
-  `leave_type` enum('annual','sick','emergency','maternity','paternity') NOT NULL,
-  `total_allocated` int(11) NOT NULL,
-  `used_leaves` int(11) DEFAULT 0,
-  `balance_leaves` int(11) NOT NULL,
-  `year` year(4) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `employee_leave_balances`
---
-
-INSERT INTO `employee_leave_balances` (`id`, `employee_id`, `leave_type`, `total_allocated`, `used_leaves`, `balance_leaves`, `year`, `created_at`, `updated_at`) VALUES
-(15, 5, 'annual', 15, 0, 15, '2025', '2025-09-03 04:21:55', '2025-09-03 04:21:55'),
-(16, 5, 'sick', 10, 0, 10, '2025', '2025-09-03 04:21:55', '2025-09-03 04:21:55'),
-(17, 5, 'emergency', 5, 0, 5, '2025', '2025-09-03 04:21:55', '2025-09-03 04:21:55'),
-(18, 6, 'annual', 15, 0, 15, '2025', '2025-09-03 05:34:53', '2025-09-03 05:34:53'),
-(19, 6, 'sick', 10, 0, 10, '2025', '2025-09-03 05:34:53', '2025-09-03 05:34:53'),
-(20, 6, 'emergency', 5, 0, 5, '2025', '2025-09-03 05:34:53', '2025-09-03 05:34:53'),
-(21, 7, 'annual', 15, 0, 15, '2025', '2025-09-04 01:31:40', '2025-09-04 01:31:40'),
-(22, 7, 'sick', 10, 0, 10, '2025', '2025-09-04 01:31:40', '2025-09-04 01:31:40'),
-(23, 7, 'emergency', 5, 0, 5, '2025', '2025-09-04 01:31:40', '2025-09-04 01:31:40'),
-(24, 8, 'annual', 15, 0, 15, '2025', '2025-09-04 01:34:20', '2025-09-04 01:34:20'),
-(25, 8, 'sick', 10, 0, 10, '2025', '2025-09-04 01:34:20', '2025-09-04 01:34:20'),
-(26, 8, 'emergency', 5, 0, 5, '2025', '2025-09-04 01:34:20', '2025-09-04 01:34:20'),
-(27, 15, 'annual', 15, 0, 15, '2025', '2025-09-04 01:44:14', '2025-09-04 01:44:14'),
-(28, 15, 'sick', 10, 0, 10, '2025', '2025-09-04 01:44:14', '2025-09-04 01:44:14'),
-(29, 15, 'emergency', 5, 0, 5, '2025', '2025-09-04 01:44:14', '2025-09-04 01:44:14'),
-(30, 16, 'annual', 15, 0, 15, '2025', '2025-09-04 01:47:37', '2025-09-04 01:47:37'),
-(31, 16, 'sick', 10, 0, 10, '2025', '2025-09-04 01:47:37', '2025-09-04 01:47:37'),
-(32, 16, 'emergency', 5, 0, 5, '2025', '2025-09-04 01:47:37', '2025-09-04 01:47:37'),
-(33, 17, 'annual', 15, 0, 15, '2025', '2025-09-05 01:15:12', '2025-09-05 01:15:12'),
-(34, 17, 'sick', 10, 0, 10, '2025', '2025-09-05 01:15:12', '2025-09-05 01:15:12'),
-(35, 17, 'emergency', 5, 0, 5, '2025', '2025-09-05 01:15:12', '2025-09-05 01:15:12'),
-(36, 18, 'annual', 15, 0, 15, '2025', '2025-09-05 01:19:03', '2025-09-05 01:19:03'),
-(37, 18, 'sick', 10, 0, 10, '2025', '2025-09-05 01:19:03', '2025-09-05 01:19:03'),
-(38, 18, 'emergency', 5, 0, 5, '2025', '2025-09-05 01:19:03', '2025-09-05 01:19:03'),
-(39, 19, 'annual', 15, 0, 15, '2025', '2025-09-05 01:24:49', '2025-09-05 01:24:49'),
-(40, 19, 'sick', 10, 0, 10, '2025', '2025-09-05 01:24:49', '2025-09-05 01:24:49'),
-(41, 19, 'emergency', 5, 0, 5, '2025', '2025-09-05 01:24:49', '2025-09-05 01:24:49');
 
 -- --------------------------------------------------------
 
@@ -263,7 +145,7 @@ INSERT INTO `inventory_items` (`id`, `brand`, `model`, `category_id`, `size_spec
 (55, 'DEYE', '8kw (SUN-8k-SG04LP1-EU)', 9, '8kw', 42300.00, 42300.00, 0.00, 6, 0, 0, '', 'images/products/product_68b68f768dd36.jpg', NULL, '2025-09-02 06:32:22', '2025-09-03 02:20:04', 1, 1),
 (56, 'DEYE', '8kw (SUN-8k-SG05LP1-SM2)', 9, '8kw', 58200.00, 69000.00, 0.00, 6, 0, 0, '', 'images/products/product_68b68fae52409.jpg', NULL, '2025-09-02 06:33:18', '2025-09-04 03:21:51', 1, 1),
 (57, 'DEYE', '10kw (SUN-10k-SG04LP1-EU-AM3)', 9, '10kw', 58200.00, 58200.00, 0.00, 6, 0, 0, '', 'images/products/product_68b68ff3f3218.jpg', NULL, '2025-09-02 06:34:27', '2025-09-03 02:14:25', 1, 1),
-(58, 'DEYE', '12kw (SUN-12k-SG04LP1-EU-AM3)', 9, '12kw', 84500.00, 84500.00, 0.00, 6, 0, 0, '', 'images/products/product_68b6903e0c30b.jpg', NULL, '2025-09-02 06:35:26', '2025-09-03 02:14:38', 1, 1),
+(58, 'DEYE', '12kw (SUN-12k-SG04LP1-EU-AM3)', 9, '12kw', 84500.00, 95000.00, 0.00, 6, 0, 0, '', 'images/products/product_68b6903e0c30b.jpg', NULL, '2025-09-02 06:35:26', '2025-09-15 00:58:29', 1, 1),
 (59, 'DEYE', '16kw (SUN-16k-SG04LP1-EU)', 9, '16kw', 109000.00, 115000.00, 0.00, 6, 0, 0, '', 'images/products/product_68b69074839d7.jpg', NULL, '2025-09-02 06:36:36', '2025-09-04 09:49:22', 1, 1),
 (60, 'DEYE', '12kw (SUN-12K-SG04LP3-EU)', 9, '12kw', 94500.00, 94500.00, 0.00, 6, 0, 0, '', 'images/products/product_68b691d5d5f8b.jpg', NULL, '2025-09-02 06:42:29', '2025-09-02 06:42:29', 1, 1),
 (61, 'DEYE', '20kw (SUN-20K-SG01HP3-EU-AM2)', 9, '20kw', 149000.00, 149000.00, 0.00, 6, 0, 0, '', 'images/products/product_68b69241e2389.jpg', NULL, '2025-09-02 06:44:17', '2025-09-02 06:44:17', 1, 1),
@@ -301,9 +183,9 @@ INSERT INTO `inventory_items` (`id`, `brand`, `model`, `category_id`, `size_spec
 (97, 'Alltopelec', '51.2V 200Ah 5kwh', 3, '200Ah 10kwh', 68000.00, 79000.00, 5.00, 6, 0, 5, '', 'images/products/product_68ba878e8af6b.png', NULL, '2025-09-04 02:41:50', '2025-09-05 06:47:42', 9, 1),
 (98, 'Alltopelec', '51.2V 314Ah 15kwh', 3, '300Ah 15kwh', 80000.00, 95000.00, 5.00, 5, 0, 5, '', 'images/products/product_68ba87ef41818.png', NULL, '2025-09-04 02:44:53', '2025-09-05 06:49:19', 9, 1),
 (99, 'Alltopelec', '51.2V 400Ah 200kwh', 3, '400Ah 200kwh', 115000.00, 135000.00, 5.00, 5, 0, 5, '', 'images/products/product_68ba887bdb097.png', NULL, '2025-09-04 02:47:21', '2025-09-05 06:51:39', 9, 1),
-(100, 'Arrow', '50x50', 5, '50x50', 300.00, 750.00, 0.00, 5, 3, 5, '', NULL, NULL, '2025-09-04 02:55:19', '2025-09-04 04:00:56', 9, 1),
+(100, 'Arrow Cable Trray', '50x50', 5, '50x50', 300.00, 750.00, 0.00, 5, 3, 5, '', 'images/products/product_68c7a0d63b511.png', NULL, '2025-09-04 02:55:19', '2025-09-15 05:15:02', 9, 1),
 (101, 'Railings', 'Railings', 8, '2.4', 570.00, 690.00, 0.00, 5, 32, 10, '', 'images/products/product_68bfb7905d837.jpg', NULL, '2025-09-04 02:57:49', '2025-09-09 05:13:52', 9, 1),
-(102, 'Arrow', '80x80', 5, '80x80', 600.00, 1200.00, 0.00, 5, 4, 5, '', NULL, NULL, '2025-09-04 03:03:49', '2025-09-04 03:03:49', 9, 1),
+(102, 'Arrow Cable Trray', '80x80', 5, '80x80', 900.00, 1200.00, 0.00, 5, 4, 5, '', 'images/products/product_68c7a0e1b3a24.png', NULL, '2025-09-04 03:03:49', '2025-09-15 05:15:13', 9, 1),
 (103, 'FEE0 ', 'DC SPD Breaker', 7, 'DC SPD', 830.00, 1500.00, 0.00, 5, 6, 6, '', NULL, NULL, '2025-09-04 03:06:52', '2025-09-04 09:03:29', 9, 1),
 (104, 'FEE0 ', 'MCCB 200A', 7, '200A', 2500.00, 2800.00, 0.00, 5, 1, 2, '', NULL, NULL, '2025-09-04 03:09:08', '2025-09-04 04:04:18', 9, 1),
 (105, 'L Foot', 'L Foot', 8, 'L Foot', 80.00, 150.00, 0.00, 5, 20, 10, '', 'images/products/product_68bfb762d17f2.jpg', NULL, '2025-09-04 03:20:21', '2025-09-09 05:13:06', 9, 1),
@@ -312,20 +194,20 @@ INSERT INTO `inventory_items` (`id`, `brand`, `model`, `category_id`, `size_spec
 (110, 'FEE0 ', 'ATS 2P 125A', 7, 'ATS 125A', 1400.00, 2800.00, 0.00, 5, 3, 3, '', NULL, NULL, '2025-09-04 03:59:00', '2025-09-04 09:55:45', 9, 1),
 (112, 'Mid clamp', 'Mid Clamp', 8, 'Mid Clamp', 40.00, 65.00, 0.00, 5, 6, 10, '', NULL, NULL, '2025-09-04 04:08:18', '2025-09-04 04:08:18', 9, 1),
 (113, 'End Clamp', 'End Clamp', 8, 'End clamp', 40.00, 65.00, 0.00, 5, 12, 10, '', 'images/products/product_68bfb73cac550.jpg', NULL, '2025-09-04 04:09:05', '2025-09-09 05:12:28', 9, 1),
-(114, 'Leader', 'Pv Cable 6.0mm', 5, '6.0', 100.00, 140.00, 0.00, 5, 58, 10, '', NULL, NULL, '2025-09-04 05:39:36', '2025-09-11 02:13:42', 9, 1),
-(115, 'FEE0', 'Battery Cable Red', 5, '35mm', 100.00, 450.00, 0.00, 5, 0, 100, '', NULL, NULL, '2025-09-04 08:56:22', '2025-09-04 08:56:22', 9, 1),
-(116, 'FEE0', 'Battery Cable Black', 5, '35mm', 100.00, 450.00, 0.00, 5, 0, 100, '', NULL, NULL, '2025-09-04 08:57:04', '2025-09-04 08:57:04', 9, 1),
+(114, 'Leader pv wire', 'twin core 6.0mm', 5, '6.0', 100.00, 120.00, 0.00, 5, 57, 10, '', 'images/products/product_68c7a1e93780f.png', NULL, '2025-09-04 05:39:36', '2025-09-16 05:22:14', 9, 1),
+(115, 'FEE0', 'Battery Cable Red', 5, '35mm', 350.00, 450.00, 0.00, 5, 0, 100, '', NULL, NULL, '2025-09-04 08:56:22', '2025-09-15 05:21:31', 9, 1),
+(116, 'FEE0', 'Battery Cable Black', 5, '35mm', 350.00, 450.00, 0.00, 5, 0, 100, '', NULL, NULL, '2025-09-04 08:57:04', '2025-09-15 05:20:49', 9, 1),
 (117, 'HDPE PIPE', 'AD34.5', 5, '5mm', 0.10, 0.00, 0.00, 5, 0, 100, '', NULL, NULL, '2025-09-04 09:06:09', '2025-09-04 09:06:09', 9, 1),
 (118, 'KOTEN BREAKER', 'AC MCCB BREAKER', 7, '200A ', 2800.00, 4500.00, 0.00, 9, 1, 10, '', NULL, NULL, '2025-09-04 09:57:37', '2025-09-04 11:02:37', 1, 1),
 (119, 'PHILFLEX THHN', 'AC WIRE #2', 5, '#2 38MM', 250.00, 450.00, 0.00, 9, 50, 10, 'AC WIRES', NULL, NULL, '2025-09-04 11:05:11', '2025-09-04 11:05:55', 1, 1),
-(120, 'METAL ENCLOSURE ', '40X50X20', 7, '400mm x 500 x 200', 4100.00, 5100.00, 0.00, 5, 1, 10, '', NULL, NULL, '2025-09-04 11:10:20', '2025-09-05 02:10:31', 1, 1),
+(120, 'METAL ENCLOSURE ', '40X50X20', 7, '400mm x 500 x 200', 2900.00, 3900.00, 0.00, 5, 1, 10, '', NULL, NULL, '2025-09-04 11:10:20', '2025-09-15 05:42:41', 1, 1),
 (121, 'DIN RAIL', 'ALLUMINUM RAIL', 4, '1 meter', 80.00, 480.00, 0.00, 9, 10, 10, '', NULL, NULL, '2025-09-04 11:12:32', '2025-09-04 11:12:32', 1, 1),
 (122, 'METAL ENCLOSURE', '6X15X18(200X400X500)', 7, '6X15X18(200X400X500)', 2650.00, 4500.00, 0.00, 9, 1, 10, '', NULL, NULL, '2025-09-05 02:09:21', '2025-09-05 02:11:06', 1, 1),
 (123, 'Canadian Solar', 'MONO 590w (CS6L-455MS)', 1, '590W', 0.00, 4500.00, 0.00, 5, 10, 20, '', NULL, NULL, '2025-09-08 05:52:41', '2025-09-08 05:54:16', 9, 1),
 (124, 'Canadian Solar', 'MONO 610w (CS6L-610MS)', 1, '610W', 4500.00, 5500.00, 5.00, 5, 5, 10, '', NULL, NULL, '2025-09-08 06:12:45', '2025-09-08 06:12:45', 9, 1),
-(126, 'Alltopelec', '25,6 5Kw 200Ah', 3, '200Ah', 0.00, 37000.00, 0.00, 5, 5, 5, '', NULL, NULL, '2025-09-09 07:20:27', '2025-09-09 07:20:27', 1, 1),
+(126, 'Alltopelec', '25,6 5Kw 200Ah', 3, '200Ah', 0.00, 37000.00, 0.00, 5, 5, 5, '', 'images/products/product_68c79f70d999d.jpg', NULL, '2025-09-09 07:20:27', '2025-09-15 05:09:04', 1, 1),
 (127, 'FEEO', 'MCCB DC 200A', 7, '200Ah', 0.00, 3950.00, 0.00, 5, 1, 5, '', NULL, NULL, '2025-09-09 07:26:46', '2025-09-09 08:18:34', 1, 1),
-(128, 'Koten', 'MCCB AC 225A', 7, '225A', 0.00, 0.00, 0.00, 5, 1, 5, '', NULL, NULL, '2025-09-09 07:28:45', '2025-09-09 07:28:45', 1, 1),
+(128, 'Koten', 'MCCB AC 225A', 7, '225A', 2850.00, 3500.00, 0.00, 5, 2, 0, '', NULL, NULL, '2025-09-09 07:28:45', '2025-09-15 04:39:48', 1, 1),
 (129, 'Canadian Solar', 'Solar Panel 610w', 1, '610w', 0.00, 0.00, 0.00, 5, 5, 10, '', NULL, NULL, '2025-09-09 07:29:41', '2025-09-09 07:29:41', 1, 1),
 (130, 'SRNE', '24V', 3, '24v', 0.00, 0.00, 0.00, 5, 1, 3, '', NULL, NULL, '2025-09-09 07:34:30', '2025-09-09 07:34:30', 1, 1),
 (131, 'Dim Rail', 'Dim Rail', 8, 'Dim Rail', 0.00, 0.00, 0.00, 5, 0, 10, '', NULL, NULL, '2025-09-09 07:35:39', '2025-09-09 07:35:39', 1, 1),
@@ -338,7 +220,7 @@ INSERT INTO `inventory_items` (`id`, `brand`, `model`, `category_id`, `size_spec
 (139, 'SRNE', '3KW 24V(HF2430S60-100V)', 9, '3kw', 19000.00, 0.00, 0.00, 5, 0, 3, '', NULL, NULL, '2025-09-09 07:57:33', '2025-09-09 07:57:33', 1, 1),
 (140, 'SRNE', '5KW 48V(MF4850S80-H)', 9, '5kw', 29000.00, 0.00, 0.00, 5, 0, 3, '', NULL, NULL, '2025-09-09 08:00:22', '2025-09-09 08:00:22', 1, 1),
 (141, 'SRNE', '8KW 48V(ASF4880S180-H)', 9, '8kw', 68000.00, 0.00, 0.00, 5, 0, 3, '', NULL, NULL, '2025-09-09 08:02:30', '2025-09-09 08:02:30', 1, 1),
-(143, 'CABLE TRAY ', '80X80', 8, '2M', 600.00, 0.00, 0.00, 5, 0, 3, '', NULL, NULL, '2025-09-09 08:09:11', '2025-09-09 08:09:11', 1, 1),
+(143, 'CABLE TRAY ', '80X80', 8, '2Mtrs', 600.00, 900.00, 0.00, 9, 0, 3, '', 'images/products/product_68c7a0eb8220b.png', NULL, '2025-09-09 08:09:11', '2025-09-15 05:15:23', 1, 1),
 (144, 'SOLAR PV CABLES', '4m (RED)', 5, '1X4 mm', 40.00, 0.00, 0.00, 5, 0, 3, '', NULL, NULL, '2025-09-09 08:13:03', '2025-09-09 08:13:03', 1, 1),
 (145, 'SOLAR PV CABLES', '4mm (black)', 5, '1x4mm', 40.00, 0.00, 0.00, 5, 0, 3, '', NULL, NULL, '2025-09-09 08:15:21', '2025-09-09 08:15:21', 1, 1),
 (146, 'TRINA SOLAR', '590W', 1, '590W', 0.00, 0.00, 0.00, 9, 0, 10, '', NULL, NULL, '2025-09-12 02:26:28', '2025-09-12 02:26:28', 9, 1),
@@ -349,89 +231,24 @@ INSERT INTO `inventory_items` (`id`, `brand`, `model`, `category_id`, `size_spec
 (151, 'CST ', '51.2V 324Ah', 3, '324Ah', 0.00, 0.00, 0.00, 9, 0, 10, '', NULL, NULL, '2025-09-12 05:42:31', '2025-09-12 05:42:31', 9, 1),
 (152, 'CST ', '51.2V 300Ah', 3, '300Ah', 0.00, 0.00, 0.00, 9, 0, 10, '', NULL, NULL, '2025-09-12 05:49:14', '2025-09-12 05:49:14', 9, 1),
 (153, 'CST ', '51.2V 100Ah', 3, '100Ah', 0.00, 0.00, 0.00, 9, 0, 10, '', NULL, NULL, '2025-09-12 05:50:53', '2025-09-12 05:50:53', 9, 1),
-(154, 'CST ', '24V 100Ah', 3, '100Ah', 0.00, 0.00, 0.00, 9, 0, 10, '', NULL, NULL, '2025-09-12 05:51:42', '2025-09-12 05:51:42', 9, 1);
-
--- --------------------------------------------------------
-
---
--- Table structure for table `payroll_periods`
---
-
-CREATE TABLE `payroll_periods` (
-  `id` int(11) NOT NULL,
-  `period_name` varchar(50) NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date NOT NULL,
-  `total_working_days` int(11) NOT NULL,
-  `status` enum('draft','finalized','paid') DEFAULT 'draft',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `created_by` int(11) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `payroll_periods`
---
-
-INSERT INTO `payroll_periods` (`id`, `period_name`, `start_date`, `end_date`, `total_working_days`, `status`, `created_at`, `updated_at`, `created_by`) VALUES
-(1, 'September 2025', '2025-09-01', '2025-09-30', 22, 'draft', '2025-09-03 03:54:53', '2025-09-03 03:54:53', NULL),
-(2, 'September 1 - 6', '2025-09-01', '2025-09-06', 6, 'draft', '2025-09-03 03:56:45', '2025-09-03 03:56:45', 1),
-(3, 'September 9 - 13', '2025-09-08', '2025-09-13', 6, 'draft', '2025-09-03 04:22:29', '2025-09-03 04:22:29', 1),
-(4, 'SALARY 15', '2025-09-01', '2025-09-15', 15, 'draft', '2025-09-03 05:35:42', '2025-09-03 05:35:42', 9),
-(5, 'SALARY 15', '2025-09-01', '2025-09-15', 13, 'draft', '2025-09-05 01:28:40', '2025-09-05 01:28:40', 9);
-
--- --------------------------------------------------------
-
---
--- Table structure for table `payroll_records`
---
-
-CREATE TABLE `payroll_records` (
-  `id` int(11) NOT NULL,
-  `employee_id` int(11) NOT NULL,
-  `period_id` int(11) NOT NULL,
-  `basic_salary_amount` decimal(10,2) NOT NULL,
-  `project_salary_base` decimal(10,2) DEFAULT 0.00,
-  `overtime_pay` decimal(10,2) DEFAULT 0.00,
-  `bonus_pay` decimal(10,2) DEFAULT 0.00,
-  `allowances_amount` decimal(10,2) DEFAULT 0.00,
-  `total_income` decimal(10,2) NOT NULL,
-  `cash_advance` decimal(10,2) DEFAULT 0.00,
-  `uniforms` decimal(10,2) DEFAULT 0.00,
-  `tools` decimal(10,2) DEFAULT 0.00,
-  `motor_loan` decimal(10,2) DEFAULT 0.00 COMMENT 'Motor loan deduction amount',
-  `cellphone_loan` decimal(10,2) DEFAULT 0.00 COMMENT 'Cellphone loan deduction amount',
-  `lates_deduction` decimal(10,2) DEFAULT 0.00,
-  `misc_deductions` decimal(10,2) DEFAULT 0.00,
-  `total_deductions` decimal(10,2) DEFAULT 0.00,
-  `net_salary` decimal(10,2) NOT NULL,
-  `overtime_hours` decimal(5,2) DEFAULT 0.00,
-  `overtime_rate` decimal(8,2) DEFAULT 62.50,
-  `working_days_attended` int(11) NOT NULL,
-  `status` enum('draft','approved','paid') DEFAULT 'draft',
-  `payment_date` date DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `created_by` int(11) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `payroll_records`
---
-
-INSERT INTO `payroll_records` (`id`, `employee_id`, `period_id`, `basic_salary_amount`, `project_salary_base`, `overtime_pay`, `bonus_pay`, `allowances_amount`, `total_income`, `cash_advance`, `uniforms`, `tools`, `motor_loan`, `cellphone_loan`, `lates_deduction`, `misc_deductions`, `total_deductions`, `net_salary`, `overtime_hours`, `overtime_rate`, `working_days_attended`, `status`, `payment_date`, `created_at`, `updated_at`, `created_by`) VALUES
-(9, 5, 3, 2400.00, 0.00, 0.00, 0.00, 0.00, 2400.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 2400.00, 0.00, 62.50, 6, 'draft', NULL, '2025-09-03 04:22:33', '2025-09-03 05:28:43', 1),
-(10, 5, 4, 6000.00, 0.00, 0.00, 0.00, 0.00, 6000.00, 0.00, 500.00, 0.00, 0.00, 0.00, 0.00, 0.00, 500.00, 5500.00, 0.00, 62.50, 15, 'draft', NULL, '2025-09-03 05:35:47', '2025-09-03 07:27:15', 9),
-(11, 6, 4, 6000.00, 0.00, 687.50, 0.00, 0.00, 6687.50, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 6687.50, 11.00, 62.50, 15, 'draft', NULL, '2025-09-03 05:35:47', '2025-09-03 07:56:14', 9),
-(12, 5, 5, 5200.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(13, 6, 5, 5200.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(14, 7, 5, 5200.00, 3500.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(15, 8, 5, 5200.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(16, 15, 5, 5200.00, 3500.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(17, 16, 5, 5200.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5200.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(18, 17, 5, 5200.00, 3500.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(19, 18, 5, 5200.00, 3500.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9),
-(20, 19, 5, 5200.00, 3500.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 8700.00, 0.00, 62.50, 13, 'draft', NULL, '2025-09-05 01:29:02', '2025-09-05 01:29:02', 9);
+(154, 'CST ', '24V 100Ah', 3, '100Ah', 0.00, 0.00, 0.00, 9, 0, 10, '', NULL, NULL, '2025-09-12 05:51:42', '2025-09-12 05:51:42', 9, 1),
+(158, 'MC4 Y CONNECTOR ', 'PV 004', 5, 'NONE', 380.00, 500.00, 0.00, 5, 8, 10, '', 'images/products/product_68c7a6204a3ee.jfif', NULL, '2025-09-15 05:37:36', '2025-09-15 05:37:36', 1, 1),
+(159, 'DIN RAIL', 'ALLUMINUM 1METER', 8, '1 METER', 160.00, 480.00, 0.00, 5, 1, 10, '', NULL, NULL, '2025-09-15 06:29:17', '2025-09-15 06:29:17', 1, 1),
+(161, 'PVC 1 1/2', 'ELBOW', 8, '1 1/2', 68.00, 82.00, 0.00, 5, 7, 10, '', NULL, NULL, '2025-09-15 06:42:46', '2025-09-15 06:42:46', 1, 1),
+(162, 'PVC 1 1/2', 'PIPE', 8, '1 1/2', 260.00, 350.00, 0.00, 5, 4, 10, '', NULL, NULL, '2025-09-15 06:45:05', '2025-09-15 06:45:05', 1, 1),
+(163, 'Metal Enclosure', 'Breaker Box', 8, '300*400*200mm', 1900.00, 0.00, 0.00, 5, 0, 5, '', NULL, NULL, '2025-09-15 06:49:50', '2025-09-15 06:49:50', 9, 1),
+(164, 'Metal Enclosure', 'Breaker Box', 8, '400*500*200mm', 2900.00, 0.00, 0.00, 5, 0, 5, '', NULL, NULL, '2025-09-15 06:50:39', '2025-09-15 06:50:39', 9, 1),
+(165, 'IP65', 'Junction Box', 8, '100*100*70mm', 120.00, 0.00, 0.00, 5, 0, 5, '', NULL, NULL, '2025-09-15 06:51:51', '2025-09-15 06:51:51', 9, 1),
+(166, 'TERMINAL LUGS', '(SC35-10)', 7, '35-10M', 40.00, 65.00, 0.00, 5, 40, 10, '', NULL, NULL, '2025-09-15 06:52:32', '2025-09-15 06:52:32', 1, 1),
+(167, 'IP65', 'Junction Box', 8, '150*150*70', 130.00, 0.00, 0.00, 9, 0, 5, '', NULL, NULL, '2025-09-15 06:52:55', '2025-09-15 06:52:55', 9, 1),
+(168, 'IP65', 'Junction Box', 8, '200*200*80mm', 240.00, 0.00, 0.00, 5, 0, 5, '', NULL, NULL, '2025-09-15 06:54:13', '2025-09-15 06:54:13', 9, 1),
+(169, 'NYLONE ROPE', 'NONE', 8, '1/2', 24.00, 50.00, 0.00, 5, 40, 10, '', NULL, NULL, '2025-09-15 06:54:22', '2025-09-15 06:54:22', 1, 1),
+(170, 'MC4 Crimper', 'Crimper', 8, '0', 480.00, 0.00, 0.00, 5, 0, 10, '', NULL, NULL, '2025-09-15 06:56:47', '2025-09-15 06:56:47', 9, 1),
+(171, 'Cable Tie', 'Tie', 8, '3x150', 55.00, 0.00, 0.00, 5, 0, 10, '', NULL, NULL, '2025-09-15 06:58:42', '2025-09-15 06:58:42', 9, 1),
+(172, 'ELECTRICAL TAPE', 'BLACK', 8, 'NONE', 42.00, 100.00, 0.00, 5, 5, 10, '', NULL, NULL, '2025-09-15 06:58:57', '2025-09-15 06:58:57', 1, 1),
+(173, 'Cable Tie', 'Cable Tie', 8, '4x200', 100.00, 0.00, 0.00, 5, 0, 10, '', NULL, NULL, '2025-09-15 07:00:02', '2025-09-15 07:00:02', 9, 1),
+(174, 'ELECTRICAL TAPE', 'RED', 8, 'CM', 28.00, 100.00, 0.00, 5, 5, 10, '', NULL, NULL, '2025-09-15 07:02:59', '2025-09-15 07:02:59', 1, 1),
+(175, 'MC4 Connector', 'MC4 Connector', 8, '0', 60.00, 75.00, 0.00, 5, 16, 20, '', NULL, NULL, '2025-09-16 05:29:16', '2025-09-16 05:29:16', 9, 1);
 
 -- --------------------------------------------------------
 
@@ -473,7 +290,9 @@ INSERT INTO `pos_sales` (`id`, `receipt_number`, `customer_name`, `customer_phon
 (44, 'RCP20250908-8672', '', '', 0.00, 0.00, 0.00, NULL, 0.00, 0.00, 'pending', NULL, 9, '2025-09-08 05:53:30', NULL),
 (46, 'RCP20250908-2619', '', '', 18000.00, 0.00, 18000.00, 'cash', 18000.00, 0.00, 'completed', NULL, 9, '2025-09-08 05:53:47', '2025-09-08 05:54:16'),
 (47, 'RCP20250910-0185', 'Vincent', '', 2800.00, 399.28, 2400.72, 'cash', 2400.72, 0.00, 'completed', NULL, 9, '2025-09-10 04:24:36', '2025-09-10 04:27:44'),
-(48, 'RCP20250911-4592', 'Vincent', '', 1400.00, 199.92, 1200.08, 'cash', 1200.08, 0.00, 'completed', NULL, 9, '2025-09-10 04:24:36', '2025-09-10 04:27:44');
+(48, 'RCP20250911-4592', 'Vincent', '', 1400.00, 199.92, 1200.08, 'cash', 1200.08, 0.00, 'completed', NULL, 9, '2025-09-10 04:24:36', '2025-09-10 04:27:44'),
+(49, 'RCP20250916-4796', 'Buhari', '', 120.00, 25.00, 95.00, 'cash', 95.00, 0.00, 'completed', NULL, 9, '2025-09-16 05:20:22', '2025-09-16 05:22:14'),
+(50, 'RCP20250916-2017', 'Buhari', '', 0.00, 0.00, 0.00, NULL, 0.00, 0.00, 'pending', NULL, 9, '2025-09-16 05:23:17', NULL);
 
 -- --------------------------------------------------------
 
@@ -505,7 +324,8 @@ INSERT INTO `pos_sale_items` (`id`, `sale_id`, `inventory_item_id`, `quantity`, 
 (24, 40, 26, 4, 4400.00, 0.00, 0.00, 17600.00, '2025-09-08 05:48:15'),
 (25, 46, 123, 4, 4500.00, 0.00, 0.00, 18000.00, '2025-09-08 05:54:12'),
 (26, 47, 114, 20, 140.00, 14.26, 399.28, 2400.72, '2025-09-10 04:27:14'),
-(27, 48, 114, 10, 140.00, 14.28, 199.92, 1200.08, '2025-09-11 02:13:06');
+(27, 48, 114, 10, 140.00, 14.28, 199.92, 1200.08, '2025-09-11 02:13:06'),
+(28, 49, 114, 1, 120.00, 20.83, 25.00, 95.00, '2025-09-16 05:22:07');
 
 -- --------------------------------------------------------
 
@@ -516,6 +336,7 @@ INSERT INTO `pos_sale_items` (`id`, `sale_id`, `inventory_item_id`, `quantity`, 
 CREATE TABLE `quotations` (
   `id` int(11) NOT NULL,
   `quote_number` varchar(50) NOT NULL,
+  `project_number` varchar(20) DEFAULT NULL,
   `customer_name` varchar(255) DEFAULT NULL,
   `customer_phone` varchar(20) DEFAULT NULL,
   `proposal_name` varchar(255) DEFAULT NULL,
@@ -535,13 +356,13 @@ CREATE TABLE `quotations` (
 -- Dumping data for table `quotations`
 --
 
-INSERT INTO `quotations` (`id`, `quote_number`, `customer_name`, `customer_phone`, `proposal_name`, `subtotal`, `total_discount`, `total_amount`, `status`, `valid_until`, `notes`, `created_by`, `created_at`, `updated_at`, `project_id`) VALUES
-(10, 'QTE20250904-0481', 'Gucela', '019872', '8kw Supply and installation', 99800.00, 9790.00, 90010.00, 'draft', NULL, NULL, 1, '2025-09-04 00:59:38', '2025-09-05 08:01:54', NULL),
-(11, 'QTE20250904-0782', 'Missuara 8kw', '09173031588', 'Supply and Installation of 8kw to pangutaran', 269370.00, 0.00, 269370.00, 'draft', NULL, NULL, 1, '2025-09-04 03:19:46', '2025-09-04 04:04:31', NULL),
-(13, 'QTE20250904-7312', 'Thai Alamia', '09173081539', 'Additional 16kw upgrade', 177980.00, 2925.00, 175055.00, 'draft', NULL, NULL, 1, '2025-09-04 09:49:31', '2025-09-05 08:07:04', NULL),
-(14, 'QTE20250905-8708', 'Testing', '09918195482', '32kw Solar Panel', 1920000.00, 0.00, 1920000.00, 'draft', NULL, NULL, 1, '2025-09-05 03:04:54', '2025-09-09 02:05:36', NULL),
-(17, 'QTE20250909-9751', 'Andres Bonifacio', '09918195482', '32kw Solar Panel', 174225.00, 0.00, 174225.00, 'accepted', NULL, NULL, 1, '2025-09-09 03:50:15', '2025-09-11 09:19:51', 17),
-(18, 'QTE20250912-0659', 'Pazlor Lim', '09750646424', '', 120000.00, 40000.00, 80000.00, 'accepted', NULL, NULL, 9, '2025-09-12 04:00:13', '2025-09-12 09:04:09', 21);
+INSERT INTO `quotations` (`id`, `quote_number`, `project_number`, `customer_name`, `customer_phone`, `proposal_name`, `subtotal`, `total_discount`, `total_amount`, `status`, `valid_until`, `notes`, `created_by`, `created_at`, `updated_at`, `project_id`) VALUES
+(10, 'QTE20250904-0481', NULL, 'Gucela', '019872', '8kw Supply and installation', 99800.00, 9790.00, 90010.00, 'draft', NULL, NULL, 1, '2025-09-04 00:59:38', '2025-09-05 08:01:54', NULL),
+(11, 'QTE20250904-0782', NULL, 'Missuara 8kw', '09173031588', 'Supply and Installation of 8kw to pangutaran', 269370.00, 0.00, 269370.00, 'draft', NULL, NULL, 1, '2025-09-04 03:19:46', '2025-09-04 04:04:31', NULL),
+(13, 'QTE20250904-7312', NULL, 'Thai Alamia', '09173081539', 'Additional 16kw upgrade', 177980.00, 2925.00, 175055.00, 'draft', NULL, NULL, 1, '2025-09-04 09:49:31', '2025-09-05 08:07:04', NULL),
+(14, 'QTE20250905-8708', NULL, 'Testing', '09918195482', '32kw Solar Panel', 1920000.00, 0.00, 1920000.00, 'draft', NULL, NULL, 1, '2025-09-05 03:04:54', '2025-09-09 02:05:36', NULL),
+(17, 'QTE20250909-9751', NULL, 'Andres Bonifacio', '09918195482', '32kw Solar Panel', 174225.00, 0.00, 174225.00, 'accepted', NULL, NULL, 1, '2025-09-09 03:50:15', '2025-09-11 09:19:51', 17),
+(18, 'QTE20250912-0659', 'PRJ-202509-0001', 'Pazlor Lim', '09750646424', '', 289700.00, 40000.00, 249700.00, 'accepted', NULL, NULL, 9, '2025-09-12 04:00:13', '2025-09-15 05:23:05', NULL);
 
 -- --------------------------------------------------------
 
@@ -623,7 +444,10 @@ INSERT INTO `quote_items` (`id`, `quote_id`, `inventory_item_id`, `quantity`, `u
 (44, 17, 80, 1, 650.00, 0.00, 0.00, 650.00, '2025-09-11 09:01:17'),
 (45, 17, 75, 1, 55.00, 0.00, 0.00, 55.00, '2025-09-11 09:01:24'),
 (46, 17, 101, 1, 690.00, 0.00, 0.00, 690.00, '2025-09-11 09:01:38'),
-(47, 18, 73, 24000, 5.00, 33.33, 40000.00, 80000.00, '2025-09-12 04:00:14');
+(47, 18, 73, 24000, 5.00, 33.33, 40000.00, 80000.00, '2025-09-12 04:00:14'),
+(48, 18, 58, 2, 84500.00, 0.00, 0.00, 169000.00, '2025-09-15 01:10:16'),
+(49, 18, 116, 1, 350.00, 0.00, 0.00, 350.00, '2025-09-15 05:22:39'),
+(50, 18, 115, 1, 350.00, 0.00, 0.00, 350.00, '2025-09-15 05:23:05');
 
 -- --------------------------------------------------------
 
@@ -698,8 +522,7 @@ CREATE TABLE `solar_projects` (
 
 INSERT INTO `solar_projects` (`id`, `project_name`, `customer_name`, `customer_email`, `customer_phone`, `customer_address`, `remarks`, `system_size_kw`, `total_base_cost`, `total_selling_price`, `total_discount`, `final_amount`, `project_status`, `created_at`, `updated_at`, `created_by`, `quote_id`) VALUES
 (17, '32kw Solar Panel', 'Andres Bonifacio', '', '09918195482', '', 'Converted from quotation QTE20250909-9751', 0.55, 46225.00, 174225.00, 0.00, 174225.00, 'approved', '2025-09-11 09:19:51', '2025-09-11 09:19:51', 1, 17),
-(19, '', 'Pazlor Lim', '', '09750646424', '', 'Converted from quotation QTE20250912-0659', 0.00, 0.00, 80000.00, 0.00, 80000.00, 'approved', '2025-09-12 04:02:55', '2025-09-12 04:02:55', 9, 18),
-(21, '', 'Pazlor Lim', '', '09750646424', '', 'Converted from quotation QTE20250912-0659', 0.00, 0.00, 120000.00, 40000.00, 80000.00, 'approved', '2025-09-12 09:04:09', '2025-09-12 09:04:09', 1, 18);
+(19, '', 'Pazlor Lim', '', '09750646424', '', 'Converted from quotation QTE20250912-0659', 0.00, 0.00, 80000.00, 0.00, 80000.00, 'approved', '2025-09-12 04:02:55', '2025-09-12 04:02:55', 9, 18);
 
 -- --------------------------------------------------------
 
@@ -732,8 +555,7 @@ INSERT INTO `solar_project_items` (`id`, `project_id`, `inventory_item_id`, `qua
 (38, 17, 80, 1, 650.00, 650.00, 0.00, 650.00),
 (39, 17, 75, 1, 55.00, 55.00, 0.00, 55.00),
 (40, 17, 101, 1, 690.00, 690.00, 0.00, 690.00),
-(42, 19, 73, 16000, 0.00, 5.00, 0.00, 80000.00),
-(44, 21, 73, 24000, 0.00, 5.00, 40000.00, 80000.00);
+(42, 19, 73, 16000, 0.00, 5.00, 0.00, 80000.00);
 
 -- --------------------------------------------------------
 
@@ -766,7 +588,8 @@ INSERT INTO `stock_movements` (`id`, `inventory_item_id`, `movement_type`, `quan
 (32, 75, 'out', 2, 46, 44, '', 38, 'POS sale - RCP20250904-2146', '2025-09-04 05:41:43', 9),
 (33, 123, 'out', 4, 14, 10, '', 46, 'POS sale - RCP20250908-2619', '2025-09-08 05:54:16', 9),
 (34, 114, 'out', 20, 88, 68, '', 47, 'POS sale - RCP20250910-0185', '2025-09-10 04:27:44', 9),
-(35, 114, 'out', 10, 68, 58, '', 48, 'POS sale - RCP20250911-4592', '2025-09-11 02:13:42', 9);
+(35, 114, 'out', 10, 68, 58, '', 48, 'POS sale - RCP20250911-4592', '2025-09-11 02:13:42', 9),
+(36, 114, 'out', 1, 58, 57, '', 49, 'POS sale - RCP20250916-4796', '2025-09-16 05:22:14', 9);
 
 -- --------------------------------------------------------
 
@@ -842,30 +665,6 @@ ALTER TABLE `categories`
   ADD PRIMARY KEY (`id`);
 
 --
--- Indexes for table `employees`
---
-ALTER TABLE `employees`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `employee_code` (`employee_code`),
-  ADD UNIQUE KEY `email` (`email`),
-  ADD KEY `created_by` (`created_by`);
-
---
--- Indexes for table `employee_attendance`
---
-ALTER TABLE `employee_attendance`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `employee_id` (`employee_id`),
-  ADD KEY `period_id` (`period_id`);
-
---
--- Indexes for table `employee_leave_balances`
---
-ALTER TABLE `employee_leave_balances`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `unique_employee_leave_year` (`employee_id`,`leave_type`,`year`);
-
---
 -- Indexes for table `inventory_items`
 --
 ALTER TABLE `inventory_items`
@@ -873,24 +672,6 @@ ALTER TABLE `inventory_items`
   ADD KEY `supplier_id` (`supplier_id`),
   ADD KEY `category_id` (`category_id`),
   ADD KEY `created_by` (`created_by`);
-
---
--- Indexes for table `payroll_periods`
---
-ALTER TABLE `payroll_periods`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `created_by` (`created_by`);
-
---
--- Indexes for table `payroll_records`
---
-ALTER TABLE `payroll_records`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `unique_employee_period` (`employee_id`,`period_id`),
-  ADD KEY `period_id` (`period_id`),
-  ADD KEY `created_by` (`created_by`),
-  ADD KEY `idx_payroll_motor_loan` (`motor_loan`),
-  ADD KEY `idx_payroll_cellphone_loan` (`cellphone_loan`);
 
 --
 -- Indexes for table `pos_sales`
@@ -924,7 +705,8 @@ ALTER TABLE `quotations`
   ADD KEY `idx_quotations_quote_number` (`quote_number`),
   ADD KEY `idx_quotations_status` (`status`),
   ADD KEY `idx_quotations_created_at` (`created_at`),
-  ADD KEY `idx_project_id` (`project_id`);
+  ADD KEY `idx_project_id` (`project_id`),
+  ADD KEY `idx_project_number` (`project_number`);
 
 --
 -- Indexes for table `quote_customer_info`
@@ -997,52 +779,22 @@ ALTER TABLE `categories`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
--- AUTO_INCREMENT for table `employees`
---
-ALTER TABLE `employees`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
-
---
--- AUTO_INCREMENT for table `employee_attendance`
---
-ALTER TABLE `employee_attendance`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
---
--- AUTO_INCREMENT for table `employee_leave_balances`
---
-ALTER TABLE `employee_leave_balances`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=42;
-
---
 -- AUTO_INCREMENT for table `inventory_items`
 --
 ALTER TABLE `inventory_items`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `payroll_periods`
---
-ALTER TABLE `payroll_periods`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
-
---
--- AUTO_INCREMENT for table `payroll_records`
---
-ALTER TABLE `payroll_records`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
-
---
 -- AUTO_INCREMENT for table `pos_sales`
 --
 ALTER TABLE `pos_sales`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=49;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=51;
 
 --
 -- AUTO_INCREMENT for table `pos_sale_items`
 --
 ALTER TABLE `pos_sale_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
 --
 -- AUTO_INCREMENT for table `quotations`
@@ -1060,7 +812,7 @@ ALTER TABLE `quote_customer_info`
 -- AUTO_INCREMENT for table `quote_items`
 --
 ALTER TABLE `quote_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=48;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=51;
 
 --
 -- AUTO_INCREMENT for table `quote_solar_details`
@@ -1072,19 +824,19 @@ ALTER TABLE `quote_solar_details`
 -- AUTO_INCREMENT for table `solar_projects`
 --
 ALTER TABLE `solar_projects`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT for table `solar_project_items`
 --
 ALTER TABLE `solar_project_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=45;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=46;
 
 --
 -- AUTO_INCREMENT for table `stock_movements`
 --
 ALTER TABLE `stock_movements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=36;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=37;
 
 --
 -- AUTO_INCREMENT for table `suppliers`
@@ -1103,45 +855,12 @@ ALTER TABLE `users`
 --
 
 --
--- Constraints for table `employees`
---
-ALTER TABLE `employees`
-  ADD CONSTRAINT `employees_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`);
-
---
--- Constraints for table `employee_attendance`
---
-ALTER TABLE `employee_attendance`
-  ADD CONSTRAINT `employee_attendance_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`),
-  ADD CONSTRAINT `employee_attendance_ibfk_2` FOREIGN KEY (`period_id`) REFERENCES `payroll_periods` (`id`);
-
---
--- Constraints for table `employee_leave_balances`
---
-ALTER TABLE `employee_leave_balances`
-  ADD CONSTRAINT `employee_leave_balances_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`);
-
---
 -- Constraints for table `inventory_items`
 --
 ALTER TABLE `inventory_items`
   ADD CONSTRAINT `inventory_items_ibfk_1` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers` (`id`),
   ADD CONSTRAINT `inventory_items_ibfk_2` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`),
   ADD CONSTRAINT `inventory_items_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`);
-
---
--- Constraints for table `payroll_periods`
---
-ALTER TABLE `payroll_periods`
-  ADD CONSTRAINT `payroll_periods_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`);
-
---
--- Constraints for table `payroll_records`
---
-ALTER TABLE `payroll_records`
-  ADD CONSTRAINT `payroll_records_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`),
-  ADD CONSTRAINT `payroll_records_ibfk_2` FOREIGN KEY (`period_id`) REFERENCES `payroll_periods` (`id`),
-  ADD CONSTRAINT `payroll_records_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`);
 
 --
 -- Constraints for table `quotations`

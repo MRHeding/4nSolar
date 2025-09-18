@@ -5,7 +5,7 @@
 [![Database](https://img.shields.io/badge/database-mysql-orange.svg)]()
 [![License](https://img.shields.io/badge/license-proprietary-red.svg)]()
 
-A comprehensive solar equipment inventory and project management system designed for 4nSolar ELECTRICZ. This system provides complete business management capabilities including inventory tracking, project quotations, point-of-sale functionality, and comprehensive reporting.
+A comprehensive solar equipment inventory and project management system designed for 4nSolar ELECTRICZ. This system provides complete business management capabilities including inventory tracking, project quotations, point-of-sale functionality, payroll management, installment payment tracking, employee attendance, and comprehensive reporting with advanced analytics.
 
 ## 🚀 Quick Start
 
@@ -32,13 +32,23 @@ A comprehensive solar equipment inventory and project management system designed
    - Or execute SQL from `pos_tables.sql` in phpMyAdmin
    - Enables complete retail sales functionality
 
-4. **System Access**
+4. **Payroll System Setup (Optional)**
+   - Run: `http://localhost/4nsolarSystem/setup_payroll_tables.php`
+   - Or execute SQL from `database/payroll_system.sql` in phpMyAdmin
+   - Enables employee management and payroll processing
+
+5. **Installment System Setup (Optional)**
+   - Run: `http://localhost/4nsolarSystem/setup_installment_system.php`
+   - Or execute SQL from `database/installment_system.sql` in phpMyAdmin
+   - Enables payment plan management for projects
+
+6. **System Access**
    - URL: `http://localhost/4nsolarSystem`
    - **Default Admin Login:**
      - Username: `admin`
      - Password: `admin123`
    
-5. **System Testing**
+7. **System Testing**
    - Run comprehensive tests: `http://localhost/4nsolarSystem/system_comprehensive_test.php`
    - Validates all system components and integrations
 
@@ -70,7 +80,10 @@ A comprehensive solar equipment inventory and project management system designed
 - **Dynamic Pricing**: Automatic calculations with discounts
 - **Inventory Integration**: Real-time availability checking
 - **Professional Quotes**: Printable project proposals
-- **Status Tracking**: Quote → Approved → Completed workflow
+- **Status Tracking**: Quote → Under Review → Approved → Completed workflow
+- **Automatic Conversion**: Approved quotes automatically become projects
+- **Battery Backup Planning**: Capacity planning and specifications
+- **Installation Status**: Track various installation phases
 - **Inventory Allocation**: Automatic stock deduction on approval
 
 ### 🛒 Point of Sale (POS) System
@@ -87,6 +100,23 @@ A comprehensive solar equipment inventory and project management system designed
 - **User Administration**: Staff accounts with role assignments
 - **Category Management**: Flexible product categorization
 - **Reporting Suite**: Comprehensive business analytics
+
+### 💼 Human Resources & Payroll
+- **Employee Management**: Complete employee records and profiles
+- **Attendance Tracking**: Daily time in/out with overtime calculation
+- **Payroll Processing**: Automated salary calculations with deductions
+- **Multiple Salary Packages**: Support for 1500, 2500, 3500 salary tiers
+- **Deduction Management**: Cash advances, uniforms, tools, late penalties
+- **Payroll Reports**: Detailed payslips and earnings statements
+- **Leave Management**: Track leaves and balance calculations
+
+### 💳 Payment & Finance
+- **Installment System**: Flexible payment plans for solar projects
+- **Payment Tracking**: Monitor installment schedules and payments
+- **Multiple Payment Methods**: Cash, check, bank transfer, digital wallets
+- **Late Fee Management**: Automated late fee calculations
+- **Revenue Analysis**: Comprehensive financial reporting and analytics
+- **Payment History**: Complete transaction audit trails
 
 ### 📱 User Experience
 - **Responsive Design**: Works on desktop, tablet, and mobile
@@ -114,13 +144,24 @@ A comprehensive solar equipment inventory and project management system designed
 │   ├── projects.php         # Solar project functions
 │   ├── suppliers.php        # Supplier & category management
 │   ├── pos.php              # Point of sale functions
+│   ├── payroll.php          # Payroll and HR functions
+│   ├── installments.php     # Installment payment system
 │   ├── header.php           # Common page header
 │   └── footer.php           # Common page footer
-├── pages/                   # Page components
+├── database/                # Database scripts
+│   ├── 4nsolar_inventory.sql   # Main database schema
+│   ├── payroll_system.sql      # Payroll system tables
+│   ├── installment_system.sql  # Installment payment tables
+│   └── add_battery_backup_field.sql # Battery capacity feature
 ├── *.php                    # Main application files
-├── database.sql             # Database schema
-├── pos_tables.sql           # POS system tables
-├── system_comprehensive_test.php  # Test suite
+├── payroll.php              # Payroll management interface
+├── employee_attendance.php  # Attendance tracking
+├── revenue_analysis.php     # Financial analytics
+├── setup_payroll_tables.php # Payroll system installer
+├── setup_installment_system.php # Installment system installer
+├── QUOTATION_TO_PROJECT_GUIDE.md # Feature documentation
+├── UNDER_REVIEW_STATUS_SETUP.md # Status workflow guide
+├── WIRE_MANAGEMENT_GUIDE.md     # Wire inventory guide
 └── README.md               # This file
 ```
 
@@ -140,6 +181,20 @@ A comprehensive solar equipment inventory and project management system designed
 #### Point of Sale
 - **`pos_sales`** - Retail transaction records
 - **`pos_sale_items`** - Individual items in each sale
+
+#### Human Resources & Payroll
+- **`employees`** - Employee profiles and details
+- **`employee_attendance`** - Daily attendance records
+- **`payroll`** - Payroll calculations and records
+
+#### Payment & Finance
+- **`installment_plans`** - Payment plan configurations
+- **`installment_payments`** - Individual payment records
+- **`installment_transactions`** - Payment transaction history
+
+#### Enhanced Features
+- **`quote_solar_details`** - Battery backup capacity and installation status
+- **`quotations`** - Enhanced with "under_review" status workflow
 
 ### 🔧 Core Functions
 
@@ -170,6 +225,19 @@ A comprehensive solar equipment inventory and project management system designed
 - `generateReceiptNumber()` - Unique receipt IDs
 - `getPOSStats()` - Sales analytics
 
+#### Payroll System (`includes/payroll.php`)
+- `addEmployee()` - Create employee records
+- `addAttendance()` - Record daily attendance
+- `calculatePayroll()` - Process salary calculations
+- `generateEmployeeCode()` - Unique employee identifiers
+- `getEmployeeAttendance()` - Retrieve attendance history
+
+#### Installment System (`includes/installments.php`)
+- `createInstallmentPlan()` - Setup payment plans
+- `recordInstallmentPayment()` - Process payments
+- `calculateLateFees()` - Late payment penalties
+- `getInstallmentSchedule()` - Payment schedules
+
 ## 🛠️ Configuration & Customization
 
 ### Environment Configuration
@@ -182,11 +250,11 @@ $password = '';
 ```
 
 ### User Roles & Permissions
-| Role | Dashboard | Inventory | Projects | POS | Users | Suppliers |
-|------|-----------|-----------|----------|-----|-------|-----------|
-| **Admin** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
-| **HR** | ✅ View | ✅ Full | ✅ Full | ✅ View | ✅ Full | ✅ Full |
-| **Sales** | ✅ View | 👁️ View | ✅ Create/Edit | ✅ Full | ❌ None | 👁️ View |
+| Role | Dashboard | Inventory | Projects | POS | Payroll | Installments | Users | Suppliers |
+|------|-----------|-----------|----------|-----|---------|-------------|-------|-----------|
+| **Admin** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
+| **HR** | ✅ View | ✅ Full | ✅ Full | ✅ View | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
+| **Sales** | ✅ View | 👁️ View | ✅ Create/Edit | ✅ Full | ❌ None | ✅ View | ❌ None | 👁️ View |
 
 ### Customization Options
 - **Company Branding**: Update logos and company information
@@ -240,7 +308,16 @@ The test suite automatically:
 
 ## 🔄 Recent Updates & Changelog
 
-### Version 2.1 (Latest)
+### Version 3.0 (Latest - September 2025)
+- ✅ **Payroll Management System**: Complete HR and payroll functionality
+- ✅ **Employee Attendance Tracking**: Time tracking with overtime calculations
+- ✅ **Installment Payment System**: Flexible payment plans for projects
+- ✅ **Battery Backup Planning**: Solar system capacity planning features
+- ✅ **Under Review Status**: Enhanced quotation workflow management
+- ✅ **Automatic Quote-to-Project**: Seamless conversion workflow
+- ✅ **Revenue Analysis Tools**: Advanced financial reporting
+
+### Version 2.1
 - ✅ **Comprehensive Testing Suite**: Complete system validation
 - ✅ **Enhanced Error Handling**: Improved user feedback
 - ✅ **Performance Optimization**: Faster database queries
@@ -259,10 +336,11 @@ The test suite automatically:
 - ✅ **Responsive Design**: Mobile-friendly interface
 
 ### Planned Features
-- 🔮 **Wire Management Module**: Cable and wire inventory
-- 🔮 **Advanced Reporting**: Custom report builder
+- 🔮 **Wire Management Module**: Cable and wire inventory (in development)
+- 🔮 **Advanced Reporting Dashboard**: Custom report builder
 - 🔮 **API Integration**: Third-party system connections
 - 🔮 **Mobile App**: Dedicated mobile application
+- 🔮 **Automated Backups**: Database backup scheduling
 
 ## 🆘 Support & Troubleshooting
 
@@ -304,8 +382,9 @@ All rights reserved. This software is licensed for use by 4nSolar ELECTRICZ and 
 
 ### Contact Information
 - **System**: 4nSolar Management System
-- **Version**: 2.1
+- **Version**: 3.0
 - **Last Updated**: September 2025
+- **New Features**: Payroll, Installments, Battery Planning, Revenue Analysis
 - **Test Suite**: Comprehensive validation included
 
 ---

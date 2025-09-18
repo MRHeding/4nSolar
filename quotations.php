@@ -3,6 +3,7 @@ require_once 'includes/config.php';
 require_once 'includes/auth.php';
 require_once 'includes/inventory.php';
 require_once 'includes/suppliers.php';
+require_once 'includes/installments.php';
 
 if (!isLoggedIn()) {
     header("Location: login.php");
@@ -77,6 +78,48 @@ if (isset($_GET['message'])) {
 // Handle form submissions
 if ($_POST) {
     switch ($action) {
+        case 'create_installment_plan':
+            if ($quote_id) {
+                $result = createInstallmentPlan($quote_id, $_POST);
+                if ($result['success']) {
+                    header("Location: ?action=installments&quote_id=" . $quote_id . "&message=" . urlencode($result['message']));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'record_payment':
+            if (isset($_POST['payment_id'])) {
+                // Debug information
+                error_log("Recording payment for payment_id: " . $_POST['payment_id']);
+                error_log("Payment data: " . print_r($_POST, true));
+                
+                $result = recordInstallmentPayment($_POST['payment_id'], $_POST);
+                
+                error_log("Payment result: " . print_r($result, true));
+                
+                if ($result['success']) {
+                    $message = $result['message'];
+                    if (isset($result['receipt_number']) && $result['receipt_number']) {
+                        $message .= " Receipt #: " . $result['receipt_number'];
+                    }
+                    if (isset($result['reference_number']) && $result['reference_number']) {
+                        $message .= " Reference: " . $result['reference_number'];
+                    }
+                    header("Location: ?action=installments&quote_id=" . $quote_id . "&message=" . urlencode($message));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                    error_log("Payment recording error: " . $error);
+                }
+            } else {
+                $error = "Payment ID not provided";
+                error_log("Payment error: payment_id not provided");
+            }
+            break;
+            
         case 'create_quote':
             $quote_id = createQuote($_POST['customer_name'] ?? null, $_POST['customer_phone'] ?? null, $_POST['proposal_name'] ?? null);
             if ($quote_id) {
@@ -164,7 +207,8 @@ if ($_POST) {
         case 'update_quote_status':
             if ($quote_id && isset($_POST['new_status'])) {
                 $result = updateQuoteStatus($quote_id, $_POST['new_status']);
-                if ($result) {
+                
+                if (is_array($result) && $result['success']) {
                     $success_message = 'Status updated successfully!';
                     
                     // If status was changed to accepted, generate and assign a project number
@@ -185,8 +229,26 @@ if ($_POST) {
                         $updateStmt->execute([$projectNumber, $quote_id]);
                         
                         $success_message .= " Project Number assigned: $projectNumber";
+                        
+                        // Add inventory deduction message
+                        if (isset($result['inventory_result']) && $result['inventory_result']['success']) {
+                            $deducted_count = count($result['inventory_result']['deducted_items']);
+                            $success_message .= " Inventory deducted for $deducted_count items.";
+                        }
                     }
                     
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($success_message));
+                    exit();
+                } elseif (is_array($result) && !$result['success']) {
+                    // Handle inventory error specifically
+                    if (isset($result['inventory_error']) && $result['inventory_error']) {
+                        $error = $result['message'];
+                    } else {
+                        $error = 'Failed to update quotation status.';
+                    }
+                } elseif ($result === true) {
+                    // Handle simple boolean success
+                    $success_message = 'Status updated successfully!';
                     header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($success_message));
                     exit();
                 } else {
@@ -218,6 +280,19 @@ if ($action == 'delete_quote' && $quote_id) {
 
 // Get data based on action
 switch ($action) {
+    case 'installments':
+        if ($quote_id) {
+            $quote = getQuote($quote_id);
+            if (!$quote) {
+                $error = 'Quotation not found.';
+                $action = 'list';
+            } else {
+                $installment_plan = getInstallmentPlan($quote_id);
+                $customer_info = getCustomerInfo($quote_id);
+            }
+        }
+        break;
+        
     case 'quote':
         if ($quote_id) {
             $quote = getQuote($quote_id);
@@ -226,6 +301,8 @@ switch ($action) {
                 $action = 'list';
             } else {
                 $inventory_items = getQuoteInventoryItems();
+                // Check if quote has installment plan
+                $installment_plan = getInstallmentPlan($quote_id);
             }
         }
         break;
@@ -359,20 +436,34 @@ include 'includes/header.php';
                         <?php echo formatCurrency($quote['total_amount']); ?>
                     </td>
                     <td class="px-3 py-3 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs font-medium rounded-full 
-                            <?php 
-                            switch($quote['status']) {
-                                case 'draft': echo 'bg-gray-100 text-gray-800'; break;
-                                case 'sent': echo 'bg-blue-100 text-blue-800'; break;
-                                case 'under_review': echo 'bg-purple-100 text-purple-800'; break;
-                                case 'accepted': 
-                                case 'approved': echo 'bg-green-100 text-green-800'; break;
-                                case 'rejected': echo 'bg-red-100 text-red-800'; break;
-                                case 'expired': echo 'bg-yellow-100 text-yellow-800'; break;
-                            }
-                            ?>">
-                            <?php echo ucfirst(str_replace('_', ' ', $quote['status'])); ?>
-                        </span>
+                        <div class="flex flex-col space-y-1">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full 
+                                <?php 
+                                switch($quote['status']) {
+                                    case 'draft': echo 'bg-gray-100 text-gray-800'; break;
+                                    case 'sent': echo 'bg-blue-100 text-blue-800'; break;
+                                    case 'under_review': echo 'bg-purple-100 text-purple-800'; break;
+                                    case 'accepted': 
+                                    case 'approved': echo 'bg-green-100 text-green-800'; break;
+                                    case 'rejected': echo 'bg-red-100 text-red-800'; break;
+                                    case 'expired': echo 'bg-yellow-100 text-yellow-800'; break;
+                                }
+                                ?>">
+                                <?php echo ucfirst(str_replace('_', ' ', $quote['status'])); ?>
+                            </span>
+                            <?php if ($quote['has_installment_plan'] > 0): ?>
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 flex items-center">
+                                <i class="fas fa-credit-card mr-1"></i>
+                                <?php 
+                                if ($quote['installment_status'] === 'completed') {
+                                    echo 'Installment Completed';
+                                } else {
+                                    echo 'Installment Plan';
+                                }
+                                ?>
+                            </span>
+                            <?php endif; ?>
+                        </div>
                     </td>
                     <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
                         <?php echo date('M j, Y', strtotime($quote['created_at'])); ?>
@@ -402,14 +493,14 @@ include 'includes/header.php';
                             </form>
                             <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="accepted">
-                                <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote">
+                                <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote" onclick="return confirmQuoteApproval()">
                                     <i class="fas fa-check text-xs"></i>
                                 </button>
                             </form>
                             <?php elseif ($quote['status'] == 'sent'): ?>
                             <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="accepted">
-                                <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote">
+                                <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote" onclick="return confirmQuoteApproval()">
                                     <i class="fas fa-check text-xs"></i>
                                 </button>
                             </form>
@@ -462,9 +553,6 @@ include 'includes/header.php';
             <p class="text-gray-600">Create a new quotation for customer</p>
         </div>
         <div class="space-x-2">
-            <a href="?" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                <i class="fas fa-arrow-left mr-2"></i>Back to Quotes
-            </a>
         </div>
     </div>
 </div>
@@ -760,26 +848,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 <?php endif; ?>
             </p>
         </div>
-        <div class="space-x-2">
+        <div class="flex flex-wrap gap-2">
             <button onclick="editCustomerDetails(<?php echo $quote['id']; ?>)" 
-                    class="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition">
-                <i class="fas fa-edit mr-2"></i>Edit Details
+                    class="bg-orange-600 text-white px-3 py-2 rounded-lg hover:bg-orange-700 transition text-sm whitespace-nowrap">
+                <i class="fas fa-edit mr-1"></i>Edit Details
             </button>
+            <?php if ($quote['status'] === 'accepted'): ?>
+            <a href="?action=installments&quote_id=<?php echo $quote['id']; ?>" 
+               class="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition text-sm whitespace-nowrap">
+                <i class="fas fa-credit-card mr-1"></i>Payment Plan
+            </a>
+            <?php endif; ?>
             <a href="?action=order_fulfillment&quote_id=<?php echo $quote['id']; ?>" 
-               class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
-                <i class="fas fa-clipboard-check mr-2"></i>Order Fulfillment
+               class="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition text-sm whitespace-nowrap">
+                <i class="fas fa-clipboard-check mr-1"></i>Order Fulfillment
             </a>
             <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>" target="_blank"
-               class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                <i class="fas fa-print mr-2"></i>Print Quote
+               class="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition text-sm whitespace-nowrap">
+                <i class="fas fa-print mr-1"></i>Print Quote
             </a>
             <a href="?action=delete_quote&quote_id=<?php echo $quote['id']; ?>" 
-               class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
+               class="bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 transition text-sm whitespace-nowrap"
                onclick="return confirm('Delete this quotation? All items will be removed.')">
-                <i class="fas fa-trash mr-2"></i>Delete Quote
-            </a>
-            <a href="?" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                <i class="fas fa-arrow-left mr-2"></i>Back to Quotes
+                <i class="fas fa-trash mr-1"></i>Delete Quote
             </a>
         </div>
     </div>
@@ -790,7 +881,14 @@ document.addEventListener('DOMContentLoaded', function() {
     <div class="lg:col-span-2">
         <div class="bg-white rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-gray-800">Quote Items</h2>
+                <div class="flex items-center">
+                    <h2 class="text-xl font-semibold text-gray-800">Quote Items</h2>
+                    <?php if (!empty($quote['items'])): ?>
+                    <span class="ml-3 bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
+                        <?php echo count($quote['items']); ?> item<?php echo count($quote['items']) !== 1 ? 's' : ''; ?>
+                    </span>
+                    <?php endif; ?>
+                </div>
                 <?php if (!empty($inventory_items)): ?>
                 <button onclick="document.getElementById('add-quote-item-modal').classList.remove('hidden')" 
                         class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition text-sm">
@@ -908,6 +1006,18 @@ document.addEventListener('DOMContentLoaded', function() {
                             ?>">
                             <?php echo ucfirst(str_replace('_', ' ', $quote['status'])); ?>
                         </span>
+                        <?php if ($installment_plan): ?>
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 ml-2 flex items-center inline-flex">
+                            <i class="fas fa-credit-card mr-1"></i>
+                            <?php 
+                            if ($installment_plan['status'] === 'completed') {
+                                echo 'Installment Completed';
+                            } else {
+                                echo 'Installment Plan';
+                            }
+                            ?>
+                        </span>
+                        <?php endif; ?>
                     </p>
                     <p><strong>Created:</strong> <?php echo date('M j, Y', strtotime($quote['created_at'])); ?></p>
                     <p><strong>Created by:</strong> <?php echo htmlspecialchars($quote['created_by_name']); ?></p>
@@ -933,7 +1043,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </form>
                     <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
                         <input type="hidden" name="new_status" value="accepted">
-                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm">
+                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="return confirmQuoteApproval()">
                             <i class="fas fa-check mr-2"></i>Approve Quote
                         </button>
                     </form>
@@ -946,14 +1056,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     </form>
                     <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
                         <input type="hidden" name="new_status" value="accepted">
-                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm">
+                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="return confirmQuoteApproval()">
                             <i class="fas fa-check mr-2"></i>Approve Quote
                         </button>
                     </form>
                     <?php elseif ($quote['status'] == 'under_review'): ?>
                     <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
                         <input type="hidden" name="new_status" value="accepted">
-                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm">
+                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="return confirmQuoteApproval()">
                             <i class="fas fa-check mr-2"></i>Approve Quote
                         </button>
                     </form>
@@ -1497,9 +1607,6 @@ function showProfitError(message) {
             <button onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
                 <i class="fas fa-print mr-2"></i>Print Checklist
             </button>
-            <a href="?action=quote&quote_id=<?php echo $quote['id']; ?>" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                <i class="fas fa-arrow-left mr-2"></i>Back to Quote
-            </a>
         </div>
     </div>
 </div>
@@ -1766,6 +1873,427 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
     }
 }
 </style>
+
+<?php elseif ($action == 'installments' && isset($quote)): ?>
+<!-- Installment Management Screen -->
+<div class="mb-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800">Payment Plan: <?php echo htmlspecialchars($quote['quote_number']); ?></h1>
+            <p class="text-gray-600">
+                Customer: <?php echo htmlspecialchars($quote['customer_name']); ?>
+                | Total Amount: <?php echo formatCurrency($quote['total_amount']); ?>
+            </p>
+        </div>
+        <div class="space-x-2">
+        </div>
+    </div>
+</div>
+
+<?php if ($installment_plan): ?>
+<!-- Existing Installment Plan -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <!-- Plan Summary Cards -->
+    <div class="lg:col-span-3">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-blue-800">Plan Status</div>
+                <div class="text-xl font-bold text-blue-900"><?php echo ucfirst($installment_plan['status']); ?></div>
+            </div>
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-green-800">Total Paid</div>
+                <div class="text-xl font-bold text-green-900"><?php echo formatCurrency($installment_plan['summary']['total_paid']); ?></div>
+            </div>
+            <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-orange-800">Pending</div>
+                <div class="text-xl font-bold text-orange-900"><?php echo formatCurrency($installment_plan['summary']['pending_amount']); ?></div>
+            </div>
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-red-800">Overdue</div>
+                <div class="text-xl font-bold text-red-900"><?php echo formatCurrency($installment_plan['summary']['overdue_amount']); ?></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Plan Details -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Payment Schedule -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Payment Schedule</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <?php foreach ($installment_plan['payments'] as $payment): ?>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-4 text-sm font-medium text-gray-900"><?php echo $payment['installment_number']; ?></td>
+                            <td class="px-4 py-4 text-sm text-gray-900">
+                                <?php echo date('M d, Y', strtotime($payment['due_date'])); ?>
+                                <?php if ($payment['status'] === 'pending' && strtotime($payment['due_date']) < time()): ?>
+                                <span class="text-xs text-red-600 block">Overdue</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-right text-gray-900">
+                                <?php echo formatCurrency($payment['due_amount']); ?>
+                                <?php if ($payment['late_fee_applied'] > 0): ?>
+                                <div class="text-xs text-red-600">+<?php echo formatCurrency($payment['late_fee_applied']); ?> late fee</div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-right text-gray-900">
+                                <?php echo formatCurrency($payment['paid_amount']); ?>
+                                <?php if ($payment['payment_date']): ?>
+                                <div class="text-xs text-gray-500"><?php echo date('M d, Y', strtotime($payment['payment_date'])); ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-4 py-4 text-center">
+                                <span class="px-2 py-1 text-xs font-medium rounded-full 
+                                    <?php 
+                                    switch($payment['status']) {
+                                        case 'paid': echo 'bg-green-100 text-green-800'; break;
+                                        case 'partial': echo 'bg-yellow-100 text-yellow-800'; break;
+                                        case 'overdue': echo 'bg-red-100 text-red-800'; break;
+                                        default: echo 'bg-gray-100 text-gray-800'; break;
+                                    }
+                                    ?>">
+                                    <?php echo ucfirst($payment['status']); ?>
+                                </span>
+                            </td>
+                            <td class="px-4 py-4 text-center">
+                                <?php if ($payment['status'] !== 'paid'): ?>
+                                <button onclick="recordPayment(<?php echo $payment['id']; ?>, <?php echo $payment['due_amount']; ?>)" 
+                                        class="text-green-600 hover:text-green-900 p-1" title="Record Payment">
+                                    <i class="fas fa-dollar-sign"></i>
+                                </button>
+                                <?php endif; ?>
+                                <?php if ($payment['receipt_number']): ?>
+                                <button onclick="viewReceipt('<?php echo $payment['receipt_number']; ?>')" 
+                                        class="text-blue-600 hover:text-blue-900 p-1 ml-2" title="View Receipt">
+                                    <i class="fas fa-receipt"></i>
+                                </button>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Plan Information -->
+    <div>
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Plan Details</h2>
+            <div class="space-y-3 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Plan Name:</span>
+                    <span class="font-medium"><?php echo htmlspecialchars($installment_plan['plan_name']); ?></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Total Amount:</span>
+                    <span class="font-medium"><?php echo formatCurrency($installment_plan['total_amount']); ?></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Down Payment:</span>
+                    <span class="font-medium"><?php echo formatCurrency($installment_plan['down_payment']); ?></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Monthly Payment:</span>
+                    <span class="font-medium"><?php echo formatCurrency($installment_plan['installment_amount']); ?></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Installments:</span>
+                    <span class="font-medium"><?php echo $installment_plan['number_of_installments']; ?> payments</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Interest Rate:</span>
+                    <span class="font-medium"><?php echo $installment_plan['interest_rate']; ?>% annually</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Frequency:</span>
+                    <span class="font-medium"><?php echo ucfirst($installment_plan['payment_frequency']); ?></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Start Date:</span>
+                    <span class="font-medium"><?php echo date('M d, Y', strtotime($installment_plan['start_date'])); ?></span>
+                </div>
+            </div>
+            
+            <?php if ($installment_plan['notes']): ?>
+            <div class="mt-4 pt-4 border-t">
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Notes:</h4>
+                <p class="text-sm text-gray-600"><?php echo nl2br(htmlspecialchars($installment_plan['notes'])); ?></p>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<?php else: ?>
+<!-- Create New Installment Plan -->
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold text-gray-800 mb-4">Create Payment Plan</h2>
+    
+    <!-- Payment Options Calculator -->
+    <div class="mb-6">
+        <h3 class="text-lg font-medium text-gray-800 mb-3">Payment Options</h3>
+        <div id="payment-options" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <!-- Options will be populated by JavaScript -->
+        </div>
+    </div>
+    
+    <form method="POST" action="?action=create_installment_plan&quote_id=<?php echo $quote['id']; ?>" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="plan_name" class="block text-sm font-medium text-gray-700 mb-2">Plan Name</label>
+                <input type="text" id="plan_name" name="plan_name" 
+                       value="Payment Plan for <?php echo htmlspecialchars($quote['customer_name']); ?>"
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            <div>
+                <label for="total_amount" class="block text-sm font-medium text-gray-700 mb-2">Total Amount</label>
+                <input type="number" id="total_amount" name="total_amount" step="0.01" 
+                       value="<?php echo $quote['total_amount']; ?>" readonly
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100">
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <label for="down_payment" class="block text-sm font-medium text-gray-700 mb-2">Down Payment</label>
+                <input type="number" id="down_payment" name="down_payment" step="0.01" min="0" 
+                       value="<?php echo $quote['total_amount'] * 0.2; ?>" 
+                       oninput="calculateInstallments()"
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            <div>
+                <label for="number_of_installments" class="block text-sm font-medium text-gray-700 mb-2">Number of Payments</label>
+                <select id="number_of_installments" name="number_of_installments" onchange="calculateInstallments()"
+                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="6">6 months</option>
+                    <option value="12" selected>12 months</option>
+                    <option value="18">18 months</option>
+                    <option value="24">24 months</option>
+                    <option value="36">36 months</option>
+                </select>
+            </div>
+            <div>
+                <label for="payment_frequency" class="block text-sm font-medium text-gray-700 mb-2">Payment Frequency</label>
+                <select id="payment_frequency" name="payment_frequency"
+                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="monthly" selected>Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <label for="interest_rate" class="block text-sm font-medium text-gray-700 mb-2">Interest Rate (% annually)</label>
+                <input type="number" id="interest_rate" name="interest_rate" step="0.01" min="0" 
+                       value="2.5" oninput="calculateInstallments()"
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            <div>
+                <label for="late_fee_amount" class="block text-sm font-medium text-gray-700 mb-2">Late Fee Amount</label>
+                <input type="number" id="late_fee_amount" name="late_fee_amount" step="0.01" min="0" 
+                       value="500"
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            <div>
+                <label for="start_date" class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                <input type="date" id="start_date" name="start_date" 
+                       value="<?php echo date('Y-m-d', strtotime('+1 month')); ?>" required
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+        </div>
+        
+        <!-- Calculation Preview -->
+        <div id="calculation-preview" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 class="font-medium text-blue-900 mb-2">Payment Calculation</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                    <span class="text-blue-700">Remaining Amount:</span>
+                    <div class="font-medium text-blue-900" id="remaining-amount">₱0.00</div>
+                </div>
+                <div>
+                    <span class="text-blue-700">Monthly Payment:</span>
+                    <div class="font-medium text-blue-900" id="monthly-payment">₱0.00</div>
+                </div>
+                <div>
+                    <span class="text-blue-700">Total Interest:</span>
+                    <div class="font-medium text-blue-900" id="total-interest">₱0.00</div>
+                </div>
+            </div>
+        </div>
+        
+        <div>
+            <label for="notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+            <textarea id="notes" name="notes" rows="3"
+                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Additional notes about the payment plan..."></textarea>
+        </div>
+        
+        <div class="flex justify-end space-x-3">
+            <button type="button" onclick="window.history.back()" 
+                    class="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                Cancel
+            </button>
+            <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
+                <i class="fas fa-save mr-2"></i>Create Payment Plan
+            </button>
+        </div>
+    </form>
+</div>
+<?php endif; ?>
+
+<!-- Record Payment Modal -->
+<div id="payment-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Record Payment</h3>
+            
+            <form id="payment-form" method="POST" action="">
+                <input type="hidden" id="payment_id" name="payment_id">
+                <input type="hidden" name="action" value="record_payment">
+                
+                <div class="mb-4">
+                    <label for="paid_amount" class="block text-sm font-medium text-gray-700 mb-2">Amount Paid</label>
+                    <input type="number" id="paid_amount" name="paid_amount" step="0.01" min="0" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="payment_method" class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                    <select id="payment_method" name="payment_method" required
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="cash">Cash</option>
+                        <option value="check">Check</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="gcash">GCash</option>
+                        <option value="paymaya">PayMaya</option>
+                        <option value="card">Credit/Debit Card</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="payment_date" class="block text-sm font-medium text-gray-700 mb-2">Payment Date</label>
+                    <input type="date" id="payment_date" name="payment_date" 
+                           value="<?php echo date('Y-m-d'); ?>" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="reference_number" class="block text-sm font-medium text-gray-700 mb-2">Reference Number</label>
+                    <input type="text" id="reference_number" name="reference_number" readonly
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-600"
+                           placeholder="Auto-generated reference number">
+                    <p class="text-xs text-gray-500 mt-1">Reference number will be auto-generated when payment is recorded</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="payment_notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                    <textarea id="payment_notes" name="notes" rows="2"
+                              class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Optional notes about this payment..."></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closePaymentModal()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+                        <i class="fas fa-save mr-2"></i>Record Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Installment calculation functions
+function calculateInstallments() {
+    const totalAmount = parseFloat(document.getElementById('total_amount').value) || 0;
+    const downPayment = parseFloat(document.getElementById('down_payment').value) || 0;
+    const numInstallments = parseInt(document.getElementById('number_of_installments').value) || 12;
+    const interestRate = parseFloat(document.getElementById('interest_rate').value) || 0;
+    
+    const remainingAmount = totalAmount - downPayment;
+    const monthlyInterestRate = interestRate / 100 / 12;
+    
+    let monthlyPayment;
+    let totalInterest;
+    
+    if (interestRate > 0) {
+        monthlyPayment = remainingAmount * 
+            (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numInstallments)) /
+            (Math.pow(1 + monthlyInterestRate, numInstallments) - 1);
+        totalInterest = (monthlyPayment * numInstallments) - remainingAmount;
+    } else {
+        monthlyPayment = remainingAmount / numInstallments;
+        totalInterest = 0;
+    }
+    
+    document.getElementById('remaining-amount').textContent = formatCurrency(remainingAmount);
+    document.getElementById('monthly-payment').textContent = formatCurrency(monthlyPayment);
+    document.getElementById('total-interest').textContent = formatCurrency(totalInterest);
+}
+
+// Payment modal functions
+function recordPayment(paymentId, dueAmount) {
+    document.getElementById('payment_id').value = paymentId;
+    document.getElementById('paid_amount').value = dueAmount;
+    
+    // Update form action to include quote_id
+    const quoteId = new URLSearchParams(window.location.search).get('quote_id');
+    if (quoteId) {
+        document.getElementById('payment-form').action = `?action=record_payment&quote_id=${quoteId}`;
+    }
+    
+    // Clear previous values
+    document.getElementById('payment_notes').value = '';
+    document.getElementById('reference_number').value = '';
+    document.getElementById('payment_method').selectedIndex = 0;
+    
+    document.getElementById('payment-modal').classList.remove('hidden');
+}
+
+function closePaymentModal() {
+    document.getElementById('payment-modal').classList.add('hidden');
+}
+
+function viewReceipt(receiptNumber) {
+    // Implement receipt viewing functionality
+    alert('Receipt #' + receiptNumber + ' - Receipt viewing functionality to be implemented');
+}
+
+// Currency formatting function
+function formatCurrency(amount) {
+    return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// Initialize calculations on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('total_amount')) {
+        calculateInstallments();
+    }
+});
+</script>
 
 <?php endif; ?>
 
@@ -2344,6 +2872,11 @@ function toggleEditBatteryCapacityInput() {
     } else {
         inputDiv.classList.add('hidden');
     }
+}
+
+// Quote approval confirmation function
+function confirmQuoteApproval() {
+    return confirm('Are you sure you want to approve this quote?\n\n⚠️ WARNING: This will automatically deduct the quoted items from inventory stock.\n\nPlease ensure you have sufficient stock before proceeding.');
 }
 </script>
 

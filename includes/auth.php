@@ -1,6 +1,14 @@
 <?php
 require_once 'config.php';
 
+// Require user to be logged in
+function requireLogin() {
+    if (!isLoggedIn()) {
+        header("Location: login.php");
+        exit();
+    }
+}
+
 // Login function
 function login($username, $password) {
     global $pdo;

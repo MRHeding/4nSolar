@@ -549,14 +549,14 @@ include 'includes/header.php';
     <!-- Fixed Table Header -->
     <div class="bg-gray-50 border-b border-gray-200">
         <div class="min-w-full">
-            <div class="grid grid-cols-7 gap-4 px-6 py-3">
-                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</div>
+            <div class="grid grid-cols-8 gap-4 px-6 py-3">
+                <div class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size/Specification</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pricing</div>
-                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</div>
+                <div class="text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</div>
                 <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</div>
-                <div class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</div>
+                <div class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</div>
             </div>
         </div>
     </div>
@@ -567,14 +567,14 @@ include 'includes/header.php';
             <tbody class="bg-white divide-y divide-gray-200">
             <?php if (!empty($items)): ?>
                 <?php foreach ($items as $item): ?>
-                <tr class="hover:bg-gray-50 inventory-item-row" 
+                <tr class="hover:bg-gray-50 inventory-item-row grid grid-cols-8 gap-4" 
                     data-brand="<?php echo strtolower(htmlspecialchars($item['brand'])); ?>"
                     data-model="<?php echo strtolower(htmlspecialchars($item['model'])); ?>"
                     data-category="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
                     data-size="<?php echo strtolower(htmlspecialchars($item['size_specification'])); ?>"
                     data-supplier="<?php echo strtolower(htmlspecialchars($item['supplier_name'] ?? '')); ?>"
                     data-full-text="<?php echo strtolower(htmlspecialchars($item['brand'] . ' ' . $item['model'] . ' ' . ($item['category_name'] ?? '') . ' ' . $item['size_specification'] . ' ' . ($item['supplier_name'] ?? '') . ' ' . ($item['description'] ?? ''))); ?>">
-                    <td class="px-6 py-4">
+                    <td class="col-span-2 px-6 py-4">
                         <div class="flex items-center">
                             <div class="flex-shrink-0 h-16 w-16">
                                 <a href="?action=view&id=<?php echo $item['id']; ?>">
@@ -600,23 +600,23 @@ include 'includes/header.php';
                     <td class="px-6 py-4 text-sm text-gray-900">
                         <span class="break-words"><?php echo htmlspecialchars($item['size_specification']); ?></span>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td class="px-6 py-4 text-sm text-gray-900">
                         <div>Base: <?php echo formatCurrency($item['base_price']); ?></div>
                         <div>Sell: <?php echo formatCurrency($item['selling_price']); ?></div>
                         <?php if ($item['discount_percentage'] > 0): ?>
                         <div class="text-green-600">-<?php echo $item['discount_percentage']; ?>%</div>
                         <?php endif; ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
+                    <td class="px-6 py-4 text-center">
                         <div class="text-sm text-gray-900"><?php echo $item['stock_quantity']; ?></div>
                         <?php if ($item['stock_quantity'] <= $item['minimum_stock']): ?>
                         <div class="text-xs text-red-600">Low Stock!</div>
                         <?php endif; ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td class="px-6 py-4 text-sm text-gray-900">
                         <?php echo htmlspecialchars($item['supplier_name'] ?? 'N/A'); ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                    <td class="px-6 py-4 text-right text-sm font-medium space-x-2">
                         <a href="?action=view&id=<?php echo $item['id']; ?>" class="text-blue-600 hover:text-blue-900">
                             <i class="fas fa-eye"></i>
                         </a>

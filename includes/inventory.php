@@ -307,7 +307,9 @@ function getQuotes($status = null) {
     global $pdo;
     
     $sql = "SELECT q.*, u.full_name as created_by_name,
-            (SELECT COUNT(*) FROM quote_items WHERE quote_id = q.id) as items_count
+            (SELECT COUNT(*) FROM quote_items WHERE quote_id = q.id) as items_count,
+            (SELECT COUNT(*) FROM installment_plans WHERE quotation_id = q.id AND status = 'active') as has_installment_plan,
+            (SELECT installment_status FROM quotations WHERE id = q.id) as installment_status
             FROM quotations q 
             LEFT JOIN users u ON q.created_by = u.id 
             WHERE 1=1";
@@ -579,13 +581,25 @@ function updateQuoteStatus($quote_id, $new_status) {
         $stmt = $pdo->prepare("UPDATE quotations SET status = ?, updated_at = NOW() WHERE id = ?");
         $result = $stmt->execute([$new_status, $quote_id]);
         
-        // If status is being set to 'accepted', convert to solar project
+        // If status is being set to 'accepted', deduct inventory and convert to solar project
         if ($result && $new_status === 'accepted') {
+            // First deduct inventory
+            $inventory_result = deductQuoteInventory($quote_id);
+            if (!$inventory_result['success']) {
+                // If inventory deduction fails, revert the status update
+                $stmt = $pdo->prepare("UPDATE quotations SET status = 'draft', updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$quote_id]);
+                return ['success' => false, 'message' => $inventory_result['message'], 'inventory_error' => true];
+            }
+            
+            // Then convert to solar project
             $conversion_result = convertQuotationToProject($quote_id);
             if (!$conversion_result['success']) {
-                // Log error but don't fail the status update
+                // Log error but don't fail the status update since inventory was already deducted
                 error_log("Failed to convert quotation $quote_id to project: " . $conversion_result['message']);
             }
+            
+            return ['success' => true, 'inventory_result' => $inventory_result];
         }
         
         return $result;
@@ -803,6 +817,186 @@ function getQuoteWithProfitData($id) {
     }
     
     return $quote;
+}
+
+// Check if quotation has an active installment plan
+function hasInstallmentPlan($quotation_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM installment_plans 
+                          WHERE quotation_id = ? AND status = 'active'");
+    $stmt->execute([$quotation_id]);
+    $result = $stmt->fetch();
+    
+    return $result['count'] > 0;
+}
+
+// Get installment status for a quotation
+function getInstallmentStatus($quotation_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT installment_status FROM quotations WHERE id = ?");
+    $stmt->execute([$quotation_id]);
+    $result = $stmt->fetch();
+    
+    return $result ? $result['installment_status'] : null;
+}
+
+// Deduct inventory items when quote is approved
+function deductQuoteInventory($quote_id) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get all items in this quote
+        $stmt = $pdo->prepare("SELECT qi.inventory_item_id, qi.quantity, i.brand, i.model, i.stock_quantity
+                              FROM quote_items qi 
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
+                              WHERE qi.quote_id = ? AND qi.inventory_item_id IS NOT NULL");
+        $stmt->execute([$quote_id]);
+        $quote_items = $stmt->fetchAll();
+        
+        $deducted_items = [];
+        $insufficient_stock_items = [];
+        
+        foreach ($quote_items as $item) {
+            $inventory_item_id = $item['inventory_item_id'];
+            $quantity_needed = $item['quantity'];
+            $current_stock = $item['stock_quantity'];
+            
+            // Check if we have enough stock
+            if ($current_stock < $quantity_needed) {
+                $insufficient_stock_items[] = [
+                    'item' => $item['brand'] . ' ' . $item['model'],
+                    'available' => $current_stock,
+                    'needed' => $quantity_needed
+                ];
+                continue;
+            }
+            
+            // Update the stock
+            $new_stock = $current_stock - $quantity_needed;
+            $stmt = $pdo->prepare("UPDATE inventory_items SET stock_quantity = ? WHERE id = ?");
+            $stmt->execute([$new_stock, $inventory_item_id]);
+            
+            // Record stock movement
+            $stmt = $pdo->prepare("INSERT INTO stock_movements 
+                                  (inventory_item_id, movement_type, quantity, previous_stock, new_stock, 
+                                   reference_type, reference_id, notes, created_by) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $inventory_item_id, 
+                'out', 
+                $quantity_needed, 
+                $current_stock, 
+                $new_stock, 
+                'quotation', 
+                $quote_id, 
+                "Inventory deducted for approved quotation", 
+                $_SESSION['user_id'] ?? 1
+            ]);
+            
+            $deducted_items[] = [
+                'item' => $item['brand'] . ' ' . $item['model'],
+                'quantity' => $quantity_needed,
+                'new_stock' => $new_stock
+            ];
+        }
+        
+        // If there are insufficient stock items, rollback and return error
+        if (!empty($insufficient_stock_items)) {
+            $pdo->rollback();
+            $error_message = "Insufficient stock for the following items:\n";
+            foreach ($insufficient_stock_items as $item) {
+                $error_message .= "- {$item['item']}: Available {$item['available']}, Needed {$item['needed']}\n";
+            }
+            return ['success' => false, 'message' => $error_message, 'insufficient_items' => $insufficient_stock_items];
+        }
+        
+        $pdo->commit();
+        return [
+            'success' => true, 
+            'message' => 'Inventory deducted successfully',
+            'deducted_items' => $deducted_items
+        ];
+        
+    } catch(Exception $e) {
+        $pdo->rollback();
+        error_log("Quote inventory deduction failed: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Failed to deduct inventory: ' . $e->getMessage()];
+    }
+}
+
+// Restore inventory items when quote status is reverted from accepted
+function restoreQuoteInventory($quote_id) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get all stock movements for this quote that were deductions
+        $stmt = $pdo->prepare("SELECT sm.*, i.brand, i.model 
+                              FROM stock_movements sm 
+                              LEFT JOIN inventory_items i ON sm.inventory_item_id = i.id 
+                              WHERE sm.reference_type = 'quotation' 
+                              AND sm.reference_id = ? 
+                              AND sm.movement_type = 'out'");
+        $stmt->execute([$quote_id]);
+        $movements = $stmt->fetchAll();
+        
+        $restored_items = [];
+        
+        foreach ($movements as $movement) {
+            $inventory_item_id = $movement['inventory_item_id'];
+            $quantity_to_restore = $movement['quantity'];
+            
+            // Get current stock
+            $stmt = $pdo->prepare("SELECT stock_quantity FROM inventory_items WHERE id = ?");
+            $stmt->execute([$inventory_item_id]);
+            $current_stock = $stmt->fetchColumn();
+            
+            // Restore the stock
+            $new_stock = $current_stock + $quantity_to_restore;
+            $stmt = $pdo->prepare("UPDATE inventory_items SET stock_quantity = ? WHERE id = ?");
+            $stmt->execute([$new_stock, $inventory_item_id]);
+            
+            // Record stock movement for restoration
+            $stmt = $pdo->prepare("INSERT INTO stock_movements 
+                                  (inventory_item_id, movement_type, quantity, previous_stock, new_stock, 
+                                   reference_type, reference_id, notes, created_by) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $inventory_item_id, 
+                'in', 
+                $quantity_to_restore, 
+                $current_stock, 
+                $new_stock, 
+                'quotation_restore', 
+                $quote_id, 
+                "Inventory restored - quote status reverted", 
+                $_SESSION['user_id'] ?? 1
+            ]);
+            
+            $restored_items[] = [
+                'item' => $movement['brand'] . ' ' . $movement['model'],
+                'quantity' => $quantity_to_restore,
+                'new_stock' => $new_stock
+            ];
+        }
+        
+        $pdo->commit();
+        return [
+            'success' => true, 
+            'message' => 'Inventory restored successfully',
+            'restored_items' => $restored_items
+        ];
+        
+    } catch(Exception $e) {
+        $pdo->rollback();
+        error_log("Quote inventory restoration failed: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Failed to restore inventory: ' . $e->getMessage()];
+    }
 }
 
 // Save customer information for a quote
