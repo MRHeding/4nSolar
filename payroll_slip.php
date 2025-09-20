@@ -206,14 +206,14 @@ if (!$is_print) {
                             <td>Miscellaneous</td>
                             <td class="text-end"><?php echo number_format($payroll['miscellaneous'], 2); ?></td>
                         </tr>
+                        <?php if (!empty($payroll['custom_deductions'])): ?>
+                        <?php foreach ($payroll['custom_deductions'] as $deduction): ?>
                         <tr>
-                            <td></td>
-                            <td class="text-end">0</td>
+                            <td><?php echo htmlspecialchars($deduction['description']); ?></td>
+                            <td class="text-end"><?php echo number_format($deduction['amount'], 2); ?></td>
                         </tr>
-                        <tr>
-                            <td></td>
-                            <td class="text-end">0</td>
-                        </tr>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
                         <tr style="background-color: #f8f9fa; font-weight: bold;">
                             <td>Total</td>
                             <td class="text-end"><?php echo number_format($payroll['total_deductions'], 2); ?></td>

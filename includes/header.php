@@ -133,6 +133,7 @@
     <?php else: ?>
         <!-- Tailwind CSS (Local) -->
         <link href="assets/css/output.css" rel="stylesheet">
+        <link href="assets/css/dark-mode.css" rel="stylesheet">
         <link href="assets/fontawesome/all.min.css" rel="stylesheet">
         <style>
             /* Additional styles for Tailwind sidebar */
@@ -187,6 +188,12 @@
                 <div class="d-flex align-items-center text-white">
                     <span class="me-3">Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?></span>
                     <span class="badge bg-primary me-3"><?php echo strtoupper($_SESSION['role']); ?></span>
+                    
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle-bootstrap" class="btn btn-outline-light btn-sm me-3" title="Toggle Theme">
+                        <i id="theme-icon-bootstrap" class="fas fa-moon"></i>
+                    </button>
+                    
                     <a href="logout.php" class="text-white text-decoration-none">
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </a>
@@ -264,7 +271,7 @@
                 <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content" id="main-content">
     <?php else: ?>
         <!-- Tailwind Navigation -->
-        <nav class="bg-solar-blue shadow-lg">
+        <nav class="bg-solar-blue dark:bg-gray-800 shadow-lg">
             <div class="px-4">
                 <div class="flex justify-between items-center py-4">
                     <div class="flex items-center space-x-3">
@@ -283,6 +290,12 @@
                             <span class="text-sm">Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?></span>
                             <span class="ml-2 px-2 py-1 bg-blue-600 rounded text-xs uppercase"><?php echo $_SESSION['role']; ?></span>
                         </div>
+                        
+                        <!-- Theme Toggle -->
+                        <button id="theme-toggle" class="text-white hover:text-solar-yellow transition-colors duration-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10" title="Toggle Theme">
+                            <i id="theme-icon" class="fas fa-moon"></i>
+                        </button>
+                        
                         <a href="logout.php" class="text-white hover:text-solar-yellow">
                             <i class="fas fa-sign-out-alt"></i> Logout
                         </a>
@@ -297,11 +310,11 @@
             <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
             
             <!-- Sidebar -->
-            <div class="w-64 bg-white shadow-lg min-h-screen transition-all duration-300 ease-in-out" id="sidebar">
+            <div class="w-64 bg-white dark:bg-gray-800 shadow-lg min-h-screen transition-all duration-300 ease-in-out" id="sidebar">
                 <div class="p-4">
                     <ul class="space-y-2">
                         <li>
-                            <a href="dashboard.php" class="sidebar-link flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white transition-all duration-200 <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'bg-solar-blue text-white' : ''; ?>">
+                            <a href="dashboard.php" class="sidebar-link flex items-center space-x-3 text-gray-700 dark:text-gray-300 p-3 rounded-lg hover:bg-solar-blue hover:text-white transition-all duration-200 <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'bg-solar-blue text-white' : ''; ?>">
                                 <i class="fas fa-tachometer-alt w-5 text-center"></i>
                                 <span class="transition-all duration-300">Dashboard</span>
                             </a>
@@ -361,7 +374,7 @@
             </div>
 
             <!-- Main Content -->
-            <div class="flex-1 p-6 transition-all duration-300 ease-in-out" id="main-content">
+            <div class="flex-1 p-6 transition-all duration-300 ease-in-out bg-gray-100 dark:bg-gray-900 min-h-screen" id="main-content">
     <?php endif; ?>
             <?php endif; ?>
             
@@ -536,4 +549,38 @@
                 }
             }
         });
+
+        // Theme Toggle Functionality
+        function initTheme() {
+            const themeToggle = document.getElementById('theme-toggle') || document.getElementById('theme-toggle-bootstrap');
+            const themeIcon = document.getElementById('theme-icon') || document.getElementById('theme-icon-bootstrap');
+            
+            if (!themeToggle || !themeIcon) return;
+
+            // Get saved theme or default to light
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+            updateThemeIcon(themeIcon, savedTheme);
+
+            // Theme toggle event
+            themeToggle.addEventListener('click', () => {
+                const isDark = document.documentElement.classList.contains('dark');
+                const newTheme = isDark ? 'light' : 'dark';
+                
+                document.documentElement.classList.toggle('dark');
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(themeIcon, newTheme);
+            });
+        }
+
+        function updateThemeIcon(icon, theme) {
+            if (theme === 'dark') {
+                icon.className = 'fas fa-sun';
+            } else {
+                icon.className = 'fas fa-moon';
+            }
+        }
+
+        // Initialize theme on page load
+        document.addEventListener('DOMContentLoaded', initTheme);
     </script>

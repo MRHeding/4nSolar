@@ -54,59 +54,59 @@ include 'includes/header.php';
 ?>
 
 <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-800">Dashboard</h1>
-    <p class="text-gray-600">Welcome to 4NSOLAR ELECTRICZ Inventory Management System</p>
+    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Dashboard</h1>
+    <p class="text-gray-600 dark:text-gray-400">Welcome to 4NSOLAR ELECTRICZ Inventory Management System</p>
 </div>
 
 <!-- Statistics Cards -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
     <!-- Total Items -->
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-blue-100">
                 <i class="fas fa-boxes text-solar-blue text-xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Total Items</p>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Items</p>
                 <p class="text-2xl font-semibold text-gray-900"><?php echo $total_items; ?></p>
             </div>
         </div>
     </div>
 
     <!-- Low Stock Items -->
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-red-100">
                 <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Low Stock Items</p>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Low Stock Items</p>
                 <p class="text-2xl font-semibold text-gray-900"><?php echo count($low_stock_items); ?></p>
             </div>
         </div>
     </div>
 
     <!-- Total Projects -->
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-green-100">
                 <i class="fas fa-project-diagram text-solar-green text-xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Total Projects</p>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Projects</p>
                 <p class="text-2xl font-semibold text-gray-900"><?php echo $total_projects; ?></p>
             </div>
         </div>
     </div>
 
     <!-- Today's Sales -->
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-purple-100">
                 <i class="fas fa-cash-register text-purple-600 text-xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Today's Sales</p>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Today's Sales</p>
                 <p class="text-2xl font-semibold text-gray-900"><?php echo $pos_stats['today_sales']; ?></p>
                 <p class="text-xs text-gray-500">
                     <?php echo formatCurrency($pos_stats['today_revenue']); ?> revenue
@@ -116,13 +116,13 @@ include 'includes/header.php';
     </div>
 
     <!-- Total Revenue (All-Time) -->
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-yellow-100">
                 <i class="fas fa-dollar-sign text-solar-yellow text-xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Total Revenue</p>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Revenue</p>
                 <?php 
                 $pos_stats_all_time = getPOSStats(); // Get all-time POS stats
                 $total_revenue_all_time = $project_stats['total_revenue'] + $pos_stats_all_time['total_revenue'];
@@ -194,8 +194,8 @@ include 'includes/header.php';
 
 <!-- Quick Actions -->
 <div class="mb-8">
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
             <i class="fas fa-bolt text-solar-blue mr-2"></i>
             Quick Actions
         </h2>
@@ -223,10 +223,10 @@ include 'includes/header.php';
 <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
     <!-- Low Stock Alert -->
     <?php if (!empty($low_stock_items)): ?>
-    <div class="bg-white rounded-lg shadow">
-        <div class="p-6 border-b border-gray-200">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-600">
             <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold text-gray-800">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200">
                     <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
                     Low Stock Alert
                 </h2>
@@ -239,7 +239,7 @@ include 'includes/header.php';
                 <div class="flex items-center justify-between p-3 bg-red-50 rounded-lg">
                     <div>
                         <p class="font-medium text-gray-900"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></p>
-                        <p class="text-sm text-gray-600"><?php echo htmlspecialchars($item['size_specification']); ?></p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400"><?php echo htmlspecialchars($item['size_specification']); ?></p>
                     </div>
                     <div class="text-right">
                         <p class="text-sm font-medium text-red-600">Stock: <?php echo $item['stock_quantity']; ?></p>
@@ -253,10 +253,10 @@ include 'includes/header.php';
     <?php endif; ?>
 
     <!-- Recent Projects -->
-    <div class="bg-white rounded-lg shadow">
-        <div class="p-6 border-b border-gray-200">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-600">
             <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold text-gray-800">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200">
                     <i class="fas fa-project-diagram text-solar-blue mr-2"></i>
                     Recent Projects
                 </h2>
@@ -270,7 +270,7 @@ include 'includes/header.php';
                 <div class="flex items-center justify-between p-3 border rounded-lg">
                     <div>
                         <p class="font-medium text-gray-900"><?php echo htmlspecialchars($project['project_name']); ?></p>
-                        <p class="text-sm text-gray-600"><?php echo htmlspecialchars($project['customer_name']); ?></p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400"><?php echo htmlspecialchars($project['customer_name']); ?></p>
                     </div>
                     <div class="text-right">
                         <span class="px-2 py-1 text-xs font-medium rounded-full 
@@ -279,7 +279,7 @@ include 'includes/header.php';
                                 case 'completed': echo 'bg-green-100 text-green-800'; break;
                                 case 'approved': echo 'bg-blue-100 text-blue-800'; break;
                                 case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
-                                default: echo 'bg-gray-100 text-gray-800';
+                                default: echo 'bg-gray-100 text-gray-800 dark:text-gray-200';
                             }
                             ?>">
                             <?php echo ucfirst($project['project_status']); ?>
@@ -296,9 +296,9 @@ include 'includes/header.php';
     </div>
 
     <!-- Project Status Overview -->
-    <div class="bg-white rounded-lg shadow">
-        <div class="p-6 border-b border-gray-200">
-            <h2 class="text-lg font-semibold text-gray-800">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-600">
+            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200">
                 <i class="fas fa-chart-pie text-solar-green mr-2"></i>
                 Project Status Overview
             </h2>
@@ -322,9 +322,9 @@ include 'includes/header.php';
 
 <!-- Recent POS Transactions -->
 <div class="mt-8">
-    <div class="bg-white rounded-lg shadow">
-        <div class="p-6 border-b border-gray-200">
-            <h2 class="text-lg font-semibold text-gray-800">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-600">
+            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200">
                 <i class="fas fa-cash-register text-solar-yellow mr-2"></i>
                 Recent POS Transactions
             </h2>
@@ -341,7 +341,7 @@ include 'includes/header.php';
                                 <?php echo ucfirst($sale['status']); ?>
                             </span>
                         </div>
-                        <p class="text-sm text-gray-600">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
                             <?php echo htmlspecialchars($sale['customer_name'] ?? 'Walk-in Customer'); ?>
                             <?php if (!empty($sale['customer_phone'])): ?>
                             • <?php echo htmlspecialchars($sale['customer_phone']); ?>

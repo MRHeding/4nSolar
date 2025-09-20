@@ -210,7 +210,23 @@ function updateStock($item_id, $new_quantity, $movement_type, $reference_type, $
                                reference_type, reference_id, notes, created_by) 
                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$item_id, $movement_type, abs($quantity_change), $current_stock, $new_quantity, 
-                       $reference_type, $reference_id, $notes, $_SESSION['user_id']]);
+                       $reference_type, $reference_id, $notes, $_SESSION['user_id'] ?? 1]);
+        
+        // If stock increased and item generates serials, automatically generate serial numbers
+        if ($quantity_change > 0) {
+            $stmt = $pdo->prepare("SELECT generate_serials FROM inventory_items WHERE id = ?");
+            $stmt->execute([$item_id]);
+            $generates_serials = $stmt->fetchColumn();
+            
+            if ($generates_serials) {
+                // Generate serial numbers for the new stock
+                $serial_result = generateSerialNumbers($item_id, $quantity_change, $_SESSION['user_id'] ?? 1);
+                if (!$serial_result['success']) {
+                    // Log error but don't fail the stock update
+                    error_log("Failed to auto-generate serials for item $item_id: " . $serial_result['message']);
+                }
+            }
+        }
         
         $pdo->commit();
         return true;
@@ -484,12 +500,36 @@ function removeQuoteItem($quote_item_id) {
     global $pdo;
     
     try {
-        // Get quote ID before deleting
-        $stmt = $pdo->prepare("SELECT quote_id FROM quote_items WHERE id = ?");
-        $stmt->execute([$quote_item_id]);
-        $quote_id = $stmt->fetchColumn();
+        $pdo->beginTransaction();
         
-        // Delete the item
+        // Get quote item details including serial information
+        $stmt = $pdo->prepare("SELECT quote_id, inventory_item_id, serial_numbers, serial_count 
+                              FROM quote_items WHERE id = ?");
+        $stmt->execute([$quote_item_id]);
+        $quote_item = $stmt->fetch();
+        
+        if (!$quote_item) {
+            $pdo->rollback();
+            return false;
+        }
+        
+        $quote_id = $quote_item['quote_id'];
+        $inventory_item_id = $quote_item['inventory_item_id'];
+        $serial_numbers = $quote_item['serial_numbers'];
+        $serial_count = $quote_item['serial_count'];
+        
+        // Release reserved serial numbers if they exist
+        if (!empty($serial_numbers) && $serial_count > 0) {
+            $serials = json_decode($serial_numbers, true);
+            if (is_array($serials) && !empty($serials)) {
+                $release_result = releaseReservedSerials($inventory_item_id, $serials);
+                if (!$release_result['success']) {
+                    error_log("Failed to release serials when removing quote item: " . $release_result['message']);
+                }
+            }
+        }
+        
+        // Delete the quote item
         $stmt = $pdo->prepare("DELETE FROM quote_items WHERE id = ?");
         $result = $stmt->execute([$quote_item_id]);
         
@@ -497,8 +537,12 @@ function removeQuoteItem($quote_item_id) {
             updateQuoteTotals($quote_id);
         }
         
+        $pdo->commit();
         return $result;
+        
     } catch(PDOException $e) {
+        $pdo->rollback();
+        error_log("Failed to remove quote item: " . $e->getMessage());
         return false;
     }
 }
@@ -508,19 +552,60 @@ function updateQuoteItemQuantity($quote_item_id, $new_quantity) {
     global $pdo;
     
     try {
-        // Get current item details
+        $pdo->beginTransaction();
+        
+        // Get current item details including serial information
         $stmt = $pdo->prepare("SELECT qi.quote_id, qi.unit_price, qi.discount_percentage, 
-                              qi.inventory_item_id, i.brand, i.model, i.is_active
+                              qi.inventory_item_id, qi.quantity as current_quantity, qi.serial_numbers, qi.serial_count,
+                              i.brand, i.model, i.is_active, i.generate_serials
                               FROM quote_items qi
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id
                               WHERE qi.id = ?");
         $stmt->execute([$quote_item_id]);
         $item = $stmt->fetch();
         
-        if (!$item) return ['success' => false, 'message' => 'Item not found'];
+        if (!$item) {
+            $pdo->rollback();
+            return ['success' => false, 'message' => 'Item not found'];
+        }
         
         if (!$item['is_active']) {
+            $pdo->rollback();
             return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
+        }
+        
+        $current_quantity = $item['current_quantity'];
+        $inventory_item_id = $item['inventory_item_id'];
+        $serial_numbers = $item['serial_numbers'];
+        $serial_count = $item['serial_count'];
+        
+        // Handle serial number changes if item generates serials
+        if ($item['generate_serials'] && $new_quantity != $current_quantity) {
+            if (!empty($serial_numbers) && $serial_count > 0) {
+                $serials = json_decode($serial_numbers, true);
+                if (is_array($serials) && !empty($serials)) {
+                    if ($new_quantity < $current_quantity) {
+                        // Quantity decreased - release excess serials
+                        $serials_to_release = array_slice($serials, $new_quantity);
+                        $serials_to_keep = array_slice($serials, 0, $new_quantity);
+                        
+                        if (!empty($serials_to_release)) {
+                            $release_result = releaseReservedSerials($inventory_item_id, $serials_to_release);
+                            if (!$release_result['success']) {
+                                error_log("Failed to release excess serials when updating quantity: " . $release_result['message']);
+                            }
+                        }
+                        
+                        // Update serial numbers to keep only the required ones
+                        $serial_numbers = json_encode($serials_to_keep);
+                        $serial_count = count($serials_to_keep);
+                    } else {
+                        // Quantity increased - need more serials (this should be handled by user selecting more serials)
+                        // For now, we'll keep the existing serials and let the user manually add more
+                        return ['success' => false, 'message' => 'To increase quantity for serialized items, please remove and re-add the item with the desired quantity and serial numbers'];
+                    }
+                }
+            }
         }
         
         $discount_amount = ($item['unit_price'] * $item['discount_percentage'] / 100) * $new_quantity;
@@ -528,19 +613,23 @@ function updateQuoteItemQuantity($quote_item_id, $new_quantity) {
         
         // Update the item
         $stmt = $pdo->prepare("UPDATE quote_items SET 
-                              quantity = ?, discount_amount = ?, total_amount = ? 
+                              quantity = ?, discount_amount = ?, total_amount = ?, 
+                              serial_numbers = ?, serial_count = ?
                               WHERE id = ?");
         
-        $result = $stmt->execute([$new_quantity, $discount_amount, $total_amount, $quote_item_id]);
+        $result = $stmt->execute([$new_quantity, $discount_amount, $total_amount, $serial_numbers, $serial_count, $quote_item_id]);
         
         if ($result) {
             updateQuoteTotals($item['quote_id']);
+            $pdo->commit();
             return ['success' => true, 'message' => 'Quantity updated successfully'];
         }
         
+        $pdo->rollback();
         return ['success' => false, 'message' => 'Failed to update quantity'];
         
     } catch(PDOException $e) {
+        $pdo->rollback();
         return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
     }
 }
@@ -578,17 +667,33 @@ function updateQuoteStatus($quote_id, $new_status) {
     global $pdo;
     
     try {
+        // Get current status before updating
+        $stmt = $pdo->prepare("SELECT status FROM quotations WHERE id = ?");
+        $stmt->execute([$quote_id]);
+        $current_status = $stmt->fetchColumn();
+        
         $stmt = $pdo->prepare("UPDATE quotations SET status = ?, updated_at = NOW() WHERE id = ?");
         $result = $stmt->execute([$new_status, $quote_id]);
         
+        if (!$result) {
+            return false;
+        }
+        
+        // Handle status transitions
+        
+        // Release reserved serial numbers for cancelled or rejected quotes
+        if ($new_status === 'cancelled' || $new_status === 'rejected') {
+            releaseAllReservedSerialsForQuote($quote_id);
+        }
+        
         // If status is being set to 'accepted', deduct inventory and convert to solar project
-        if ($result && $new_status === 'accepted') {
+        if ($new_status === 'accepted') {
             // First deduct inventory
             $inventory_result = deductQuoteInventory($quote_id);
             if (!$inventory_result['success']) {
                 // If inventory deduction fails, revert the status update
-                $stmt = $pdo->prepare("UPDATE quotations SET status = 'draft', updated_at = NOW() WHERE id = ?");
-                $stmt->execute([$quote_id]);
+                $stmt = $pdo->prepare("UPDATE quotations SET status = ?, updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$current_status, $quote_id]);
                 return ['success' => false, 'message' => $inventory_result['message'], 'inventory_error' => true];
             }
             
@@ -600,6 +705,16 @@ function updateQuoteStatus($quote_id, $new_status) {
             }
             
             return ['success' => true, 'inventory_result' => $inventory_result];
+        }
+        
+        // If reverting from 'accepted' to 'draft', restore inventory
+        if ($current_status === 'accepted' && $new_status === 'draft') {
+            $restore_result = restoreQuoteInventory($quote_id);
+            if (!$restore_result['success']) {
+                // Log error but don't fail the status update
+                error_log("Failed to restore inventory for quotation $quote_id: " . $restore_result['message']);
+            }
+            return ['success' => true, 'restore_result' => $restore_result];
         }
         
         return $result;
@@ -849,8 +964,9 @@ function deductQuoteInventory($quote_id) {
     try {
         $pdo->beginTransaction();
         
-        // Get all items in this quote
-        $stmt = $pdo->prepare("SELECT qi.inventory_item_id, qi.quantity, i.brand, i.model, i.stock_quantity
+        // Get all items in this quote with serial information
+        $stmt = $pdo->prepare("SELECT qi.inventory_item_id, qi.quantity, qi.serial_numbers, qi.serial_count,
+                                     i.brand, i.model, i.stock_quantity, i.generate_serials
                               FROM quote_items qi 
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
                               WHERE qi.quote_id = ? AND qi.inventory_item_id IS NOT NULL");
@@ -864,6 +980,7 @@ function deductQuoteInventory($quote_id) {
             $inventory_item_id = $item['inventory_item_id'];
             $quantity_needed = $item['quantity'];
             $current_stock = $item['stock_quantity'];
+            $generates_serials = $item['generate_serials'];
             
             // Check if we have enough stock
             if ($current_stock < $quantity_needed) {
@@ -873,6 +990,20 @@ function deductQuoteInventory($quote_id) {
                     'needed' => $quantity_needed
                 ];
                 continue;
+            }
+            
+            // Handle serial numbers if item generates them
+            if ($generates_serials && !empty($item['serial_numbers'])) {
+                $serial_numbers = json_decode($item['serial_numbers'], true);
+                if (is_array($serial_numbers) && count($serial_numbers) > 0) {
+                    // Mark reserved serials as sold
+                    $placeholders = str_repeat('?,', count($serial_numbers) - 1) . '?';
+                    $stmt = $pdo->prepare("UPDATE inventory_serials 
+                                          SET status = 'sold', quote_id = NULL 
+                                          WHERE inventory_item_id = ? AND serial_number IN ($placeholders)");
+                    $params = array_merge([$inventory_item_id], $serial_numbers);
+                    $stmt->execute($params);
+                }
             }
             
             // Update the stock
@@ -891,7 +1022,7 @@ function deductQuoteInventory($quote_id) {
                 $quantity_needed, 
                 $current_stock, 
                 $new_stock, 
-                'quotation', 
+                'sale', 
                 $quote_id, 
                 "Inventory deducted for approved quotation", 
                 $_SESSION['user_id'] ?? 1
@@ -900,7 +1031,8 @@ function deductQuoteInventory($quote_id) {
             $deducted_items[] = [
                 'item' => $item['brand'] . ' ' . $item['model'],
                 'quantity' => $quantity_needed,
-                'new_stock' => $new_stock
+                'new_stock' => $new_stock,
+                'serials_processed' => $generates_serials && !empty($item['serial_numbers'])
             ];
         }
         
@@ -936,10 +1068,10 @@ function restoreQuoteInventory($quote_id) {
         $pdo->beginTransaction();
         
         // Get all stock movements for this quote that were deductions
-        $stmt = $pdo->prepare("SELECT sm.*, i.brand, i.model 
+        $stmt = $pdo->prepare("SELECT sm.*, i.brand, i.model, i.generate_serials
                               FROM stock_movements sm 
                               LEFT JOIN inventory_items i ON sm.inventory_item_id = i.id 
-                              WHERE sm.reference_type = 'quotation' 
+                              WHERE sm.reference_type = 'sale' 
                               AND sm.reference_id = ? 
                               AND sm.movement_type = 'out'");
         $stmt->execute([$quote_id]);
@@ -950,11 +1082,34 @@ function restoreQuoteInventory($quote_id) {
         foreach ($movements as $movement) {
             $inventory_item_id = $movement['inventory_item_id'];
             $quantity_to_restore = $movement['quantity'];
+            $generates_serials = $movement['generate_serials'];
             
             // Get current stock
             $stmt = $pdo->prepare("SELECT stock_quantity FROM inventory_items WHERE id = ?");
             $stmt->execute([$inventory_item_id]);
             $current_stock = $stmt->fetchColumn();
+            
+            // Handle serial numbers if item generates them
+            if ($generates_serials) {
+                // Get quote items to find the serial numbers that were sold
+                $stmt = $pdo->prepare("SELECT serial_numbers FROM quote_items 
+                                      WHERE quote_id = ? AND inventory_item_id = ?");
+                $stmt->execute([$quote_id, $inventory_item_id]);
+                $quote_item = $stmt->fetch();
+                
+                if ($quote_item && !empty($quote_item['serial_numbers'])) {
+                    $serial_numbers = json_decode($quote_item['serial_numbers'], true);
+                    if (is_array($serial_numbers) && count($serial_numbers) > 0) {
+                        // Mark sold serials as available again
+                        $placeholders = str_repeat('?,', count($serial_numbers) - 1) . '?';
+                        $stmt = $pdo->prepare("UPDATE inventory_serials 
+                                              SET status = 'available', quote_id = ? 
+                                              WHERE inventory_item_id = ? AND serial_number IN ($placeholders)");
+                        $params = array_merge([$quote_id, $inventory_item_id], $serial_numbers);
+                        $stmt->execute($params);
+                    }
+                }
+            }
             
             // Restore the stock
             $new_stock = $current_stock + $quantity_to_restore;
@@ -972,7 +1127,7 @@ function restoreQuoteInventory($quote_id) {
                 $quantity_to_restore, 
                 $current_stock, 
                 $new_stock, 
-                'quotation_restore', 
+                'return', 
                 $quote_id, 
                 "Inventory restored - quote status reverted", 
                 $_SESSION['user_id'] ?? 1
@@ -981,7 +1136,8 @@ function restoreQuoteInventory($quote_id) {
             $restored_items[] = [
                 'item' => $movement['brand'] . ' ' . $movement['model'],
                 'quantity' => $quantity_to_restore,
-                'new_stock' => $new_stock
+                'new_stock' => $new_stock,
+                'serials_restored' => $generates_serials
             ];
         }
         
@@ -1159,5 +1315,433 @@ function getSolarProjectDetails($quote_id) {
     $stmt = $pdo->prepare("SELECT * FROM quote_solar_details WHERE quote_id = ?");
     $stmt->execute([$quote_id]);
     return $stmt->fetch();
+}
+
+// ================== SERIAL NUMBER FUNCTIONS ==================
+
+// Get available serials for an inventory item
+function getAvailableSerials($inventory_item_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT * FROM inventory_serials 
+                          WHERE inventory_item_id = ? AND status = 'available' 
+                          ORDER BY serial_number");
+    $stmt->execute([$inventory_item_id]);
+    return $stmt->fetchAll();
+}
+
+// Get all serials for an inventory item (all statuses)
+function getAllSerials($inventory_item_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT s.*, 
+                          CASE 
+                            WHEN s.status = 'sold' THEN CONCAT('Sold - Receipt: ', ps.receipt_number)
+                            WHEN s.status = 'reserved' THEN CONCAT('Reserved - Quote: ', q.quote_number)
+                            WHEN s.status = 'damaged' THEN 'Damaged'
+                            WHEN s.status = 'returned' THEN 'Returned'
+                            ELSE 'Available'
+                          END as status_description
+                          FROM inventory_serials s
+                          LEFT JOIN pos_sales ps ON s.sale_id = ps.id
+                          LEFT JOIN quotations q ON s.quote_id = q.id
+                          WHERE s.inventory_item_id = ? 
+                          ORDER BY s.serial_number");
+    $stmt->execute([$inventory_item_id]);
+    return $stmt->fetchAll();
+}
+
+// Generate serial numbers for an inventory item
+function generateSerialNumbers($inventory_item_id, $quantity = null, $created_by = null) {
+    global $pdo;
+    
+    try {
+        $created_by = $created_by ?? $_SESSION['user_id'] ?? 1;
+        
+        // Get item settings and current stock
+        $stmt = $pdo->prepare("SELECT serial_prefix, serial_format, next_serial_number, stock_quantity 
+                              FROM inventory_items 
+                              WHERE id = ? AND generate_serials = 1");
+        $stmt->execute([$inventory_item_id]);
+        $item = $stmt->fetch();
+        
+        if (!$item) {
+            return ['success' => false, 'message' => 'Item does not generate serial numbers'];
+        }
+        
+        // If no quantity provided, use current stock quantity
+        if ($quantity === null) {
+            $quantity = $item['stock_quantity'];
+        }
+        
+        // Validate quantity
+        if ($quantity <= 0) {
+            return ['success' => false, 'message' => 'Invalid quantity. Current stock: ' . $item['stock_quantity']];
+        }
+        
+        // STRICT VALIDATION: Cannot generate more serials than current stock
+        if ($quantity > $item['stock_quantity']) {
+            return ['success' => false, 'message' => 'Cannot generate more serials than current stock. Requested: ' . $quantity . ', Current stock: ' . $item['stock_quantity']];
+        }
+        
+        $prefix = $item['serial_prefix'];
+        $format = $item['serial_format'];
+        $next_number = $item['next_serial_number'];
+        $year = date('Y');
+        
+        $generated_serials = [];
+        
+        for ($i = 0; $i < $quantity; $i++) {
+            $serial_number = $prefix . '-' . $year . '-' . str_pad($next_number + $i, 6, '0', STR_PAD_LEFT);
+            
+            // Check if serial number already exists
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_serials WHERE serial_number = ?");
+            $stmt->execute([$serial_number]);
+            $exists = $stmt->fetchColumn();
+            
+            if ($exists > 0) {
+                // Skip this serial number and try the next one
+                $next_number++;
+                $i--; // Decrement to retry this iteration
+                continue;
+            }
+            
+            // Insert serial number
+            $stmt = $pdo->prepare("INSERT INTO inventory_serials 
+                                  (inventory_item_id, serial_number, status, created_by) 
+                                  VALUES (?, ?, 'available', ?)");
+            $stmt->execute([$inventory_item_id, $serial_number, $created_by]);
+            
+            $generated_serials[] = $serial_number;
+        }
+        
+        // Update next serial number
+        $stmt = $pdo->prepare("UPDATE inventory_items 
+                              SET next_serial_number = next_serial_number + ? 
+                              WHERE id = ?");
+        $stmt->execute([$quantity, $inventory_item_id]);
+        
+        return [
+            'success' => true, 
+            'message' => "Generated {$quantity} serial numbers successfully",
+            'serials' => $generated_serials,
+            'quantity' => $quantity
+        ];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Failed to generate serial numbers: ' . $e->getMessage()];
+    }
+}
+
+// Reserve serial numbers for a quote
+function reserveSerialsForQuote($quote_id, $inventory_item_id, $quantity) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get available serials
+        $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                              WHERE inventory_item_id = ? AND status = 'available' 
+                              ORDER BY serial_number LIMIT ?");
+        $stmt->execute([$inventory_item_id, $quantity]);
+        $available_serials = $stmt->fetchAll();
+        
+        if (count($available_serials) < $quantity) {
+            // Generate more serials if needed
+            $needed = $quantity - count($available_serials);
+            $generate_result = generateSerialNumbers($inventory_item_id, $needed);
+            
+            if (!$generate_result['success']) {
+                $pdo->rollback();
+                return $generate_result;
+            }
+            
+            // Get the newly generated serials
+            $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                                  WHERE inventory_item_id = ? AND status = 'available' 
+                                  ORDER BY serial_number LIMIT ?");
+            $stmt->execute([$inventory_item_id, $quantity]);
+            $available_serials = $stmt->fetchAll();
+        }
+        
+        $reserved_serials = [];
+        
+        // Reserve the serials
+        foreach ($available_serials as $serial) {
+            $stmt = $pdo->prepare("UPDATE inventory_serials 
+                                  SET status = 'reserved', quote_id = ? 
+                                  WHERE id = ?");
+            $stmt->execute([$quote_id, $serial['id']]);
+            $reserved_serials[] = $serial['serial_number'];
+        }
+        
+        // Update quote_items with serial information
+        $stmt = $pdo->prepare("UPDATE quote_items 
+                              SET serial_numbers = ?, serial_count = ? 
+                              WHERE quote_id = ? AND inventory_item_id = ?");
+        $stmt->execute([
+            json_encode($reserved_serials), 
+            $quantity, 
+            $quote_id, 
+            $inventory_item_id
+        ]);
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Serial numbers reserved successfully',
+            'serials' => $reserved_serials
+        ];
+        
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return ['success' => false, 'message' => 'Failed to reserve serial numbers: ' . $e->getMessage()];
+    }
+}
+
+// Release reserved serial numbers back to available status
+function releaseReservedSerials($inventory_item_id, $serial_numbers) {
+    global $pdo;
+    
+    try {
+        if (empty($serial_numbers) || !is_array($serial_numbers)) {
+            return ['success' => true, 'message' => 'No serials to release'];
+        }
+        
+        $placeholders = str_repeat('?,', count($serial_numbers) - 1) . '?';
+        $stmt = $pdo->prepare("UPDATE inventory_serials 
+                              SET status = 'available', quote_id = NULL 
+                              WHERE inventory_item_id = ? AND serial_number IN ($placeholders) AND status = 'reserved'");
+        $stmt->execute(array_merge([$inventory_item_id], $serial_numbers));
+        
+        return ['success' => true, 'message' => 'Serial numbers released successfully'];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Failed to release serial numbers: ' . $e->getMessage()];
+    }
+}
+
+// Reserve specific serial numbers for a quote
+function reserveSpecificSerialsForQuote($quote_id, $inventory_item_id, $serial_numbers) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Validate that all serial numbers exist and are available
+        $placeholders = str_repeat('?,', count($serial_numbers) - 1) . '?';
+        $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                              WHERE inventory_item_id = ? AND serial_number IN ($placeholders) AND status = 'available'");
+        $stmt->execute(array_merge([$inventory_item_id], $serial_numbers));
+        $available_serials = $stmt->fetchAll();
+        
+        if (count($available_serials) < count($serial_numbers)) {
+            $pdo->rollback();
+            return ['success' => false, 'message' => 'Some serial numbers are not available'];
+        }
+        
+        $reserved_serials = [];
+        
+        // Reserve the specific serials
+        foreach ($available_serials as $serial) {
+            $stmt = $pdo->prepare("UPDATE inventory_serials 
+                                  SET status = 'reserved', quote_id = ? 
+                                  WHERE id = ?");
+            $stmt->execute([$quote_id, $serial['id']]);
+            $reserved_serials[] = $serial['serial_number'];
+        }
+        
+        // Update quote_items with serial information
+        $stmt = $pdo->prepare("UPDATE quote_items 
+                              SET serial_numbers = ?, serial_count = ? 
+                              WHERE quote_id = ? AND inventory_item_id = ?");
+        $stmt->execute([
+            json_encode($reserved_serials), 
+            count($reserved_serials), 
+            $quote_id, 
+            $inventory_item_id
+        ]);
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Specific serial numbers reserved successfully',
+            'serials' => $reserved_serials
+        ];
+        
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return ['success' => false, 'message' => 'Failed to reserve specific serial numbers: ' . $e->getMessage()];
+    }
+}
+
+// Sell serial numbers in POS
+function sellSerialsInPOS($sale_id, $inventory_item_id, $quantity) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get available serials
+        $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                              WHERE inventory_item_id = ? AND status = 'available' 
+                              ORDER BY serial_number LIMIT ?");
+        $stmt->execute([$inventory_item_id, $quantity]);
+        $available_serials = $stmt->fetchAll();
+        
+        if (count($available_serials) < $quantity) {
+            // Generate more serials if needed
+            $needed = $quantity - count($available_serials);
+            $generate_result = generateSerialNumbers($inventory_item_id, $needed);
+            
+            if (!$generate_result['success']) {
+                $pdo->rollback();
+                return $generate_result;
+            }
+            
+            // Get the newly generated serials
+            $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                                  WHERE inventory_item_id = ? AND status = 'available' 
+                                  ORDER BY serial_number LIMIT ?");
+            $stmt->execute([$inventory_item_id, $quantity]);
+            $available_serials = $stmt->fetchAll();
+        }
+        
+        $sold_serials = [];
+        
+        // Sell the serials
+        foreach ($available_serials as $serial) {
+            $stmt = $pdo->prepare("UPDATE inventory_serials 
+                                  SET status = 'sold', sale_id = ? 
+                                  WHERE id = ?");
+            $stmt->execute([$sale_id, $serial['id']]);
+            $sold_serials[] = $serial['serial_number'];
+        }
+        
+        // Update pos_sale_items with serial information
+        $stmt = $pdo->prepare("UPDATE pos_sale_items 
+                              SET serial_numbers = ?, serial_count = ? 
+                              WHERE sale_id = ? AND inventory_item_id = ?");
+        $stmt->execute([
+            json_encode($sold_serials), 
+            $quantity, 
+            $sale_id, 
+            $inventory_item_id
+        ]);
+        
+        // Update stock quantity
+        $stmt = $pdo->prepare("UPDATE inventory_items 
+                              SET stock_quantity = stock_quantity - ? 
+                              WHERE id = ?");
+        $stmt->execute([$quantity, $inventory_item_id]);
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Serial numbers sold successfully',
+            'serials' => $sold_serials
+        ];
+        
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return ['success' => false, 'message' => 'Failed to sell serial numbers: ' . $e->getMessage()];
+    }
+}
+
+// Release reserved serial numbers (when quote is cancelled or rejected)
+function releaseAllReservedSerialsForQuote($quote_id) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE inventory_serials 
+                              SET status = 'available', quote_id = NULL 
+                              WHERE quote_id = ? AND status = 'reserved'");
+        $result = $stmt->execute([$quote_id]);
+        
+        return $result;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Get inventory items with serial number information
+function getInventoryItemsWithSerials($category_id = null, $brand_filter = null) {
+    global $pdo;
+    
+    $sql = "SELECT i.*, s.name as supplier_name, c.name as category_name,
+            COUNT(ser.id) as total_serials,
+            COUNT(CASE WHEN ser.status = 'available' THEN 1 END) as available_serials,
+            COUNT(CASE WHEN ser.status = 'sold' THEN 1 END) as sold_serials,
+            COUNT(CASE WHEN ser.status = 'reserved' THEN 1 END) as reserved_serials
+            FROM inventory_items i 
+            LEFT JOIN suppliers s ON i.supplier_id = s.id 
+            LEFT JOIN categories c ON i.category_id = c.id 
+            LEFT JOIN inventory_serials ser ON i.id = ser.inventory_item_id
+            WHERE i.is_active = 1";
+    
+    $params = [];
+    
+    if ($category_id) {
+        $sql .= " AND i.category_id = ?";
+        $params[] = $category_id;
+    }
+    
+    if ($brand_filter) {
+        $sql .= " AND i.brand = ?";
+        $params[] = $brand_filter;
+    }
+    
+    $sql .= " GROUP BY i.id ORDER BY i.brand, i.model";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
+// Update inventory item serial settings
+function updateInventorySerialSettings($item_id, $generate_serials, $serial_prefix = null, $serial_format = null) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE inventory_items 
+                              SET generate_serials = ?, serial_prefix = ?, serial_format = ? 
+                              WHERE id = ?");
+        return $stmt->execute([$generate_serials, $serial_prefix, $serial_format, $item_id]);
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Get serial number by serial number string
+function getSerialByNumber($serial_number) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT s.*, i.brand, i.model, i.size_specification, c.name as category_name
+                          FROM inventory_serials s
+                          LEFT JOIN inventory_items i ON s.inventory_item_id = i.id
+                          LEFT JOIN categories c ON i.category_id = c.id
+                          WHERE s.serial_number = ?");
+    $stmt->execute([$serial_number]);
+    return $stmt->fetch();
+}
+
+// Search inventory items by serial number
+function searchInventoryBySerial($serial_number) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT i.*, s.name as supplier_name, c.name as category_name,
+                          ser.serial_number, ser.status as serial_status
+                          FROM inventory_items i 
+                          LEFT JOIN suppliers s ON i.supplier_id = s.id 
+                          LEFT JOIN categories c ON i.category_id = c.id 
+                          LEFT JOIN inventory_serials ser ON i.id = ser.inventory_item_id
+                          WHERE ser.serial_number LIKE ? AND i.is_active = 1
+                          ORDER BY ser.serial_number");
+    $stmt->execute(['%' . $serial_number . '%']);
+    return $stmt->fetchAll();
 }
 ?>

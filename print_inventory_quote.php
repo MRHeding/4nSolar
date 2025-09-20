@@ -35,6 +35,12 @@ if (!$quote) {
                 color: black !important;
                 background: white !important;
                 margin: 0;
+            }
+            /* Force light mode for printing */
+            .dark * {
+                background: white !important;
+                color: black !important;
+                border-color: #d1d5db !important;
                 padding: 0;
                 line-height: 1.3;
             }
@@ -43,6 +49,14 @@ if (!$quote) {
             }
             .print-break { 
                 page-break-before: always; 
+            }
+            .print-break-before {
+                page-break-before: always;
+                margin-top: 20px;
+            }
+            .print-break-after {
+                page-break-after: always;
+                margin-bottom: 20px;
             }
             .shadow-lg, .shadow { 
                 box-shadow: none !important; 
@@ -176,6 +190,29 @@ if (!$quote) {
                 width: 48% !important;
                 vertical-align: top !important;
                 margin-right: 2% !important;
+            }
+            
+            /* Ensure totals section is always on a new page */
+            .totals-section {
+                page-break-before: always !important;
+                margin-top: 30px !important;
+                clear: both !important;
+            }
+            
+            /* Prevent table from breaking across pages */
+            .invoice-table {
+                page-break-inside: avoid !important;
+            }
+            
+            /* Ensure summary box stays together */
+            .total-section {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            
+            /* Add extra spacing for print */
+            .items-section {
+                margin-bottom: 40px !important;
             }
         }
         
@@ -389,7 +426,7 @@ if (!$quote) {
             </div>
 
             <!-- Items Table -->
-            <div class="items-section mb-4">
+            <div class="items-section mb-4 print-break-after">
                 <h3 class="text-lg font-semibold text-gray-800 mb-2 border-b pb-1">Items:</h3>
                 <?php if (!empty($quote['items'])): ?>
                 <div class="overflow-x-auto">
@@ -410,13 +447,14 @@ if (!$quote) {
                                 <td class="border border-gray-300 px-4 py-3 text-sm text-gray-900"><?php echo $index + 1; ?></td>
                                 <td class="border border-gray-300 px-4 py-3">
                                     <div class="text-sm font-medium text-gray-900">
-                                        <?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>
+                                        <?php 
+                                        // Show only the main item name, remove extra descriptions
+                                        $item_name = $item['brand'] . ' ' . $item['model'];
+                                        // Remove common extra descriptions
+                                        $item_name = preg_replace('/\s+(Labor|Fee|Per KW|FEE|A DC breaker|DC.*A|remove).*$/i', '', $item_name);
+                                        echo htmlspecialchars(trim($item_name)); 
+                                        ?>
                                     </div>
-                                    <?php if ($item['size_specification']): ?>
-                                    <div class="text-xs text-gray-500">
-                                        <?php echo htmlspecialchars($item['size_specification']); ?>
-                                    </div>
-                                    <?php endif; ?>
                                     <?php if ($item['discount_percentage'] > 0): ?>
                                     <div class="text-xs text-green-600">
                                         <?php echo $item['discount_percentage']; ?>% discount applied
@@ -455,7 +493,7 @@ if (!$quote) {
             </div>
 
             <!-- Totals -->
-            <div class="totals-section flex justify-end mb-4">
+            <div class="totals-section flex justify-end mb-4 print-break-before">
                 <div class="w-64">
                     <div class="total-section bg-gray-50 rounded-lg p-4 border-2">
                         <h4 class="text-sm font-bold text-gray-800 mb-2 text-center">QUOTATION SUMMARY</h4>

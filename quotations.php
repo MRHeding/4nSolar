@@ -156,8 +156,44 @@ if ($_POST) {
             
         case 'add_to_quote':
             if ($quote_id && isset($_POST['inventory_item_id']) && isset($_POST['quantity'])) {
-                $result = addQuoteItem($quote_id, $_POST['inventory_item_id'], $_POST['quantity'], $_POST['discount_percentage'] ?? 0);
+                $item_id = $_POST['inventory_item_id'];
+                $quantity = $_POST['quantity'];
+                $selected_serials = $_POST['selected_quote_serials'] ?? [];
+                
+                // Filter out empty serial numbers
+                $filtered_serials = array_filter($selected_serials, function($serial) {
+                    return !empty(trim($serial));
+                });
+                
+                // Check if item generates serials
+                global $pdo;
+                $stmt = $pdo->prepare("SELECT generate_serials FROM inventory_items WHERE id = ?");
+                $stmt->execute([$item_id]);
+                $generates_serials = $stmt->fetchColumn();
+                
+                // Validate serial selection for serialized items
+                if ($generates_serials) {
+                    if (empty($filtered_serials)) {
+                        $error = "Please select serial numbers for this item.";
+                        break;
+                    }
+                    if (count($filtered_serials) != $quantity) {
+                        $error = "Number of selected serials must match quantity. Expected: $quantity, Got: " . count($filtered_serials);
+                        break;
+                    }
+                }
+                
+                $result = addQuoteItem($quote_id, $item_id, $quantity, $_POST['discount_percentage'] ?? 0);
                 if ($result['success']) {
+                    // Reserve specific serial numbers if item generates them
+                    if ($generates_serials && !empty($filtered_serials)) {
+                        $serial_result = reserveSpecificSerialsForQuote($quote_id, $item_id, $filtered_serials);
+                        if (!$serial_result['success']) {
+                            // Log error but don't fail the quote addition
+                            error_log("Failed to reserve specific serials for quote $quote_id: " . $serial_result['message']);
+                        }
+                    }
+                    
                     header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Item added to quotation successfully!'));
                     exit();
                 } else {
@@ -235,6 +271,12 @@ if ($_POST) {
                             $deducted_count = count($result['inventory_result']['deducted_items']);
                             $success_message .= " Inventory deducted for $deducted_count items.";
                         }
+                    }
+                    
+                    // If status was reverted from accepted to draft, show restoration message
+                    if ($_POST['new_status'] === 'draft' && isset($result['restore_result']) && $result['restore_result']['success']) {
+                        $restored_count = count($result['restore_result']['restored_items']);
+                        $success_message .= " Inventory restored for $restored_count items.";
                     }
                     
                     header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($success_message));
@@ -336,8 +378,14 @@ include 'includes/header.php';
 
 <style>
 /* Compact action buttons layout */
+.actions-column {
+    width: 140px;
+    min-width: 140px;
+}
+
 .action-buttons {
     min-width: 140px;
+    gap: 1px;
 }
 
 .action-buttons .inline-block {
@@ -346,19 +394,31 @@ include 'includes/header.php';
 
 .action-buttons button,
 .action-buttons a {
-    display: inline-block;
-    min-width: 18px;
-    padding: 2px 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 20px;
+    padding: 2px;
     text-align: center;
-    font-size: 12px;
+    font-size: 10px;
+    border-radius: 2px;
 }
 
-/* Compact actions column */
-.actions-column {
-    width: 140px;
-    min-width: 140px;
-    padding: 8px 4px;
+.action-buttons i {
+    font-size: 10px;
 }
+
+/* Ensure table doesn't break layout */
+.compact-table {
+    table-layout: fixed;
+}
+
+.compact-table th:last-child,
+.compact-table td:last-child {
+    width: 140px;
+}
+
 
 /* Make table more compact */
 .compact-table td {
@@ -387,8 +447,8 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Quotations Management</h1>
-            <p class="text-gray-600">Manage all customer quotations</p>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Quotations Management</h1>
+            <p class="text-gray-600 dark:text-gray-400">Manage all customer quotations</p>
         </div>
         <div class="space-x-2">
             <a href="?action=new_quote" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
@@ -399,7 +459,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Quotations Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
     <table class="min-w-full divide-y divide-gray-200 compact-table">
         <thead class="bg-gray-50">
             <tr>
@@ -410,7 +470,7 @@ include 'includes/header.php';
                 <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                 <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th class="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider actions-column">Actions</th>
+                <th class="px-1 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider actions-column">Actions</th>
             </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -440,7 +500,7 @@ include 'includes/header.php';
                             <span class="px-2 py-1 text-xs font-medium rounded-full 
                                 <?php 
                                 switch($quote['status']) {
-                                    case 'draft': echo 'bg-gray-100 text-gray-800'; break;
+                                    case 'draft': echo 'bg-gray-100 text-gray-800 dark:text-gray-200'; break;
                                     case 'sent': echo 'bg-blue-100 text-blue-800'; break;
                                     case 'under_review': echo 'bg-purple-100 text-purple-800'; break;
                                     case 'accepted': 
@@ -468,18 +528,18 @@ include 'includes/header.php';
                     <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
                         <?php echo date('M j, Y', strtotime($quote['created_at'])); ?>
                     </td>
-                    <td class="px-2 py-3 whitespace-nowrap text-center actions-column">
-                        <div class="flex justify-center items-center space-x-0 flex-wrap action-buttons">
+                    <td class="px-1 py-3 whitespace-nowrap text-center actions-column">
+                        <div class="flex justify-center items-center space-x-0 flex-nowrap action-buttons">
                             <a href="?action=quote&quote_id=<?php echo $quote['id']; ?>" 
-                               class="text-blue-600 hover:text-blue-900 p-1 inline-block" title="View/Edit Quote">
+                               class="text-blue-600 hover:text-blue-900 p-0.5 inline-block" title="View/Edit Quote">
                                 <i class="fas fa-eye text-xs"></i>
                             </a>
                             <button onclick="viewCustomerDetails(<?php echo $quote['id']; ?>)" 
-                                    class="text-green-600 hover:text-green-900 p-1 inline-block" title="View Customer Details">
+                                    class="text-green-600 hover:text-green-900 p-0.5 inline-block" title="View Customer Details">
                                 <i class="fas fa-user text-xs"></i>
                             </button>
                             <button onclick="editCustomerDetails(<?php echo $quote['id']; ?>)" 
-                                    class="text-orange-600 hover:text-orange-900 p-1 inline-block" title="Edit Customer Details">
+                                    class="text-orange-600 hover:text-orange-900 p-0.5 inline-block" title="Edit Customer Details">
                                 <i class="fas fa-edit text-xs"></i>
                             </button>
                             
@@ -487,44 +547,38 @@ include 'includes/header.php';
                             <?php if ($quote['status'] == 'draft'): ?>
                             <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="sent">
-                                <button type="submit" class="text-purple-600 hover:text-purple-900 p-1" title="Mark as Sent">
+                                <button type="submit" class="text-purple-600 hover:text-purple-900 p-0.5" title="Mark as Sent">
                                     <i class="fas fa-paper-plane text-xs"></i>
                                 </button>
                             </form>
-                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
-                                <input type="hidden" name="new_status" value="accepted">
-                                <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote" onclick="return confirmQuoteApproval()">
-                                    <i class="fas fa-check text-xs"></i>
-                                </button>
-                            </form>
+                            <button type="button" class="text-green-600 hover:text-green-900 p-0.5" title="Approve Quote" onclick="showQuoteApprovalModal(<?php echo $quote['id']; ?>, '<?php echo htmlspecialchars($quote['quote_number']); ?>', '<?php echo htmlspecialchars($quote['customer_name']); ?>', <?php echo $quote['total_amount']; ?>)">
+                                <i class="fas fa-check text-xs"></i>
+                            </button>
                             <?php elseif ($quote['status'] == 'sent'): ?>
-                            <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
-                                <input type="hidden" name="new_status" value="accepted">
-                                <button type="submit" class="text-green-600 hover:text-green-900 p-1" title="Approve Quote" onclick="return confirmQuoteApproval()">
-                                    <i class="fas fa-check text-xs"></i>
-                                </button>
-                            </form>
+                            <button type="button" class="text-green-600 hover:text-green-900 p-0.5" title="Approve Quote" onclick="showQuoteApprovalModal(<?php echo $quote['id']; ?>, '<?php echo htmlspecialchars($quote['quote_number']); ?>', '<?php echo htmlspecialchars($quote['customer_name']); ?>', <?php echo $quote['total_amount']; ?>)">
+                                <i class="fas fa-check text-xs"></i>
+                            </button>
                             <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="rejected">
-                                <button type="submit" class="text-red-600 hover:text-red-900 p-1" title="Reject Quote">
+                                <button type="submit" class="text-red-600 hover:text-red-900 p-0.5" title="Reject Quote">
                                     <i class="fas fa-times text-xs"></i>
                                 </button>
                             </form>
                             <?php elseif ($quote['status'] == 'accepted' || $quote['status'] == 'approved'): ?>
                             <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block">
                                 <input type="hidden" name="new_status" value="draft">
-                                <button type="submit" class="text-gray-600 hover:text-gray-900 p-1" title="Revert to Draft">
+                                <button type="submit" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 p-0.5" title="Revert to Draft">
                                     <i class="fas fa-undo text-xs"></i>
                                 </button>
                             </form>
                             <?php endif; ?>
                             
                             <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>" target="_blank"
-                               class="text-orange-600 hover:text-orange-900 p-1 inline-block" title="Print Quote">
+                               class="text-orange-600 hover:text-orange-900 p-0.5 inline-block" title="Print Quote">
                                 <i class="fas fa-print text-xs"></i>
                             </a>
                             <a href="?action=delete_quote&quote_id=<?php echo $quote['id']; ?>" 
-                               class="text-red-600 hover:text-red-900 p-1 inline-block"
+                               class="text-red-600 hover:text-red-900 p-0.5 inline-block"
                                onclick="return confirm('Are you sure you want to delete this quotation?')"
                                title="Delete Quote">
                                 <i class="fas fa-trash text-xs"></i>
@@ -549,8 +603,8 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">New Quotation</h1>
-            <p class="text-gray-600">Create a new quotation for customer</p>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">New Quotation</h1>
+            <p class="text-gray-600 dark:text-gray-400">Create a new quotation for customer</p>
         </div>
         <div class="space-x-2">
         </div>
@@ -558,8 +612,8 @@ include 'includes/header.php';
 </div>
 
 <!-- Create New Quote -->
-<div class="bg-white rounded-lg shadow p-6">
-    <h2 class="text-xl font-semibold text-gray-800 mb-4">Create New Quotation</h2>
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Create New Quotation</h2>
     <form method="POST" action="?action=create_quote" class="space-y-6">
         <!-- Basic Quotation Info -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -603,7 +657,7 @@ include 'includes/header.php';
         
         <!-- Customer Information Section -->
         <div class="border-t pt-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4">Customer Information</h3>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Customer Information</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                     <label for="full_name" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
@@ -652,7 +706,7 @@ include 'includes/header.php';
 
         <!-- Solar Project Details Section -->
         <div class="border-t pt-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4">Solar Project Details</h3>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Solar Project Details</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">System Type</label>
@@ -797,7 +851,7 @@ include 'includes/header.php';
                         <p class="text-sm text-gray-500 mb-2">Client Signature</p>
                         <div class="border-b-2 border-gray-400 w-full h-12"></div>
                         <input type="text" id="client_signature" name="client_signature" placeholder="Type signature or leave blank for manual signing"
-                               class="w-full mt-2 border-0 bg-transparent text-center focus:ring-0 text-sm text-gray-600">
+                               class="w-full mt-2 border-0 bg-transparent text-center focus:ring-0 text-sm text-gray-600 dark:text-gray-400">
                     </div>
                 </div>
                 
@@ -837,8 +891,8 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?></h1>
-            <p class="text-gray-600">
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?></h1>
+            <p class="text-gray-600 dark:text-gray-400">
                 Customer: <?php echo htmlspecialchars($quote['customer_name']); ?>
                 <?php if ($quote['customer_phone']): ?>
                 - <?php echo htmlspecialchars($quote['customer_phone']); ?>
@@ -879,10 +933,10 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Quote Items -->
     <div class="lg:col-span-2">
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
                 <div class="flex items-center">
-                    <h2 class="text-xl font-semibold text-gray-800">Quote Items</h2>
+                    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200">Quote Items</h2>
                     <?php if (!empty($quote['items'])): ?>
                     <span class="ml-3 bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
                         <?php echo count($quote['items']); ?> item<?php echo count($quote['items']) !== 1 ? 's' : ''; ?>
@@ -917,6 +971,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
                                 <div class="text-xs text-gray-500"><?php echo htmlspecialchars($item['size_specification']); ?></div>
                                 <div class="text-xs text-blue-600">Stock: <?php echo $item['stock_quantity']; ?></div>
+                                <?php if (!empty($item['serial_numbers'])): ?>
+                                <div class="text-xs text-green-600 mt-1">
+                                    <strong>Reserved Serials:</strong> <?php echo htmlspecialchars($item['serial_numbers']); ?>
+                                </div>
+                                <?php endif; ?>
                             </td>
                             <td class="px-3 py-4 text-center">
                                 <form method="POST" action="?action=update_quote_quantity&quote_id=<?php echo $quote['id']; ?>" class="inline">
@@ -961,15 +1020,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     <!-- Quote Summary -->
     <div>
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Quote Summary</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Quote Summary</h2>
             <div class="space-y-3">
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Subtotal:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Subtotal:</span>
                     <span class="font-medium"><?php echo formatCurrency($quote['subtotal']); ?></span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Discount:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Discount:</span>
                     <span class="font-medium text-green-600">-<?php echo formatCurrency($quote['total_discount']); ?></span>
                 </div>
                 <div class="flex justify-between text-lg font-bold border-t pt-3">
@@ -990,12 +1049,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             <div class="mt-6 pt-6 border-t">
                 <h3 class="text-sm font-medium text-gray-700 mb-2">Quote Details</h3>
-                <div class="text-sm text-gray-600">
+                <div class="text-sm text-gray-600 dark:text-gray-400">
                     <p><strong>Status:</strong> 
                         <span class="px-2 py-1 text-xs font-medium rounded-full 
                             <?php 
                             switch($quote['status']) {
-                                case 'draft': echo 'bg-gray-100 text-gray-800'; break;
+                                case 'draft': echo 'bg-gray-100 text-gray-800 dark:text-gray-200'; break;
                                 case 'sent': echo 'bg-blue-100 text-blue-800'; break;
                                 case 'under_review': echo 'bg-purple-100 text-purple-800'; break;
                                 case 'accepted': 
@@ -1041,12 +1100,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             <i class="fas fa-eye mr-2"></i>Mark Under Review
                         </button>
                     </form>
-                    <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
-                        <input type="hidden" name="new_status" value="accepted">
-                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="return confirmQuoteApproval()">
-                            <i class="fas fa-check mr-2"></i>Approve Quote
-                        </button>
-                    </form>
+                    <button type="button" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="showQuoteApprovalModal(<?php echo $quote['id']; ?>, '<?php echo htmlspecialchars($quote['quote_number']); ?>', '<?php echo htmlspecialchars($quote['customer_name']); ?>', <?php echo $quote['total_amount']; ?>)">
+                        <i class="fas fa-check mr-2"></i>Approve Quote
+                    </button>
                     <?php elseif ($quote['status'] == 'sent'): ?>
                     <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
                         <input type="hidden" name="new_status" value="under_review">
@@ -1054,19 +1110,13 @@ document.addEventListener('DOMContentLoaded', function() {
                             <i class="fas fa-eye mr-2"></i>Mark Under Review
                         </button>
                     </form>
-                    <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
-                        <input type="hidden" name="new_status" value="accepted">
-                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="return confirmQuoteApproval()">
-                            <i class="fas fa-check mr-2"></i>Approve Quote
-                        </button>
-                    </form>
+                    <button type="button" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="showQuoteApprovalModal(<?php echo $quote['id']; ?>, '<?php echo htmlspecialchars($quote['quote_number']); ?>', '<?php echo htmlspecialchars($quote['customer_name']); ?>', <?php echo $quote['total_amount']; ?>)">
+                        <i class="fas fa-check mr-2"></i>Approve Quote
+                    </button>
                     <?php elseif ($quote['status'] == 'under_review'): ?>
-                    <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
-                        <input type="hidden" name="new_status" value="accepted">
-                        <button type="submit" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="return confirmQuoteApproval()">
-                            <i class="fas fa-check mr-2"></i>Approve Quote
-                        </button>
-                    </form>
+                    <button type="button" class="w-full bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm" onclick="showQuoteApprovalModal(<?php echo $quote['id']; ?>, '<?php echo htmlspecialchars($quote['quote_number']); ?>', '<?php echo htmlspecialchars($quote['customer_name']); ?>', <?php echo $quote['total_amount']; ?>)">
+                        <i class="fas fa-check mr-2"></i>Approve Quote
+                    </button>
                     <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
                         <input type="hidden" name="new_status" value="rejected">
                         <button type="submit" class="w-full bg-red-600 text-white px-3 py-2 rounded-md hover:bg-red-700 transition text-sm">
@@ -1110,8 +1160,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <?php endif; ?>
                     
                     <!-- Custom Status Selector -->
-                    <div class="mt-4 pt-4 border-t border-gray-200">
-                        <label class="block text-xs font-medium text-gray-600 mb-2">Change to Custom Status:</label>
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Change to Custom Status:</label>
                         <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="flex space-x-2">
                             <select name="new_status" class="flex-1 text-sm border border-gray-300 rounded-md px-2 py-1 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                                 <option value="">Select Status</option>
@@ -1149,11 +1199,11 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             
             <!-- Items Grid -->
-            <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+            <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
                 <?php if (!empty($inventory_items)): ?>
                 <div id="quote-items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
                     <?php foreach ($inventory_items as $inv_item): ?>
-                    <div class="quote-item-card border border-gray-200 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
+                    <div class="quote-item-card border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
                          data-item-id="<?php echo $inv_item['id']; ?>"
                          data-brand="<?php echo strtolower($inv_item['brand']); ?>"
                          data-model="<?php echo strtolower($inv_item['model']); ?>"
@@ -1161,6 +1211,7 @@ document.addEventListener('DOMContentLoaded', function() {
                          data-price="<?php echo $inv_item['selling_price']; ?>"
                          data-base-price="<?php echo $inv_item['base_price']; ?>"
                          data-stock="<?php echo $inv_item['stock_quantity']; ?>"
+                         data-generates-serials="<?php echo $inv_item['generate_serials'] ? '1' : '0'; ?>"
                          onclick="selectQuoteItem(this)">
                         
                         <div class="flex items-center space-x-3">
@@ -1179,6 +1230,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="text-xs text-gray-400">
                                     <?php echo htmlspecialchars($inv_item['category_name'] ?? 'N/A'); ?>
                                 </div>
+                                <?php if ($inv_item['generate_serials']): ?>
+                                <div class="text-xs text-blue-600">
+                                    <i class="fas fa-barcode mr-1"></i>Serialized Item
+                                </div>
+                                <?php endif; ?>
                             </div>
                             <div class="text-right">
                                 <div class="text-sm font-medium text-gray-900">
@@ -1201,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             
             <!-- Selected Item Form -->
-            <form id="add-quote-item-form" method="POST" action="?action=add_to_quote&quote_id=<?php echo $quote['id']; ?>" class="hidden">
+            <form id="add-quote-item-form" method="POST" action="?action=add_to_quote&quote_id=<?php echo $quote['id']; ?>" class="hidden" onsubmit="return validateQuoteFormSubmission()">
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                     <h4 class="font-medium text-gray-900 mb-2">Selected Item:</h4>
                     <div id="selected-quote-item-display" class="text-sm text-gray-700"></div>
@@ -1241,7 +1297,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
                 
-                <div id="quote-total-preview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 hidden">
+                <!-- Serial Number Selection Section -->
+                <div id="quote-serial-selection-section" class="mb-4 hidden">
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Serial Number Selection</h4>
+                    <div id="quote-available-serials" class="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        <!-- Serial numbers will be loaded here -->
+                    </div>
+                    <div id="quote-serial-selection-status" class="text-sm mt-2"></div>
+                </div>
+                
+                <div id="quote-total-preview" class="bg-gray-50 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mb-4 hidden">
                     <div class="flex justify-between text-sm">
                         <span>Subtotal:</span>
                         <span id="quote-subtotal-amount">₱0.00</span>
@@ -1284,7 +1349,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="mt-3">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-gray-900">Profit Breakdown - <?php echo htmlspecialchars($quote['quote_number']); ?></h3>
-                <button type="button" onclick="closeProfitModal()" class="text-gray-400 hover:text-gray-600">
+                <button type="button" onclick="closeProfitModal()" class="text-gray-400 hover:text-gray-600 dark:text-gray-400">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -1352,13 +1417,15 @@ function selectQuoteItem(cardElement) {
     cardElement.classList.add('bg-blue-100', 'border-blue-500');
     
     // Store selected item data
+    const dataGeneratesSerials = cardElement.getAttribute('data-generates-serials');
     selectedQuoteItemData = {
         id: cardElement.getAttribute('data-item-id'),
         brand: cardElement.querySelector('.text-sm.font-medium').textContent,
         model: cardElement.querySelector('.text-sm.text-gray-500').textContent,
         basePrice: parseFloat(cardElement.getAttribute('data-base-price')),
         sellingPrice: parseFloat(cardElement.getAttribute('data-price')),
-        stock: parseInt(cardElement.getAttribute('data-stock'))
+        stock: parseInt(cardElement.getAttribute('data-stock')),
+        generatesSerials: dataGeneratesSerials === '1'
     };
     
     // Update form
@@ -1371,6 +1438,14 @@ function selectQuoteItem(cardElement) {
     
     // Show form and update preview
     document.getElementById('add-quote-item-form').classList.remove('hidden');
+    
+    // Load serial numbers if item generates them
+    if (selectedQuoteItemData.generatesSerials) {
+        loadQuoteAvailableSerials();
+    } else {
+        document.getElementById('quote-serial-selection-section').classList.add('hidden');
+    }
+    
     updateQuoteTotalPreview();
 }
 
@@ -1383,6 +1458,120 @@ function clearQuoteSelection() {
     // Hide form
     document.getElementById('add-quote-item-form').classList.add('hidden');
     selectedQuoteItemData = null;
+}
+
+function loadQuoteAvailableSerials() {
+    if (!selectedQuoteItemData || !selectedQuoteItemData.generatesSerials) {
+        return;
+    }
+    
+    const quantity = parseInt(document.getElementById('quote_quantity').value) || 1;
+    fetch(`get_available_serials.php?item_id=${selectedQuoteItemData.id}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayQuoteSerialSelection(data.serials, quantity);
+            } else {
+                console.error('Failed to load serials:', data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading serials:', error);
+        });
+}
+
+function displayQuoteSerialSelection(serials, quantity) {
+    const container = document.getElementById('quote-available-serials');
+    const section = document.getElementById('quote-serial-selection-section');
+    
+    if (serials.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">No serial numbers available</p>';
+        section.classList.add('hidden');
+        return;
+    }
+    
+    if (quantity > serials.length) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Only ${serials.length} serial numbers available, but ${quantity} requested</p>`;
+        section.classList.add('hidden');
+        return;
+    }
+    
+    let html = '<div class="space-y-2">';
+    serials.forEach(serial => {
+        html += `
+            <label class="flex items-center">
+                <input type="checkbox" name="selected_quote_serials[]" value="${serial.serial_number}" 
+                       class="quote-serial-checkbox rounded border-gray-300 text-solar-blue focus:ring-solar-blue"
+                       onchange="validateQuoteSerialSelection()">
+                <span class="ml-2 text-sm font-mono">${serial.serial_number}</span>
+            </label>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    section.classList.remove('hidden');
+    updateQuoteSubmitButtonState();
+}
+
+function validateQuoteSerialSelection() {
+    const quantity = parseInt(document.getElementById('quote_quantity').value) || 1;
+    const checkboxes = document.querySelectorAll('.quote-serial-checkbox:checked');
+    
+    if (checkboxes.length > quantity) {
+        alert(`You can only select ${quantity} serial number(s). Please uncheck some selections.`);
+        checkboxes[checkboxes.length - 1].checked = false;
+    }
+    
+    updateQuoteSubmitButtonState();
+}
+
+function updateQuoteSubmitButtonState() {
+    const quantity = parseInt(document.getElementById('quote_quantity').value) || 1;
+    const checkboxes = document.querySelectorAll('.quote-serial-checkbox:checked');
+    const submitButton = document.querySelector('#add-quote-item-form button[type="submit"]');
+    const serialSection = document.getElementById('quote-serial-selection-section');
+    const statusElement = document.getElementById('quote-serial-selection-status');
+    
+    if (selectedQuoteItemData && selectedQuoteItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
+        const selectedCount = checkboxes.length;
+        
+        if (statusElement) {
+            if (selectedCount === 0) {
+                statusElement.textContent = `Please select ${quantity} serial number(s)`;
+                statusElement.className = 'text-sm text-red-600 mt-2 font-medium';
+            } else if (selectedCount < quantity) {
+                statusElement.textContent = `Selected ${selectedCount} of ${quantity} serial number(s)`;
+                statusElement.className = 'text-sm text-orange-600 mt-2 font-medium';
+            } else if (selectedCount === quantity) {
+                statusElement.textContent = `✓ Selected ${selectedCount} serial number(s) - Ready to add`;
+                statusElement.className = 'text-sm text-green-600 mt-2 font-medium';
+            } else {
+                statusElement.textContent = `Too many selected (${selectedCount}/${quantity})`;
+                statusElement.className = 'text-sm text-red-600 mt-2 font-medium';
+            }
+        }
+        
+        if (checkboxes.length !== quantity) {
+            submitButton.disabled = true;
+            submitButton.textContent = `Select ${quantity} Serial Number(s)`;
+            submitButton.classList.add('bg-gray-400', 'cursor-not-allowed');
+            submitButton.classList.remove('bg-solar-blue', 'hover:bg-blue-800');
+        } else {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Add to Quote';
+            submitButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            submitButton.classList.add('bg-solar-blue', 'hover:bg-blue-800');
+        }
+    } else {
+        if (statusElement) {
+            statusElement.textContent = '';
+        }
+        submitButton.disabled = false;
+        submitButton.textContent = 'Add to Quote';
+        submitButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+        submitButton.classList.add('bg-solar-blue', 'hover:bg-blue-800');
+    }
 }
 
 function updateQuoteTotalPreview() {
@@ -1402,7 +1591,31 @@ function updateQuoteTotalPreview() {
     document.getElementById('quote-total-amount').textContent = formatCurrency(total);
     
     document.getElementById('quote-total-preview').classList.remove('hidden');
-}function formatCurrency(amount) {
+    
+    // Reload serials if quantity changed and item generates serials
+    if (selectedQuoteItemData.generatesSerials) {
+        loadQuoteAvailableSerials();
+    }
+    
+    updateQuoteSubmitButtonState();
+}
+
+function validateQuoteFormSubmission() {
+    const quantity = parseInt(document.getElementById('quote_quantity').value) || 1;
+    const checkboxes = document.querySelectorAll('.quote-serial-checkbox:checked');
+    const serialSection = document.getElementById('quote-serial-selection-section');
+    
+    if (selectedQuoteItemData && selectedQuoteItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
+        if (checkboxes.length !== quantity) {
+            alert(`Please select exactly ${quantity} serial number(s). Currently selected: ${checkboxes.length}`);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+function formatCurrency(amount) {
     return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
@@ -1524,8 +1737,8 @@ function displayProfitData(profitData) {
         </div>
         
         <!-- Detailed Item Breakdown -->
-        <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+        <div class="bg-white border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 dark:border-gray-600">
                 <h4 class="text-sm font-medium text-gray-900">Item-wise Profit Breakdown</h4>
             </div>
             <div class="overflow-x-auto">
@@ -1595,8 +1808,8 @@ function showProfitError(message) {
 <div class="mb-6 order-fulfillment-page-header">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Order Fulfillment Checklist</h1>
-            <p class="text-gray-600">
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Order Fulfillment Checklist</h1>
+            <p class="text-gray-600 dark:text-gray-400">
                 Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
                 <?php if (!empty($quote['project_number'])): ?>
                 <br>Project Number: <span class="font-semibold"><?php echo htmlspecialchars($quote['project_number']); ?></span>
@@ -1612,12 +1825,12 @@ function showProfitError(message) {
 </div>
 
 <!-- Order Fulfillment Form -->
-<div id="order-fulfillment-form-container" class="bg-white rounded-lg shadow-lg p-8 print:shadow-none print:p-0">
+<div id="order-fulfillment-form-container" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 print:shadow-none print:p-0">
     <form id="fulfillment-form" method="POST" action="">
         <!-- Header Section -->
         <div class="text-center mb-8 border-b-2 border-gray-300 pb-4">
-            <h2 class="text-2xl font-bold text-gray-800 mb-2">Order Fulfillment Checklist</h2>
-            <p class="text-gray-600">
+            <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">Order Fulfillment Checklist</h2>
+            <p class="text-gray-600 dark:text-gray-400">
                 Date: <?php echo date('Y-m-d'); ?><br>
                 Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
                 <?php if (!empty($quote['project_number'])): ?>
@@ -1735,17 +1948,17 @@ function showProfitError(message) {
                         <div class="flex items-start">
                             <input type="checkbox" class="mt-1 mr-2 print:hidden">
                             <span class="hidden print:inline-block w-4 h-4 border border-gray-400 mr-2 mt-1"></span>
-                            <span class="text-sm text-gray-600">All items checked and verified</span>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">All items checked and verified</span>
                         </div>
                         <div class="flex items-start">
                             <input type="checkbox" class="mt-1 mr-2 print:hidden">
                             <span class="hidden print:inline-block w-4 h-4 border border-gray-400 mr-2 mt-1"></span>
-                            <span class="text-sm text-gray-600">Customer signature obtained</span>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Customer signature obtained</span>
                         </div>
                         <div class="flex items-start">
                             <input type="checkbox" class="mt-1 mr-2 print:hidden">
                             <span class="hidden print:inline-block w-4 h-4 border border-gray-400 mr-2 mt-1"></span>
-                            <span class="text-sm text-gray-600">Delivery completed</span>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Delivery completed</span>
                         </div>
                     </div>
                 </div>
@@ -1753,12 +1966,12 @@ function showProfitError(message) {
                     <h4 class="text-sm font-medium text-gray-700 mb-3">Signatures:</h4>
                     <div class="space-y-6">
                         <div>
-                            <label class="block text-xs text-gray-600 mb-2">Prepared By:</label>
+                            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-2">Prepared By:</label>
                             <div class="border-b-2 border-gray-300 h-12"></div>
                             <p class="text-xs text-gray-500 mt-1">Name & Signature</p>
                         </div>
                         <div>
-                            <label class="block text-xs text-gray-600 mb-2">Customer Signature:</label>
+                            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-2">Customer Signature:</label>
                             <div class="border-b-2 border-gray-300 h-12"></div>
                             <p class="text-xs text-gray-500 mt-1">Name & Signature</p>
                         </div>
@@ -1879,8 +2092,8 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Payment Plan: <?php echo htmlspecialchars($quote['quote_number']); ?></h1>
-            <p class="text-gray-600">
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Payment Plan: <?php echo htmlspecialchars($quote['quote_number']); ?></h1>
+            <p class="text-gray-600 dark:text-gray-400">
                 Customer: <?php echo htmlspecialchars($quote['customer_name']); ?>
                 | Total Amount: <?php echo formatCurrency($quote['total_amount']); ?>
             </p>
@@ -1920,8 +2133,8 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Payment Schedule -->
     <div class="lg:col-span-2">
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Payment Schedule</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Payment Schedule</h2>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -1963,7 +2176,7 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                                         case 'paid': echo 'bg-green-100 text-green-800'; break;
                                         case 'partial': echo 'bg-yellow-100 text-yellow-800'; break;
                                         case 'overdue': echo 'bg-red-100 text-red-800'; break;
-                                        default: echo 'bg-gray-100 text-gray-800'; break;
+                                        default: echo 'bg-gray-100 text-gray-800 dark:text-gray-200'; break;
                                     }
                                     ?>">
                                     <?php echo ucfirst($payment['status']); ?>
@@ -1972,7 +2185,7 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                             <td class="px-4 py-4 text-center">
                                 <?php if ($payment['status'] !== 'paid'): ?>
                                 <button onclick="recordPayment(<?php echo $payment['id']; ?>, <?php echo $payment['due_amount']; ?>)" 
-                                        class="text-green-600 hover:text-green-900 p-1" title="Record Payment">
+                                        class="text-green-600 hover:text-green-900 p-0.5" title="Record Payment">
                                     <i class="fas fa-dollar-sign"></i>
                                 </button>
                                 <?php endif; ?>
@@ -1993,39 +2206,39 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
     
     <!-- Plan Information -->
     <div>
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Plan Details</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Plan Details</h2>
             <div class="space-y-3 text-sm">
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Plan Name:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Plan Name:</span>
                     <span class="font-medium"><?php echo htmlspecialchars($installment_plan['plan_name']); ?></span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Total Amount:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Total Amount:</span>
                     <span class="font-medium"><?php echo formatCurrency($installment_plan['total_amount']); ?></span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Down Payment:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Down Payment:</span>
                     <span class="font-medium"><?php echo formatCurrency($installment_plan['down_payment']); ?></span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Monthly Payment:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Monthly Payment:</span>
                     <span class="font-medium"><?php echo formatCurrency($installment_plan['installment_amount']); ?></span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Installments:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Installments:</span>
                     <span class="font-medium"><?php echo $installment_plan['number_of_installments']; ?> payments</span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Interest Rate:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Interest Rate:</span>
                     <span class="font-medium"><?php echo $installment_plan['interest_rate']; ?>% annually</span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Frequency:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Frequency:</span>
                     <span class="font-medium"><?php echo ucfirst($installment_plan['payment_frequency']); ?></span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Start Date:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Start Date:</span>
                     <span class="font-medium"><?php echo date('M d, Y', strtotime($installment_plan['start_date'])); ?></span>
                 </div>
             </div>
@@ -2033,7 +2246,7 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
             <?php if ($installment_plan['notes']): ?>
             <div class="mt-4 pt-4 border-t">
                 <h4 class="text-sm font-medium text-gray-700 mb-2">Notes:</h4>
-                <p class="text-sm text-gray-600"><?php echo nl2br(htmlspecialchars($installment_plan['notes'])); ?></p>
+                <p class="text-sm text-gray-600 dark:text-gray-400"><?php echo nl2br(htmlspecialchars($installment_plan['notes'])); ?></p>
             </div>
             <?php endif; ?>
         </div>
@@ -2042,12 +2255,12 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
 
 <?php else: ?>
 <!-- Create New Installment Plan -->
-<div class="bg-white rounded-lg shadow p-6">
-    <h2 class="text-xl font-semibold text-gray-800 mb-4">Create Payment Plan</h2>
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Create Payment Plan</h2>
     
     <!-- Payment Options Calculator -->
     <div class="mb-6">
-        <h3 class="text-lg font-medium text-gray-800 mb-3">Payment Options</h3>
+        <h3 class="text-lg font-medium text-gray-800 dark:text-gray-200 mb-3">Payment Options</h3>
         <div id="payment-options" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <!-- Options will be populated by JavaScript -->
         </div>
@@ -2199,7 +2412,7 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                 <div class="mb-4">
                     <label for="reference_number" class="block text-sm font-medium text-gray-700 mb-2">Reference Number</label>
                     <input type="text" id="reference_number" name="reference_number" readonly
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-600"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-600 dark:text-gray-400"
                            placeholder="Auto-generated reference number">
                     <p class="text-xs text-gray-500 mt-1">Reference number will be auto-generated when payment is recorded</p>
                 </div>
@@ -2303,7 +2516,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="mt-3">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-gray-900">Customer & Solar Project Details</h3>
-                <button type="button" onclick="closeCustomerDetailsModal()" class="text-gray-400 hover:text-gray-600">
+                <button type="button" onclick="closeCustomerDetailsModal()" class="text-gray-400 hover:text-gray-600 dark:text-gray-400">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -2333,7 +2546,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="mt-3">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-gray-900">Edit Customer & Solar Project Details</h3>
-                <button type="button" onclick="closeEditCustomerModal()" class="text-gray-400 hover:text-gray-600">
+                <button type="button" onclick="closeEditCustomerModal()" class="text-gray-400 hover:text-gray-600 dark:text-gray-400">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -2343,7 +2556,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 <!-- Customer Information Section -->
                 <div class="border-b pb-6">
-                    <h4 class="text-lg font-semibold text-gray-800 mb-4">Customer Information</h4>
+                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Customer Information</h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                             <label for="edit_full_name" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
@@ -2392,7 +2605,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 <!-- Solar Project Details Section -->
                 <div class="pb-6">
-                    <h4 class="text-lg font-semibold text-gray-800 mb-4">Solar Project Details</h4>
+                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Solar Project Details</h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">System Type</label>
@@ -2561,6 +2774,61 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
+<!-- Quote Approval Modal -->
+<div id="quote-approval-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+    <div class="relative p-5 border w-full max-w-md shadow-lg rounded-md bg-white mx-4">
+        <div class="mt-3">
+            <div class="flex items-center justify-center w-12 h-12 mx-auto bg-yellow-100 rounded-full mb-4">
+                <i class="fas fa-exclamation-triangle text-yellow-600 text-xl"></i>
+            </div>
+            
+            <h3 class="text-lg font-medium text-gray-900 text-center mb-4">Approve Quote</h3>
+            
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div class="text-sm text-blue-800">
+                    <div class="mb-2"><strong>Quote Number:</strong> <span id="approval_quote_number"></span></div>
+                    <div class="mb-2"><strong>Customer:</strong> <span id="approval_customer_name"></span></div>
+                    <div class="mb-2"><strong>Total Amount:</strong> <span id="approval_total_amount"></span></div>
+                </div>
+            </div>
+            
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-medium text-yellow-800">Important Notice</h4>
+                        <div class="mt-2 text-sm text-yellow-700">
+                            <p>Approving this quote will:</p>
+                            <ul class="list-disc list-inside mt-2 space-y-1">
+                                <li>Automatically deduct quoted items from inventory stock</li>
+                                <li>Mark serial numbers as "sold" (if applicable)</li>
+                                <li>Generate a project number</li>
+                                <li>Change quote status to "accepted"</li>
+                            </ul>
+                            <p class="mt-2 font-medium">Please ensure you have sufficient stock before proceeding.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeQuoteApprovalModal()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Cancel
+                </button>
+                <button type="button" onclick="confirmQuoteApproval()"
+                        class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+                    <i class="fas fa-check mr-2"></i>Approve Quote
+                </button>
+            </div>
+            
+            <input type="hidden" id="approval_quote_id" value="">
+        </div>
+    </div>
+</div>
+
 <script>
 // Customer Details Modal Functions
 function viewCustomerDetails(quoteId) {
@@ -2622,8 +2890,8 @@ function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
     
     contentDiv.innerHTML = `
         <!-- Quote Information -->
-        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-            <h4 class="text-lg font-semibold text-gray-800 mb-3">Quote Information</h4>
+        <div class="bg-gray-50 border border-gray-200 dark:border-gray-600 rounded-lg p-4 mb-6">
+            <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Quote Information</h4>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div><strong>Quote Number:</strong> ${quoteInfo?.quote_number || 'N/A'}</div>
                 <div><strong>Customer Name:</strong> ${quoteInfo?.customer_name || 'N/A'}</div>
@@ -2632,8 +2900,8 @@ function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
         </div>
         
         <!-- Customer Information -->
-        <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-            <h4 class="text-lg font-semibold text-gray-800 mb-3">Customer Information</h4>
+        <div class="bg-white border border-gray-200 dark:border-gray-600 rounded-lg p-4 mb-6">
+            <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Customer Information</h4>
             ${customerInfo ? `
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div><strong>Full Name:</strong> ${customerInfo.full_name || 'Not provided'}</div>
@@ -2655,14 +2923,14 @@ function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
         </div>
         
         <!-- Solar Project Details -->
-        <div class="bg-white border border-gray-200 rounded-lg p-4">
-            <h4 class="text-lg font-semibold text-gray-800 mb-3">Solar Project Details</h4>
+        <div class="bg-white border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+            <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Solar Project Details</h4>
             ${solarDetails ? `
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                     <div>
                         <div class="mb-3">
                             <strong>System Type:</strong><br>
-                            <span class="text-gray-600">
+                            <span class="text-gray-600 dark:text-gray-400">
                                 ${[
                                     solarDetails.system_type_grid_tie ? 'Grid Tie' : null,
                                     solarDetails.system_type_off_grid ? 'Off Grid' : null,
@@ -2675,7 +2943,7 @@ function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
                         </div>
                         <div class="mb-3">
                             <strong>Installation Type:</strong><br>
-                            <span class="text-gray-600">
+                            <span class="text-gray-600 dark:text-gray-400">
                                 ${[
                                     solarDetails.installation_type_rooftop ? 'Rooftop' : null,
                                     solarDetails.installation_type_ground_mounted ? 'Ground Mounted' : null,
@@ -2697,7 +2965,7 @@ function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
                         </div>
                         <div class="mb-3">
                             <strong>Installation Status:</strong><br>
-                            <span class="text-gray-600">
+                            <span class="text-gray-600 dark:text-gray-400">
                                 ${[
                                     solarDetails.installation_status_planned ? 'Planned' : null,
                                     solarDetails.installation_status_in_progress ? 'In Progress' : null,
@@ -2722,9 +2990,9 @@ function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
                 </div>
                 
                 ${solarDetails.remarks ? `
-                    <div class="mt-4 pt-4 border-t border-gray-200">
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                         <strong>Remarks:</strong><br>
-                        <p class="text-gray-600 mt-1 whitespace-pre-line">${solarDetails.remarks}</p>
+                        <p class="text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-line">${solarDetails.remarks}</p>
                     </div>
                 ` : ''}
             ` : `
@@ -2874,9 +3142,43 @@ function toggleEditBatteryCapacityInput() {
     }
 }
 
-// Quote approval confirmation function
+// Quote approval modal functions
+function showQuoteApprovalModal(quoteId, quoteNumber, customerName, totalAmount) {
+    const modal = document.getElementById('quote-approval-modal');
+    const quoteIdInput = document.getElementById('approval_quote_id');
+    const quoteNumberSpan = document.getElementById('approval_quote_number');
+    const customerNameSpan = document.getElementById('approval_customer_name');
+    const totalAmountSpan = document.getElementById('approval_total_amount');
+    
+    // Populate modal with quote details
+    quoteIdInput.value = quoteId;
+    quoteNumberSpan.textContent = quoteNumber;
+    customerNameSpan.textContent = customerName;
+    totalAmountSpan.textContent = formatCurrency(totalAmount);
+    
+    // Show modal
+    modal.classList.remove('hidden');
+}
+
+function closeQuoteApprovalModal() {
+    const modal = document.getElementById('quote-approval-modal');
+    modal.classList.add('hidden');
+}
+
 function confirmQuoteApproval() {
-    return confirm('Are you sure you want to approve this quote?\n\n⚠️ WARNING: This will automatically deduct the quoted items from inventory stock.\n\nPlease ensure you have sufficient stock before proceeding.');
+    const quoteId = document.getElementById('approval_quote_id').value;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `?action=update_quote_status&quote_id=${quoteId}`;
+    
+    const statusInput = document.createElement('input');
+    statusInput.type = 'hidden';
+    statusInput.name = 'new_status';
+    statusInput.value = 'accepted';
+    
+    form.appendChild(statusInput);
+    document.body.appendChild(form);
+    form.submit();
 }
 </script>
 

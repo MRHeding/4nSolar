@@ -96,6 +96,45 @@ if ($_POST) {
                 }
             }
             break;
+            
+        case 'generate_serials':
+            if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
+                $quantity = $_POST['quantity'] ?? 1;
+                
+                // Additional server-side validation
+                $stmt = $pdo->prepare("SELECT stock_quantity FROM inventory_items WHERE id = ?");
+                $stmt->execute([$item_id]);
+                $current_stock = $stmt->fetchColumn();
+                
+                if ($quantity > $current_stock) {
+                    $error = "Cannot generate more serials than current stock. Requested: {$quantity}, Current stock: {$current_stock}";
+                } else {
+                    $result = generateSerialNumbers($item_id, $quantity);
+                    if ($result['success']) {
+                        $message = $result['message'] . '!';
+                        header("Location: inventory.php?action=view&id=" . $item_id . "&message=" . urlencode($message));
+                        exit();
+                    } else {
+                        $error = $result['message'];
+                    }
+                }
+            }
+            break;
+            
+        case 'update_serial_settings':
+            if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
+                $generate_serials = isset($_POST['generate_serials']) ? 1 : 0;
+                $serial_prefix = $_POST['serial_prefix'] ?? null;
+                $serial_format = $_POST['serial_format'] ?? 'YYYY-NNNNNN';
+                
+                if (updateInventorySerialSettings($item_id, $generate_serials, $serial_prefix, $serial_format)) {
+                    header("Location: inventory.php?action=view&id=" . $item_id . "&message=" . urlencode('Serial settings updated successfully!'));
+                    exit();
+                } else {
+                    $error = 'Failed to update serial settings.';
+                }
+            }
+            break;
     }
 }
 
@@ -129,6 +168,7 @@ switch ($action) {
         if ($item_id) {
             $item = getInventoryItem($item_id);
             $stock_movements = getStockMovements($item_id);
+            $serial_numbers = getAllSerials($item_id);
             if (!$item) {
                 $error = 'Item not found.';
                 $action = 'list';
@@ -175,7 +215,7 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Inventory Management</h1>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Inventory Management</h1>
             <p class="text-gray-600">Manage your solar equipment inventory</p>
         </div>
             <div class="space-x-2">
@@ -189,11 +229,11 @@ include 'includes/header.php';
 </div>
 
 <!-- Filters -->
-<div class="bg-white rounded-lg shadow p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <!-- Category Filter Section -->
         <div class="space-y-1">
-            <label class="block text-sm font-medium text-gray-700">Category Filter</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category Filter</label>
             <select onchange="updateFilters('category', this.value)" 
                     class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent category-select"
                     style="max-height: 200px; overflow-y: auto;">
@@ -208,7 +248,7 @@ include 'includes/header.php';
         
         <!-- Brand Filter Section -->
         <div class="space-y-1">
-            <label class="block text-sm font-medium text-gray-700">Brand Filter</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Brand Filter</label>
             <select onchange="updateFilters('brand', this.value)" 
                     class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent brand-select"
                     style="max-height: 200px; overflow-y: auto;">
@@ -237,8 +277,8 @@ include 'includes/header.php';
         
         <!-- Quick Filter Buttons -->
         <div class="relative">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Quick Filters</label>
-            <button onclick="toggleQuickFilters(event)" class="w-full flex items-center justify-between px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 transition text-sm">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quick Filters</label>
+            <button onclick="toggleQuickFilters(event)" class="w-full flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 transition text-sm">
                 <span class="flex items-center">
                     <i class="fas fa-filter w-5 text-gray-400"></i>
                     <span>Filter Items</span>
@@ -247,11 +287,11 @@ include 'includes/header.php';
             </button>
             
             <!-- Dropdown Menu -->
-            <div id="quickFiltersDropdown" class="hidden absolute left-0 mt-2 w-full bg-white border border-gray-200 rounded-md shadow-lg z-10">
+            <div id="quickFiltersDropdown" class="hidden absolute left-0 mt-2 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-10">
                 <!-- Status Filters -->
                 <div class="p-2">
                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Status Filters</div>
-                    <a href="?" class="w-full flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition">
+                    <a href="?" class="w-full flex items-center px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 rounded-md transition">
                         <i class="fas fa-list w-5 text-gray-400"></i>
                         All Items
                     </a>
@@ -266,7 +306,7 @@ include 'includes/header.php';
                 </div>
                 
                 <!-- Popular Brands -->
-                <div class="border-t border-gray-200 p-2">
+                <div class="border-t border-gray-200 dark:border-gray-600 p-2">
                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Popular Brands</div>
                     <a href="?brand=Canadian+Solar" class="w-full flex items-center px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded-md transition">
                         <i class="fas fa-solar-panel w-5 text-blue-400"></i>
@@ -318,7 +358,7 @@ include 'includes/header.php';
         
         <!-- Export Section -->
         <div class="space-y-1">
-            <label class="block text-sm font-medium text-gray-700">Export & Print</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Export & Print</label>
             <div class="flex gap-2">
                 <button onclick="exportToCSV('inventory-table', 'inventory')" 
                         class="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm">
@@ -329,15 +369,15 @@ include 'includes/header.php';
                             class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm">
                         <i class="fas fa-file-export mr-1"></i>Export <i class="fas fa-chevron-down ml-1"></i>
                     </button>
-                    <div id="export-menu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-56 max-h-80 overflow-y-auto">
+                    <div id="export-menu" class="hidden absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-10 min-w-56 max-h-80 overflow-y-auto">
                         <!-- Category-specific exports -->
-                        <div class="px-4 py-2 border-b border-gray-200 sticky top-0 bg-white z-10">
+                        <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-600 sticky top-0 bg-white z-10">
                             <div class="text-xs font-medium text-gray-500 uppercase">By Category</div>
                         </div>
                         
                         <!-- All Items Export -->
                         <a href="export_inventory.php?format=csv<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo $brand_filter ? '&brand=' . urlencode($brand_filter) : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
-                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100">
                             <i class="fas fa-file-csv text-green-600 mr-2"></i>
                             All Items (CSV)
                         </a>
@@ -345,21 +385,21 @@ include 'includes/header.php';
                         <!-- All Category CSV Exports -->
                         <?php foreach ($categories as $category): ?>
                         <a href="export_inventory.php?format=csv&category=<?php echo $category['id']; ?>" 
-                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100">
                             <i class="fas fa-file-csv text-blue-600 mr-2"></i>
                             <?php echo htmlspecialchars($category['name']); ?> (CSV)
                         </a>
                         <?php endforeach; ?>
                         
-                        <div class="border-t border-gray-200"></div>
+                        <div class="border-t border-gray-200 dark:border-gray-600"></div>
                         
                         <!-- JSON Exports -->
-                        <div class="px-4 py-2 border-b border-gray-200 sticky top-0 bg-white z-10">
+                        <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-600 sticky top-0 bg-white z-10">
                             <div class="text-xs font-medium text-gray-500 uppercase">JSON Format</div>
                         </div>
                         
                         <a href="export_inventory.php?format=json<?php echo $category_filter ? '&category=' . $category_filter : ''; ?><?php echo $brand_filter ? '&brand=' . urlencode($brand_filter) : ''; ?><?php echo isset($_GET['filter']) ? '&filter=' . $_GET['filter'] : ''; ?>" 
-                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100">
                             <i class="fas fa-file-code text-purple-600 mr-2"></i>
                             All Items (JSON)
                         </a>
@@ -367,27 +407,27 @@ include 'includes/header.php';
                         <!-- All Category JSON Exports -->
                         <?php foreach ($categories as $category): ?>
                         <a href="export_inventory.php?format=json&category=<?php echo $category['id']; ?>" 
-                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100">
                             <i class="fas fa-file-code text-indigo-600 mr-2"></i>
                             <?php echo htmlspecialchars($category['name']); ?> (JSON)
                         </a>
                         <?php endforeach; ?>
                         
-                        <div class="border-t border-gray-200"></div>
+                        <div class="border-t border-gray-200 dark:border-gray-600"></div>
                         
                         <!-- Print Options -->
-                        <div class="px-4 py-2 border-b border-gray-200 sticky top-0 bg-white z-10">
+                        <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-600 sticky top-0 bg-white z-10">
                             <div class="text-xs font-medium text-gray-500 uppercase">Print Options</div>
                         </div>
                         
                         <button onclick="printInventoryReport('all')" 
-                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 text-left">
                             <i class="fas fa-print text-gray-600 mr-2"></i>
                             Print All Items
                         </button>
                         
                         <button onclick="printInventoryReport('current')" 
-                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 text-left">
                             <i class="fas fa-print text-blue-600 mr-2"></i>
                             Print Current View
                         </button>
@@ -395,27 +435,27 @@ include 'includes/header.php';
                         <!-- All Category Print Options -->
                         <?php foreach ($categories as $category): ?>
                         <button onclick="printInventoryReport('category', <?php echo $category['id']; ?>, '<?php echo htmlspecialchars($category['name']); ?>')" 
-                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 text-left">
                             <i class="fas fa-print text-orange-600 mr-2"></i>
                             Print <?php echo htmlspecialchars($category['name']); ?>
                         </button>
                         <?php endforeach; ?>
                         
-                        <div class="border-t border-gray-200"></div>
+                        <div class="border-t border-gray-200 dark:border-gray-600"></div>
                         
                         <!-- Special Reports -->
-                        <div class="px-4 py-2 border-b border-gray-200">
+                        <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-600">
                             <div class="text-xs font-medium text-gray-500 uppercase">Special Reports</div>
                         </div>
                         
                         <a href="export_inventory.php?format=csv&filter=low_stock" 
-                           class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100">
                             <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
                             Low Stock Report (CSV)
                         </a>
                         
                         <button onclick="printInventoryReport('low_stock')" 
-                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
+                                class="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 text-left">
                             <i class="fas fa-print text-red-600 mr-2"></i>
                             Print Low Stock Report
                         </button>
@@ -427,7 +467,7 @@ include 'includes/header.php';
     
     <!-- Filter Status Display -->
     <?php if ($category_filter || $brand_filter || isset($_GET['filter'])): ?>
-    <div class="mt-4 pt-4 border-t border-gray-200">
+    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
         <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2">
                 <span class="text-sm text-gray-600">Active filters:</span>
@@ -458,7 +498,7 @@ include 'includes/header.php';
                     </span>
                 <?php endif; ?>
             </div>
-            <a href="?" class="text-sm text-gray-500 hover:text-gray-700 transition">
+            <a href="?" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-300 transition">
                 <i class="fas fa-times mr-1"></i>Clear all filters
             </a>
         </div>
@@ -467,10 +507,10 @@ include 'includes/header.php';
 </div>
 
 <!-- Search Bar for Inventory Items -->
-<div class="bg-white rounded-lg shadow p-4 mb-4">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
     <div class="flex items-center space-x-4">
         <div class="flex-1">
-            <label for="inventory-search" class="block text-sm font-medium text-gray-700 mb-2">
+            <label for="inventory-search" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <i class="fas fa-search mr-2"></i>Search Inventory Items
             </label>
             <input type="text" 
@@ -484,7 +524,7 @@ include 'includes/header.php';
             </p>
         </div>
         <div class="flex flex-col">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Quick Actions</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quick Actions</label>
             <div class="flex space-x-2 search-actions">
                 <button onclick="clearInventorySearch()" 
                         class="px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition text-sm">
@@ -545,9 +585,9 @@ include 'includes/header.php';
 <?php endif; ?>
 
 <!-- Inventory Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden inventory-table-container relative">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden inventory-table-container relative">
     <!-- Fixed Table Header -->
-    <div class="bg-gray-50 border-b border-gray-200">
+    <div class="bg-gray-50 border-b border-gray-200 dark:border-gray-600">
         <div class="min-w-full">
             <div class="grid grid-cols-8 gap-4 px-6 py-3">
                 <div class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</div>
@@ -669,16 +709,16 @@ include 'includes/header.php';
 <?php elseif ($action == 'add' || $action == 'edit'): ?>
 <!-- Add/Edit Form -->
 <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-800"><?php echo $action == 'add' ? 'Add New' : 'Edit'; ?> Inventory Item</h1>
+    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200"><?php echo $action == 'add' ? 'Add New' : 'Edit'; ?> Inventory Item</h1>
     <p class="text-gray-600">Enter the details for the inventory item</p>
 </div>
 
-<div class="bg-white rounded-lg shadow p-6">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
     <form method="POST" enctype="multipart/form-data" class="space-y-6">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Product Image -->
             <div class="md:col-span-2">
-                <label for="product_image" class="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
+                <label for="product_image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product Image</label>
                 <?php if (isset($item) && $item['image_path']): ?>
                 <div class="mb-3">
                     <img src="<?php echo htmlspecialchars(getProductImageUrl($item['image_path'])); ?>" 
@@ -693,21 +733,21 @@ include 'includes/header.php';
             </div>
             
             <div>
-                <label for="brand" class="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                <label for="brand" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Brand</label>
                 <input type="text" id="brand" name="brand" required
                        value="<?php echo isset($item) ? htmlspecialchars($item['brand']) : ''; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="model" class="block text-sm font-medium text-gray-700 mb-2">Model</label>
+                <label for="model" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Model</label>
                 <input type="text" id="model" name="model" required
                        value="<?php echo isset($item) ? htmlspecialchars($item['model']) : ''; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="category_id" class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <label for="category_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
                 <select id="category_id" name="category_id" required
                         class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                     <option value="">Select Category</option>
@@ -721,35 +761,35 @@ include 'includes/header.php';
             </div>
             
             <div>
-                <label for="size_specification" class="block text-sm font-medium text-gray-700 mb-2">Size/Specification</label>
+                <label for="size_specification" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Size/Specification</label>
                 <input type="text" id="size_specification" name="size_specification"
                        value="<?php echo isset($item) ? htmlspecialchars($item['size_specification']) : ''; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="base_price" class="block text-sm font-medium text-gray-700 mb-2">Base Price (₱)</label>
+                <label for="base_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Base Price (₱)</label>
                 <input type="number" step="0.01" id="base_price" name="base_price" required
                        value="<?php echo isset($item) ? $item['base_price'] : ''; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="selling_price" class="block text-sm font-medium text-gray-700 mb-2">Selling Price (₱)</label>
+                <label for="selling_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Selling Price (₱)</label>
                 <input type="number" step="0.01" id="selling_price" name="selling_price" required
                        value="<?php echo isset($item) ? $item['selling_price'] : ''; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="discount_percentage" class="block text-sm font-medium text-gray-700 mb-2">Discount (%)</label>
+                <label for="discount_percentage" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Discount (%)</label>
                 <input type="number" step="0.01" min="0" max="100" id="discount_percentage" name="discount_percentage"
                        value="<?php echo isset($item) ? $item['discount_percentage'] : '0'; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="supplier_id" class="block text-sm font-medium text-gray-700 mb-2">Supplier</label>
+                <label for="supplier_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Supplier</label>
                 <select id="supplier_id" name="supplier_id"
                         class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                     <option value="">Select Supplier</option>
@@ -763,28 +803,28 @@ include 'includes/header.php';
             </div>
             
             <div>
-                <label for="stock_quantity" class="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
+                <label for="stock_quantity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stock Quantity</label>
                 <input type="number" min="0" id="stock_quantity" name="stock_quantity" required
                        value="<?php echo isset($item) ? $item['stock_quantity'] : '0'; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="minimum_stock" class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock</label>
+                <label for="minimum_stock" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Minimum Stock</label>
                 <input type="number" min="0" id="minimum_stock" name="minimum_stock" required
-                       value="<?php echo isset($item) ? $item['minimum_stock'] : '10'; ?>"
+                       value="<?php echo isset($item) ? $item['minimum_stock'] : '1'; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
         </div>
         
         <div>
-            <label for="description" class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
             <textarea id="description" name="description" rows="3"
                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"><?php echo isset($item) ? htmlspecialchars($item['description']) : ''; ?></textarea>
         </div>
         
         <div class="flex justify-end space-x-4">
-            <a href="?" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+            <a href="?" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">Cancel</a>
             <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
                 <?php echo $action == 'add' ? 'Add Item' : 'Update Item'; ?>
             </button>
@@ -797,7 +837,7 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></h1>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></h1>
             <p class="text-gray-600"><?php echo htmlspecialchars($item['description']); ?></p>
         </div>
         <div class="space-x-2">
@@ -809,10 +849,17 @@ include 'includes/header.php';
                     class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
                 <i class="fas fa-boxes mr-2"></i>Update Stock
             </button>
+            <?php if ($item['generate_serials']): ?>
+            <button onclick="document.getElementById('serial-modal').classList.remove('hidden')" 
+                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                <i class="fas fa-barcode mr-2"></i>Manage Serials
+            </button>
             <?php endif; ?>
-            <a href="?" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                <i class="fas fa-arrow-left mr-2"></i>Back
-            </a>
+            <button onclick="document.getElementById('serial-settings-modal').classList.remove('hidden')" 
+                    class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                <i class="fas fa-cog mr-2"></i>Serial Settings
+            </button>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -820,8 +867,8 @@ include 'includes/header.php';
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
     <!-- Item Details -->
     <div class="lg:col-span-4">
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Item Details</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Item Details</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-500">Brand</label>
@@ -868,12 +915,12 @@ include 'includes/header.php';
 
     <!-- Product Image -->
     <div class="lg:col-span-1">
-        <div class="bg-white rounded-lg shadow p-4">
-            <h2 class="text-lg font-semibold text-gray-800 mb-3">Product Image</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Product Image</h2>
             <div class="text-center">
                 <img src="<?php echo htmlspecialchars(getProductImageUrl($item['image_path'])); ?>" 
                      alt="<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>"
-                     class="w-full max-w-xs mx-auto rounded-lg shadow-md border border-gray-200 cursor-pointer"
+                     class="w-full max-w-xs mx-auto rounded-lg shadow-md border border-gray-200 dark:border-gray-600 cursor-pointer"
                      onclick="openImageModal(this.src)">
                 <p class="text-xs text-gray-500 mt-1">Click to view full size</p>
             </div>
@@ -885,8 +932,8 @@ include 'includes/header.php';
 <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-6">
     <!-- Stock Information -->
     <div class="lg:col-span-1">
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Stock Information</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Stock Information</h2>
             <div class="space-y-4">
                 <div class="text-center">
                     <div class="text-3xl font-bold <?php echo $item['stock_quantity'] <= $item['minimum_stock'] ? 'text-red-600' : 'text-green-600'; ?>">
@@ -901,6 +948,30 @@ include 'includes/header.php';
                         <span class="font-medium"><?php echo $item['minimum_stock']; ?></span>
                     </div>
                 </div>
+                
+                <?php if ($item['generate_serials']): ?>
+                <div class="border-t pt-4">
+                    <div class="text-sm font-medium text-gray-700 mb-2">Serial Numbers</div>
+                    <div class="space-y-1 text-xs">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Total Serials:</span>
+                            <span class="font-medium"><?php echo count($serial_numbers); ?></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-green-600">Available:</span>
+                            <span class="font-medium"><?php echo count(array_filter($serial_numbers, function($s) { return $s['status'] === 'available'; })); ?></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-blue-600">Reserved:</span>
+                            <span class="font-medium"><?php echo count(array_filter($serial_numbers, function($s) { return $s['status'] === 'reserved'; })); ?></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-red-600">Sold:</span>
+                            <span class="font-medium"><?php echo count(array_filter($serial_numbers, function($s) { return $s['status'] === 'sold'; })); ?></span>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
                 
                 <?php if ($item['stock_quantity'] <= $item['minimum_stock']): ?>
                 <div class="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -919,8 +990,8 @@ include 'includes/header.php';
 
     <!-- Stock Movements -->
     <div class="lg:col-span-3">
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Recent Stock Movements</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Recent Stock Movements</h2>
             <?php if (!empty($stock_movements)): ?>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
@@ -971,6 +1042,69 @@ include 'includes/header.php';
     </div>
 </div>
 
+<?php if ($item['generate_serials']): ?>
+<!-- Serial Numbers Section -->
+<div class="mt-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Serial Numbers</h2>
+        <?php if (!empty($serial_numbers)): ?>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Serial Number</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    <?php foreach ($serial_numbers as $serial): ?>
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
+                            <?php echo htmlspecialchars($serial['serial_number']); ?>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full 
+                                <?php 
+                                switch($serial['status']) {
+                                    case 'available': echo 'bg-green-100 text-green-800'; break;
+                                    case 'reserved': echo 'bg-blue-100 text-blue-800'; break;
+                                    case 'sold': echo 'bg-red-100 text-red-800'; break;
+                                    case 'damaged': echo 'bg-yellow-100 text-yellow-800'; break;
+                                    case 'returned': echo 'bg-gray-100 text-gray-800'; break;
+                                    default: echo 'bg-gray-100 text-gray-800';
+                                }
+                                ?>">
+                                <?php echo ucfirst($serial['status']); ?>
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <?php echo htmlspecialchars($serial['status_description'] ?? ''); ?>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <?php echo date('M j, Y g:i A', strtotime($serial['created_at'])); ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php else: ?>
+        <div class="text-center py-8 text-gray-500">
+            <i class="fas fa-barcode text-3xl mb-3"></i>
+            <p class="text-lg font-medium text-gray-700 mb-2">No Serial Numbers</p>
+            <p class="text-sm text-gray-500 mb-4">This item has no serial numbers generated yet.</p>
+            <button onclick="document.getElementById('serial-modal').classList.remove('hidden')" 
+                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                <i class="fas fa-plus mr-2"></i>Generate Serial Numbers
+            </button>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Stock Update Modal -->
 <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
 <div id="stock-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -980,24 +1114,104 @@ include 'includes/header.php';
             <form method="POST" action="?action=update_stock&id=<?php echo $item['id']; ?>">
                 <input type="hidden" name="current_quantity" value="<?php echo $item['stock_quantity']; ?>">
                 <div class="mb-4">
-                    <label for="new_quantity" class="block text-sm font-medium text-gray-700 mb-2">New Quantity</label>
+                    <label for="new_quantity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">New Quantity</label>
                     <input type="number" min="0" id="new_quantity" name="new_quantity" 
                            value="<?php echo $item['stock_quantity']; ?>" required
                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                 </div>
                 <div class="mb-4">
-                    <label for="notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                    <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes</label>
                     <textarea id="notes" name="notes" rows="3"
                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
                               placeholder="Reason for stock adjustment..."></textarea>
                 </div>
                 <div class="flex justify-end space-x-3">
                     <button type="button" onclick="document.getElementById('stock-modal').classList.add('hidden')"
-                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">
                         Cancel
                     </button>
                     <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
                         Update Stock
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Serial Number Management Modal -->
+<?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
+<div id="serial-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Generate Serial Numbers</h3>
+            <form method="POST" action="?action=generate_serials&id=<?php echo $item['id']; ?>">
+                <div class="mb-4">
+                    <label for="quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity to Generate</label>
+                    <input type="number" min="1" max="<?php echo $item['stock_quantity']; ?>" id="quantity" name="quantity" value="<?php echo $item['stock_quantity']; ?>" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           onchange="validateSerialQuantity(this, <?php echo $item['stock_quantity']; ?>)">
+                    <p class="text-xs text-gray-500 mt-1">Generate serial numbers based on current stock (<?php echo $item['stock_quantity']; ?> items) - Cannot exceed current stock</p>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="document.getElementById('serial-modal').classList.add('hidden')"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
+                        Generate Serials
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Serial Settings Modal -->
+<div id="serial-settings-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Serial Number Settings</h3>
+            <form method="POST" action="?action=update_serial_settings&id=<?php echo $item['id']; ?>">
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" name="generate_serials" value="1" 
+                               <?php echo $item['generate_serials'] ? 'checked' : ''; ?>
+                               class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                        <span class="ml-2 text-sm text-gray-700">Generate serial numbers for this item</span>
+                    </label>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="serial_prefix" class="block text-sm font-medium text-gray-700 mb-2">Serial Prefix</label>
+                    <input type="text" id="serial_prefix" name="serial_prefix" 
+                           value="<?php echo htmlspecialchars($item['serial_prefix'] ?? ''); ?>"
+                           placeholder="e.g., INV, BAT, PAN"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                    <p class="text-xs text-gray-500 mt-1">Prefix for serial numbers (e.g., INV for inverters)</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="serial_format" class="block text-sm font-medium text-gray-700 mb-2">Serial Format</label>
+                    <select id="serial_format" name="serial_format"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                        <option value="YYYY-NNNNNN" <?php echo ($item['serial_format'] ?? 'YYYY-NNNNNN') === 'YYYY-NNNNNN' ? 'selected' : ''; ?>>
+                            YYYY-NNNNNN (e.g., 2025-000001)
+                        </option>
+                        <option value="PREFIX-YYYY-NNNNNN" <?php echo ($item['serial_format'] ?? '') === 'PREFIX-YYYY-NNNNNN' ? 'selected' : ''; ?>>
+                            PREFIX-YYYY-NNNNNN (e.g., INV-2025-000001)
+                        </option>
+                    </select>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="document.getElementById('serial-settings-modal').classList.add('hidden')"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
+                        Save Settings
                     </button>
                 </div>
             </form>
@@ -1038,6 +1252,55 @@ function updateFilters(filterType, filterValue) {
     // Construct new URL
     const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
     window.location.href = newUrl;
+}
+
+// Validate serial quantity input
+function validateSerialQuantity(input, maxStock) {
+    const quantity = parseInt(input.value);
+    const errorMsg = document.getElementById('quantity-error');
+    
+    // Remove existing error message
+    if (errorMsg) {
+        errorMsg.remove();
+    }
+    
+    if (quantity > maxStock) {
+        // Create error message
+        const error = document.createElement('p');
+        error.id = 'quantity-error';
+        error.className = 'text-xs text-red-600 mt-1';
+        error.textContent = `Cannot generate more than ${maxStock} serials (current stock)`;
+        
+        // Insert error message after the input
+        input.parentNode.insertBefore(error, input.nextSibling);
+        
+        // Reset to max stock
+        input.value = maxStock;
+        
+        // Add red border to input
+        input.classList.add('border-red-500');
+        input.classList.remove('border-gray-300');
+    } else if (quantity < 1) {
+        // Create error message
+        const error = document.createElement('p');
+        error.id = 'quantity-error';
+        error.className = 'text-xs text-red-600 mt-1';
+        error.textContent = 'Quantity must be at least 1';
+        
+        // Insert error message after the input
+        input.parentNode.insertBefore(error, input.nextSibling);
+        
+        // Reset to 1
+        input.value = 1;
+        
+        // Add red border to input
+        input.classList.add('border-red-500');
+        input.classList.remove('border-gray-300');
+    } else {
+        // Remove red border
+        input.classList.remove('border-red-500');
+        input.classList.add('border-gray-300');
+    }
 }
 
 function openImageModal(imageSrc) {

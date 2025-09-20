@@ -22,20 +22,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         switch ($_POST['action']) {
             case 'add_employee':
                 try {
-                    $employee_code = generateEmployeeCode($pdo);
-                    $data = [
-                        'employee_code' => $employee_code,
-                        'employee_name' => $_POST['employee_name'],
-                        'position' => $_POST['position'],
-                        'date_of_joining' => $_POST['date_of_joining'],
-                        'basic_salary' => $_POST['basic_salary'],
-                        'allowances' => $_POST['allowances']
-                    ];
+                    // Check if employee code already exists
+                    $stmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE employee_code = ?");
+                    $stmt->execute([$_POST['employee_code']]);
+                    $code_exists = $stmt->fetchColumn();
                     
-                    if (addEmployee($pdo, $data)) {
-                        $message = 'Employee added successfully!';
+                    if ($code_exists > 0) {
+                        $error = 'Employee code already exists. Please choose a different code.';
                     } else {
-                        $error = 'Failed to add employee.';
+                        $data = [
+                            'employee_code' => $_POST['employee_code'],
+                            'employee_name' => $_POST['employee_name'],
+                            'position' => $_POST['position'],
+                            'date_of_joining' => $_POST['date_of_joining'],
+                            'basic_salary' => $_POST['basic_salary'],
+                            'allowances' => $_POST['allowances']
+                        ];
+                        
+                        if (addEmployee($pdo, $data)) {
+                            $message = 'Employee added successfully!';
+                        } else {
+                            $error = 'Failed to add employee.';
+                        }
                     }
                 } catch (Exception $e) {
                     $error = 'Error: ' . $e->getMessage();
@@ -86,9 +94,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                     
+                    // Process dynamic deductions
+                    $custom_deductions = [];
+                    if (!empty($_POST['deduction_names']) && !empty($_POST['deduction_amounts'])) {
+                        for ($i = 0; $i < count($_POST['deduction_names']); $i++) {
+                            $name = trim($_POST['deduction_names'][$i]);
+                            $amount = floatval($_POST['deduction_amounts'][$i]);
+                            if (!empty($name) && $amount > 0) {
+                                $custom_deductions[] = [
+                                    'name' => $name,
+                                    'amount' => $amount
+                                ];
+                            }
+                        }
+                    }
+                    
                     // Get adjustments from form
                     $adjustments = [
                         'packages' => $packages,
+                        'custom_deductions' => $custom_deductions,
                         'bonus_pay' => $_POST['bonus_pay'] ?? 0,
                         'cash_advance' => $_POST['cash_advance'] ?? 0,
                         'uniforms' => $_POST['uniforms'] ?? 0,
@@ -519,6 +543,8 @@ include 'includes/header.php';
                         </div>
                         <div class="col-md-6">
                             <h6>Deductions</h6>
+                            
+                            <!-- Standard Deductions -->
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="mb-3">
@@ -551,10 +577,19 @@ include 'includes/header.php';
                                 <label for="late_penalty" class="form-label">Late Penalty (per instance)</label>
                                 <input type="number" class="form-control" id="late_penalty" name="late_penalty" step="0.01" value="0">
                             </div>
+                            
+                            <!-- Custom Deductions -->
+                            <h6 class="mt-4">Custom Deductions</h6>
+                            <div id="deductions-container">
+                                <!-- Empty container - deductions will be added dynamically -->
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="addDeduction()">
+                                <i class="fas fa-minus"></i> Add Deduction
+                            </button>
                         </div>
                     </div>
 
-                    <div class="text-center">
+                    <div class="text-center mt-4">
                         <button type="submit" class="btn btn-primary btn-lg">
                             <i class="fas fa-calculator me-2"></i>Generate Payroll
                         </button>
@@ -579,24 +614,35 @@ include 'includes/header.php';
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="employee_name" class="form-label">Employee Name</label>
-                                <input type="text" class="form-control" id="employee_name" name="employee_name" required>
+                                <label for="employee_code" class="form-label">Employee Code</label>
+                                <input type="text" class="form-control" id="employee_code" name="employee_code" required>
+                                <div class="form-text">Enter a unique employee code (e.g., EMP001, 2025-001, SOLAR-001)</div>
+                                <div class="invalid-feedback">This employee code already exists. Please choose a different one.</div>
+                                <div class="valid-feedback">Employee code is available!</div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="position" class="form-label">Position</label>
-                                <input type="text" class="form-control" id="position" name="position" required>
+                                <label for="employee_name" class="form-label">Employee Name</label>
+                                <input type="text" class="form-control" id="employee_name" name="employee_name" required>
                             </div>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
+                                <label for="position" class="form-label">Position</label>
+                                <input type="text" class="form-control" id="position" name="position" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
                                 <label for="date_of_joining" class="form-label">Date of Joining</label>
                                 <input type="date" class="form-control" id="date_of_joining" name="date_of_joining" required>
                             </div>
                         </div>
+                    </div>
+                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="basic_salary" class="form-label">Basic Salary (Daily Rate)</label>
@@ -604,10 +650,12 @@ include 'includes/header.php';
                                 <div class="form-text">Salary will be calculated based on actual hours worked (Daily Rate ÷ 8 = Hourly Rate)</div>
                             </div>
                         </div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="allowances" class="form-label">Allowances</label>
-                        <input type="number" class="form-control" id="allowances" name="allowances" step="0.01" value="0">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="allowances" class="form-label">Allowances</label>
+                                <input type="number" class="form-control" id="allowances" name="allowances" step="0.01" value="0">
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -764,6 +812,35 @@ function removePackage(button) {
     row.remove();
 }
 
+// Deduction management functions
+function addDeduction() {
+    const container = document.getElementById('deductions-container');
+    const newRow = document.createElement('div');
+    newRow.className = 'deduction-row mb-2';
+    newRow.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <input type="text" class="form-control" name="deduction_names[]" placeholder="Deduction Description">
+            </div>
+            <div class="col-md-5">
+                <input type="number" class="form-control" name="deduction_amounts[]" placeholder="Amount" step="0.01" value="0">
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeDeduction(this)">×</button>
+            </div>
+        </div>
+    `;
+    container.appendChild(newRow);
+}
+
+function removeDeduction(button) {
+    const row = button.closest('.deduction-row');
+    const container = document.getElementById('deductions-container');
+    
+    // Always allow removing deductions since we start with none
+    row.remove();
+}
+
 // Auto-calculate hours based on time in/out
 function calculateHoursWorked() {
     const timeIn = document.getElementById('time_in').value;
@@ -830,6 +907,884 @@ document.getElementById('time_out')?.addEventListener('change', calculateHoursWo
 // Also calculate when time_in changes
 document.getElementById('time_in')?.addEventListener('input', calculateHoursWorked);
 document.getElementById('time_out')?.addEventListener('input', calculateHoursWorked);
+
+// Employee code validation
+function validateEmployeeCode() {
+    const employeeCodeInput = document.getElementById('employee_code');
+    const code = employeeCodeInput.value.trim();
+    
+    if (code.length === 0) {
+        employeeCodeInput.classList.remove('is-valid', 'is-invalid');
+        return;
+    }
+    
+    // Check if code already exists via AJAX
+    fetch('check_employee_code.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'employee_code=' + encodeURIComponent(code)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.exists) {
+            employeeCodeInput.classList.add('is-invalid');
+            employeeCodeInput.classList.remove('is-valid');
+            employeeCodeInput.setCustomValidity('Employee code already exists');
+        } else {
+            employeeCodeInput.classList.add('is-valid');
+            employeeCodeInput.classList.remove('is-invalid');
+            employeeCodeInput.setCustomValidity('');
+        }
+    })
+    .catch(error => {
+        console.error('Error checking employee code:', error);
+    });
+}
+
+// Add event listener for employee code validation
+document.getElementById('employee_code')?.addEventListener('blur', validateEmployeeCode);
+document.getElementById('employee_code')?.addEventListener('input', function() {
+    // Clear validation classes while typing
+    this.classList.remove('is-valid', 'is-invalid');
+    this.setCustomValidity('');
+});
 </script>
 
 <?php include 'includes/footer.php'; ?>
+
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- Attendance Tab -->
+
+    <div class="tab-pane fade <?php echo $active_tab === 'attendance' ? 'show active' : ''; ?>" id="attendance" role="tabpanel">
+
+        <div class="card mt-3">
+
+            <div class="card-header d-flex justify-content-between align-items-center">
+
+                <h5 class="mb-0"><i class="fas fa-calendar-check me-2"></i>Quick Attendance Entry</h5>
+
+                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addAttendanceModal">
+
+                    <i class="fas fa-plus"></i> Add Attendance
+
+                </button>
+
+            </div>
+
+            <div class="card-body">
+
+                <div class="row">
+
+                    <div class="col-md-6">
+
+                        <p class="text-muted">Use the "Add Attendance" button to record employee attendance for any date.</p>
+
+                        <p><strong>Today's Date:</strong> <?php echo date('F d, Y'); ?></p>
+
+                        <p><strong>Current Pay Period:</strong> <?php echo date('M d', strtotime($current_period['start'])) . ' - ' . date('M d, Y', strtotime($current_period['end'])); ?></p>
+
+                    </div>
+
+                    <div class="col-md-6">
+
+                        <div class="card bg-light">
+
+                            <div class="card-body">
+
+                                <h6>Attendance Status Options:</h6>
+
+                                <ul class="list-unstyled">
+
+                                    <li><i class="fas fa-check text-success"></i> Present - Full day attendance</li>
+
+                                    <li><i class="fas fa-times text-danger"></i> Absent - No attendance</li>
+
+                                    <li><i class="fas fa-clock text-warning"></i> Late - Arrived late</li>
+
+                                    <li><i class="fas fa-adjust text-info"></i> Half Day - Partial attendance</li>
+
+                                    <li><i class="fas fa-plus text-primary"></i> Overtime - Extra hours worked</li>
+
+                                </ul>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- Generate Payroll Tab -->
+
+    <div class="tab-pane fade <?php echo $active_tab === 'generate' ? 'show active' : ''; ?>" id="generate" role="tabpanel">
+
+        <div class="card mt-3">
+
+            <div class="card-header">
+
+                <h5 class="mb-0"><i class="fas fa-calculator me-2"></i>Generate Payroll</h5>
+
+            </div>
+
+            <div class="card-body">
+
+                <form method="POST" action="">
+
+                    <input type="hidden" name="action" value="generate_payroll">
+
+                    
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="employee_id" class="form-label">Select Employee</label>
+
+                                <select class="form-select" id="employee_id" name="employee_id" required>
+
+                                    <option value="">Choose an employee...</option>
+
+                                    <?php foreach ($employees as $employee): ?>
+
+                                    <option value="<?php echo $employee['id']; ?>">
+
+                                        <?php echo htmlspecialchars($employee['employee_code'] . ' - ' . $employee['employee_name']); ?>
+
+                                    </option>
+
+                                    <?php endforeach; ?>
+
+                                </select>
+
+                            </div>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <div class="row">
+
+                                <div class="col-md-6">
+
+                                    <div class="mb-3">
+
+                                        <label for="pay_period_start" class="form-label">Period Start</label>
+
+                                        <input type="date" class="form-control" id="pay_period_start" name="pay_period_start" value="<?php echo $current_period['start']; ?>" required>
+
+                                    </div>
+
+                                </div>
+
+                                <div class="col-md-6">
+
+                                    <div class="mb-3">
+
+                                        <label for="pay_period_end" class="form-label">Period End</label>
+
+                                        <input type="date" class="form-control" id="pay_period_end" name="pay_period_end" value="<?php echo $current_period['end']; ?>" required>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+
+                            <h6>Additional Income</h6>
+
+                            <div class="mb-3">
+
+                                <label for="bonus_pay" class="form-label">Bonus Pay</label>
+
+                                <input type="number" class="form-control" id="bonus_pay" name="bonus_pay" step="0.01" value="0">
+
+                            </div>
+
+                            
+
+                            <h6>Package Salaries</h6>
+
+                            <div id="packages-container">
+
+                                <!-- Empty container - packages will be added dynamically -->
+
+                            </div>
+
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addPackage()">
+
+                                <i class="fas fa-plus"></i> Add Package
+
+                            </button>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <h6>Deductions</h6>
+
+                            <div class="row">
+
+                                <div class="col-md-6">
+
+                                    <div class="mb-3">
+
+                                        <label for="cash_advance" class="form-label">Cash Advance</label>
+
+                                        <input type="number" class="form-control" id="cash_advance" name="cash_advance" step="0.01" value="0">
+
+                                    </div>
+
+                                </div>
+
+                                <div class="col-md-6">
+
+                                    <div class="mb-3">
+
+                                        <label for="uniforms" class="form-label">Uniforms</label>
+
+                                        <input type="number" class="form-control" id="uniforms" name="uniforms" step="0.01" value="0">
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                            <div class="row">
+
+                                <div class="col-md-6">
+
+                                    <div class="mb-3">
+
+                                        <label for="tools" class="form-label">Tools</label>
+
+                                        <input type="number" class="form-control" id="tools" name="tools" step="0.01" value="0">
+
+                                    </div>
+
+                                </div>
+
+                                <div class="col-md-6">
+
+                                    <div class="mb-3">
+
+                                        <label for="miscellaneous" class="form-label">Miscellaneous</label>
+
+                                        <input type="number" class="form-control" id="miscellaneous" name="miscellaneous" step="0.01" value="0">
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                            <div class="mb-3">
+
+                                <label for="late_penalty" class="form-label">Late Penalty (per instance)</label>
+
+                                <input type="number" class="form-control" id="late_penalty" name="late_penalty" step="0.01" value="0">
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div class="text-center">
+
+                        <button type="submit" class="btn btn-primary btn-lg">
+
+                            <i class="fas fa-calculator me-2"></i>Generate Payroll
+
+                        </button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+
+<!-- Add Employee Modal -->
+
+<div class="modal fade" id="addEmployeeModal" tabindex="-1">
+
+    <div class="modal-dialog modal-lg">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Add New Employee</h5>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+            </div>
+
+            <form method="POST" action="">
+
+                <input type="hidden" name="action" value="add_employee">
+
+                <div class="modal-body">
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="employee_name" class="form-label">Employee Name</label>
+
+                                <input type="text" class="form-control" id="employee_name" name="employee_name" required>
+
+                            </div>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="position" class="form-label">Position</label>
+
+                                <input type="text" class="form-control" id="position" name="position" required>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="date_of_joining" class="form-label">Date of Joining</label>
+
+                                <input type="date" class="form-control" id="date_of_joining" name="date_of_joining" required>
+
+                            </div>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="basic_salary" class="form-label">Basic Salary (Daily Rate)</label>
+
+                                <input type="number" class="form-control" id="basic_salary" name="basic_salary" step="0.01" required>
+
+                                <div class="form-text">Salary will be calculated based on actual hours worked (Daily Rate ÷ 8 = Hourly Rate)</div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="mb-3">
+
+                        <label for="allowances" class="form-label">Allowances</label>
+
+                        <input type="number" class="form-control" id="allowances" name="allowances" step="0.01" value="0">
+
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+
+                    <button type="submit" class="btn btn-primary">Add Employee</button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+
+<!-- Add Attendance Modal -->
+
+<div class="modal fade" id="addAttendanceModal" tabindex="-1">
+
+    <div class="modal-dialog">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title"><i class="fas fa-calendar-plus me-2"></i>Add Attendance Record</h5>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+            </div>
+
+            <form method="POST" action="">
+
+                <input type="hidden" name="action" value="add_attendance">
+
+                <div class="modal-body">
+
+                    <div class="mb-3">
+
+                        <label for="att_employee_id" class="form-label">Employee</label>
+
+                        <select class="form-select" id="att_employee_id" name="employee_id" required>
+
+                            <option value="">Choose an employee...</option>
+
+                            <?php foreach ($employees as $employee): ?>
+
+                            <option value="<?php echo $employee['id']; ?>">
+
+                                <?php echo htmlspecialchars($employee['employee_code'] . ' - ' . $employee['employee_name']); ?>
+
+                            </option>
+
+                            <?php endforeach; ?>
+
+                        </select>
+
+                    </div>
+
+                    <div class="mb-3">
+
+                        <label for="attendance_date" class="form-label">Date</label>
+
+                        <input type="date" class="form-control" id="attendance_date" name="attendance_date" value="<?php echo date('Y-m-d'); ?>" required>
+
+                    </div>
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="time_in" class="form-label">Time In</label>
+
+                                <input type="time" class="form-control" id="time_in" name="time_in">
+
+                                <div class="form-text">Hours will be calculated automatically</div>
+
+                            </div>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="time_out" class="form-label">Time Out</label>
+
+                                <input type="time" class="form-control" id="time_out" name="time_out">
+
+                                <div class="invalid-feedback">Time out must be after time in</div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="mb-3">
+
+                        <label for="att_status" class="form-label">Status</label>
+
+                        <select class="form-select" id="att_status" name="status" required>
+
+                            <option value="present">Present</option>
+
+                            <option value="absent">Absent</option>
+
+                            <option value="late">Late</option>
+
+                            <option value="half_day">Half Day</option>
+
+                            <option value="overtime">Overtime</option>
+
+                        </select>
+
+                    </div>
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="hours_worked" class="form-label">Hours Worked</label>
+
+                                <input type="number" class="form-control" id="hours_worked" name="hours_worked" step="0.25" value="8" readonly>
+
+                                <div class="form-text">Auto-calculated from time in/out (1hr lunch break deducted if >6hrs)</div>
+
+                            </div>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <div class="mb-3">
+
+                                <label for="overtime_hours" class="form-label">Overtime Hours</label>
+
+                                <input type="number" class="form-control" id="overtime_hours" name="overtime_hours" step="0.25" value="0" readonly>
+
+                                <div class="form-text">Auto-calculated (hours over 8)</div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="mb-3">
+
+                        <label for="att_notes" class="form-label">Notes</label>
+
+                        <textarea class="form-control" id="att_notes" name="notes" rows="2"></textarea>
+
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+
+                    <button type="submit" class="btn btn-primary">Add Attendance</button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+
+<!-- Hidden forms for delete operations -->
+
+<form id="deleteEmployeeForm" method="POST" style="display: none;">
+
+    <input type="hidden" name="action" value="delete_employee">
+
+    <input type="hidden" name="employee_id" id="deleteEmployeeId">
+
+    <input type="hidden" name="active_tab" value="employees">
+
+</form>
+
+
+
+<form id="deletePayrollForm" method="POST" style="display: none;">
+
+    <input type="hidden" name="action" value="delete_payroll">
+
+    <input type="hidden" name="payroll_id" id="deletePayrollId">
+
+</form>
+
+
+
+<script>
+
+function approvePayroll(payrollId) {
+
+    if (confirm('Are you sure you want to approve this payroll record?')) {
+
+        // You can implement this via AJAX or a form submission
+
+        window.location.href = `payroll_approve.php?id=${payrollId}`;
+
+    }
+
+}
+
+
+
+function deleteEmployee(employeeId) {
+
+    if (confirm('Are you sure you want to delete this employee?\n\nNote: If the employee has payroll or attendance records, they will be deactivated instead of deleted.')) {
+
+        document.getElementById('deleteEmployeeId').value = employeeId;
+
+        document.getElementById('deleteEmployeeForm').submit();
+
+    }
+
+}
+
+
+
+function deletePayroll(payrollId) {
+
+    if (confirm('Are you sure you want to delete this payroll record?\n\nThis action cannot be undone. Only draft payroll records can be deleted.')) {
+
+        document.getElementById('deletePayrollId').value = payrollId;
+
+        document.getElementById('deletePayrollForm').submit();
+
+    }
+
+}
+
+
+
+// Package management functions
+
+function addPackage() {
+
+    const container = document.getElementById('packages-container');
+
+    const newRow = document.createElement('div');
+
+    newRow.className = 'package-row mb-2';
+
+    newRow.innerHTML = `
+
+        <div class="row">
+
+            <div class="col-md-6">
+
+                <input type="text" class="form-control" name="package_names[]" placeholder="Package Name">
+
+            </div>
+
+            <div class="col-md-5">
+
+                <input type="number" class="form-control" name="package_amounts[]" placeholder="Amount" step="0.01" value="0">
+
+            </div>
+
+            <div class="col-md-1">
+
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removePackage(this)">×</button>
+
+            </div>
+
+        </div>
+
+    `;
+
+    container.appendChild(newRow);
+
+}
+
+
+
+function removePackage(button) {
+
+    const row = button.closest('.package-row');
+
+    const container = document.getElementById('packages-container');
+
+    
+
+    // Always allow removing packages since we start with none
+
+    row.remove();
+
+}
+
+
+
+// Auto-calculate hours based on time in/out
+
+function calculateHoursWorked() {
+
+    const timeIn = document.getElementById('time_in').value;
+
+    const timeOut = document.getElementById('time_out').value;
+
+    const hoursWorkedInput = document.getElementById('hours_worked');
+
+    const overtimeHoursInput = document.getElementById('overtime_hours');
+
+    const statusSelect = document.getElementById('att_status');
+
+    
+
+    if (timeIn && timeOut) {
+
+        const timeInDate = new Date('1970-01-01T' + timeIn + ':00');
+
+        const timeOutDate = new Date('1970-01-01T' + timeOut + ':00');
+
+        
+
+        if (timeOutDate > timeInDate) {
+
+            const diffMs = timeOutDate - timeInDate;
+
+            const diffHours = diffMs / (1000 * 60 * 60);
+
+            
+
+            // Subtract 1 hour for lunch break if working more than 6 hours
+
+            let adjustedHours = diffHours;
+
+            if (diffHours > 6) {
+
+                adjustedHours = diffHours - 1; // 1 hour lunch break
+
+            }
+
+            
+
+            const roundedHours = Math.round(adjustedHours * 4) / 4; // Round to nearest 0.25
+
+            
+
+            hoursWorkedInput.value = roundedHours.toFixed(2);
+
+            
+
+            // Calculate overtime (over 8 hours)
+
+            const overtimeHours = Math.max(0, roundedHours - 8);
+
+            overtimeHoursInput.value = overtimeHours.toFixed(2);
+
+            
+
+            // Auto-update status based on hours worked
+
+            if (roundedHours >= 8) {
+
+                if (overtimeHours > 0) {
+
+                    statusSelect.value = 'overtime';
+
+                } else {
+
+                    statusSelect.value = 'present';
+
+                }
+
+            } else if (roundedHours >= 4) {
+
+                statusSelect.value = 'half_day';
+
+            } else if (roundedHours > 0) {
+
+                statusSelect.value = 'late';
+
+            }
+
+            
+
+            // Clear any validation errors
+
+            document.getElementById('time_in').classList.remove('is-invalid');
+
+            document.getElementById('time_out').classList.remove('is-invalid');
+
+        } else {
+
+            // Time out is before time in - show error
+
+            document.getElementById('time_out').classList.add('is-invalid');
+
+            hoursWorkedInput.value = '0';
+
+            overtimeHoursInput.value = '0';
+
+        }
+
+    } else {
+
+        // Reset values if either time is missing
+
+        hoursWorkedInput.value = '8';
+
+        overtimeHoursInput.value = '0';
+
+    }
+
+}
+
+
+
+// Add event listeners for both time inputs
+
+document.getElementById('time_in')?.addEventListener('change', calculateHoursWorked);
+
+document.getElementById('time_out')?.addEventListener('change', calculateHoursWorked);
+
+
+
+// Also calculate when time_in changes
+
+document.getElementById('time_in')?.addEventListener('input', calculateHoursWorked);
+
+document.getElementById('time_out')?.addEventListener('input', calculateHoursWorked);
+
+</script>
+
+
+
+<?php include 'includes/footer.php'; ?>
+
+

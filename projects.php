@@ -182,8 +182,8 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Solar Projects</h1>
-            <p class="text-gray-600">Manage your solar installation projects</p>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Solar Projects</h1>
+            <p class="text-gray-600 dark:text-gray-400">Manage your solar installation projects</p>
         </div>
         <a href="?action=create" class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition">
             <i class="fas fa-plus mr-2"></i>New Project
@@ -192,7 +192,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Filters -->
-<div class="bg-white rounded-lg shadow p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
     <div class="flex flex-wrap gap-4 items-center">
         <div class="flex gap-2">
             <a href="?" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition">All Projects</a>
@@ -210,8 +210,9 @@ include 'includes/header.php';
 </div>
 
 <!-- Projects Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
-    <table id="projects-table" class="min-w-full divide-y divide-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div class="overflow-x-auto">
+        <table id="projects-table" class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
@@ -221,7 +222,7 @@ include 'includes/header.php';
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Actions</th>
+                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-40">Actions</th>
             </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -248,7 +249,7 @@ include 'includes/header.php';
                                 case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
                                 case 'in_progress': echo 'bg-purple-100 text-purple-800'; break;
                                 case 'cancelled': echo 'bg-red-100 text-red-800'; break;
-                                default: echo 'bg-gray-100 text-gray-800';
+                                default: echo 'bg-gray-100 text-gray-800 dark:text-gray-200';
                             }
                             ?>">
                             <?php echo ucfirst(str_replace('_', ' ', $project['project_status'])); ?>
@@ -269,25 +270,25 @@ include 'includes/header.php';
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <?php echo date('M j, Y', strtotime($project['created_at'])); ?>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-center">
-                        <div class="flex justify-center items-center space-x-3">
+                    <td class="px-3 py-4 whitespace-nowrap text-center">
+                        <div class="flex justify-center items-center space-x-2">
                             <a href="?action=view&id=<?php echo $project['id']; ?>" 
-                               class="text-blue-600 hover:text-blue-900 p-1" title="View">
-                                <i class="fas fa-eye"></i>
+                               class="text-blue-600 hover:text-blue-900 p-1.5 rounded hover:bg-blue-50 transition" title="View">
+                                <i class="fas fa-eye text-sm"></i>
                             </a>
                             <a href="?action=edit&id=<?php echo $project['id']; ?>" 
-                               class="text-indigo-600 hover:text-indigo-900 p-1" title="Edit">
-                                <i class="fas fa-edit"></i>
+                               class="text-indigo-600 hover:text-indigo-900 p-1.5 rounded hover:bg-indigo-50 transition" title="Edit">
+                                <i class="fas fa-edit text-sm"></i>
                             </a>
                             <a href="print_quote.php?id=<?php echo $project['id']; ?>" target="_blank" 
-                               class="text-green-600 hover:text-green-900 p-1" title="Print Quote">
-                                <i class="fas fa-print"></i>
+                               class="text-green-600 hover:text-green-900 p-1.5 rounded hover:bg-green-50 transition" title="Print Quote">
+                                <i class="fas fa-print text-sm"></i>
                             </a>
                             <?php if (hasRole(ROLE_ADMIN)): ?>
                             <a href="?action=delete&id=<?php echo $project['id']; ?>" 
-                               class="text-red-600 hover:text-red-900 p-1" title="Delete"
+                               class="text-red-600 hover:text-red-900 p-1.5 rounded hover:bg-red-50 transition" title="Delete"
                                onclick="return confirmDelete('Are you sure you want to delete this project?')">
-                                <i class="fas fa-trash"></i>
+                                <i class="fas fa-trash text-sm"></i>
                             </a>
                             <?php endif; ?>
                         </div>
@@ -302,17 +303,18 @@ include 'includes/header.php';
                 </tr>
             <?php endif; ?>
         </tbody>
-    </table>
+        </table>
+    </div>
 </div>
 
 <?php elseif ($action == 'create'): ?>
 <!-- Create Project Form -->
 <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-800">Create New Solar Project</h1>
-    <p class="text-gray-600">Enter the project details to get started</p>
+    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Create New Solar Project</h1>
+    <p class="text-gray-600 dark:text-gray-400">Enter the project details to get started</p>
 </div>
 
-<div class="bg-white rounded-lg shadow p-6">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
     <form method="POST" class="space-y-6">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -372,8 +374,8 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800"><?php echo htmlspecialchars($project['project_name']); ?></h1>
-            <p class="text-gray-600">Project #<?php echo $project['id']; ?> - <?php echo htmlspecialchars($project['customer_name']); ?></p>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200"><?php echo htmlspecialchars($project['project_name']); ?></h1>
+            <p class="text-gray-600 dark:text-gray-400">Project #<?php echo $project['id']; ?> - <?php echo htmlspecialchars($project['customer_name']); ?></p>
         </div>
         <div class="space-x-2">
             <a href="print_quote.php?id=<?php echo $project['id']; ?>" target="_blank" 
@@ -394,8 +396,8 @@ include 'includes/header.php';
 
 <?php if ($action == 'edit'): ?>
 <!-- Edit Project Form -->
-<div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-xl font-semibold text-gray-800 mb-4">Project Details</h2>
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Project Details</h2>
     <form method="POST" action="?action=update&id=<?php echo $project['id']; ?>" class="space-y-6">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -487,9 +489,9 @@ include 'includes/header.php';
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Project Items -->
     <div class="lg:col-span-2">
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-gray-800">Project Items</h2>
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200">Project Items</h2>
                 <button onclick="document.getElementById('add-item-modal').classList.remove('hidden')" 
                         class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition text-sm">
                     <i class="fas fa-plus mr-2"></i>Add Item
@@ -564,11 +566,11 @@ include 'includes/header.php';
     
     <!-- Project Summary -->
     <div>
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Project Summary</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Project Summary</h2>
             <div class="space-y-4">
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Status:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Status:</span>
                     <span class="px-2 py-1 text-xs font-medium rounded-full 
                         <?php 
                         switch($project['project_status']) {
@@ -577,7 +579,7 @@ include 'includes/header.php';
                             case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
                             case 'in_progress': echo 'bg-purple-100 text-purple-800'; break;
                             case 'cancelled': echo 'bg-red-100 text-red-800'; break;
-                            default: echo 'bg-gray-100 text-gray-800';
+                            default: echo 'bg-gray-100 text-gray-800 dark:text-gray-200';
                         }
                         ?>">
                         <?php echo ucfirst(str_replace('_', ' ', $project['project_status'])); ?>
@@ -586,11 +588,11 @@ include 'includes/header.php';
                 
                 <div class="border-t pt-4">
                     <div class="flex justify-between mb-2">
-                        <span class="text-gray-600">Subtotal:</span>
+                        <span class="text-gray-600 dark:text-gray-400">Subtotal:</span>
                         <span class="font-medium"><?php echo formatCurrency($project['total_selling_price']); ?></span>
                     </div>
                     <div class="flex justify-between mb-2">
-                        <span class="text-gray-600">Discount:</span>
+                        <span class="text-gray-600 dark:text-gray-400">Discount:</span>
                         <span class="font-medium text-green-600">-<?php echo formatCurrency($project['total_discount']); ?></span>
                     </div>
                     <div class="flex justify-between text-lg font-bold border-t pt-2">
@@ -602,13 +604,13 @@ include 'includes/header.php';
                 <?php if (!empty($project['remarks'])): ?>
                 <div class="border-t pt-4">
                     <h3 class="text-sm font-medium text-gray-700 mb-2">Remarks</h3>
-                    <div class="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
+                    <div class="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 p-3 rounded-md">
                         <?php echo nl2br(htmlspecialchars($project['remarks'])); ?>
                     </div>
                 </div>
                 <?php endif; ?>
                 
-                <div class="border-t pt-4 text-sm text-gray-600">
+                <div class="border-t pt-4 text-sm text-gray-600 dark:text-gray-400">
                     <p><strong>Created:</strong> <?php echo date('M j, Y g:i A', strtotime($project['created_at'])); ?></p>
                     <p><strong>By:</strong> <?php echo htmlspecialchars($project['created_by_name']); ?></p>
                 </div>
@@ -656,10 +658,10 @@ include 'includes/header.php';
             </div>
             
             <!-- Items Grid -->
-            <div class="mb-4 max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
+            <div class="mb-4 max-h-80 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
                 <div id="project-items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-4">
                     <?php foreach ($inventory_items as $inv_item): ?>
-                    <div class="project-item-card border border-gray-200 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
+                    <div class="project-item-card border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
                          data-item-id="<?php echo $inv_item['id']; ?>"
                          data-brand="<?php echo strtolower($inv_item['brand']); ?>"
                          data-model="<?php echo strtolower($inv_item['model']); ?>"
@@ -680,7 +682,7 @@ include 'includes/header.php';
                                 <div class="text-sm font-medium text-gray-900 truncate">
                                     <?php echo htmlspecialchars($inv_item['brand']); ?>
                                 </div>
-                                <div class="text-sm text-gray-600 truncate">
+                                <div class="text-sm text-gray-600 dark:text-gray-400 truncate">
                                     <?php echo htmlspecialchars($inv_item['model']); ?>
                                 </div>
                                 <div class="text-xs text-gray-500 truncate">
@@ -757,22 +759,22 @@ include 'includes/header.php';
                     </div>
                 </div>
                 
-                <div id="project-total-preview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 hidden">
+                <div id="project-total-preview" class="bg-gray-50 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mb-4 hidden">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
-                            <span class="text-gray-600">Unit Cost:</span>
+                            <span class="text-gray-600 dark:text-gray-400">Unit Cost:</span>
                             <div class="font-medium" id="unit-cost">₱0.00</div>
                         </div>
                         <div>
-                            <span class="text-gray-600">Unit Price:</span>
+                            <span class="text-gray-600 dark:text-gray-400">Unit Price:</span>
                             <div class="font-medium" id="unit-price">₱0.00</div>
                         </div>
                         <div>
-                            <span class="text-gray-600">Total Cost:</span>
+                            <span class="text-gray-600 dark:text-gray-400">Total Cost:</span>
                             <div class="font-medium text-blue-600" id="total-cost">₱0.00</div>
                         </div>
                         <div>
-                            <span class="text-gray-600">Total Price:</span>
+                            <span class="text-gray-600 dark:text-gray-400">Total Price:</span>
                             <div class="font-medium text-green-600" id="total-price">₱0.00</div>
                         </div>
                     </div>
@@ -869,7 +871,7 @@ function selectProjectItem(cardElement) {
     selectedProjectItemData = {
         id: cardElement.getAttribute('data-item-id'),
         brand: cardElement.querySelector('.text-sm.font-medium').textContent,
-        model: cardElement.querySelector('.text-sm.text-gray-600').textContent,
+        model: cardElement.querySelector('.text-sm.text-gray-600 dark:text-gray-400').textContent,
         category: cardElement.querySelector('.text-xs.text-gray-500').textContent,
         price: parseFloat(cardElement.getAttribute('data-price')),
         basePrice: parseFloat(cardElement.getAttribute('data-base-price')),
@@ -880,7 +882,7 @@ function selectProjectItem(cardElement) {
     document.getElementById('selected_project_inventory_item_id').value = selectedProjectItemData.id;
     document.getElementById('selected-project-item-display').innerHTML = 
         `<strong>${selectedProjectItemData.brand}</strong> - ${selectedProjectItemData.model}<br>
-         <span class="text-gray-600">${selectedProjectItemData.category}</span><br>
+         <span class="text-gray-600 dark:text-gray-400">${selectedProjectItemData.category}</span><br>
          Cost: ${formatCurrency(selectedProjectItemData.basePrice)} | Price: ${formatCurrency(selectedProjectItemData.price)}`;
     
     document.getElementById('available-stock').textContent = selectedProjectItemData.stock;
@@ -924,6 +926,10 @@ function updateProjectTotalPreview() {
 
 function formatCurrency(amount) {
     return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function confirmDelete(message) {
+    return confirm(message || 'Are you sure you want to delete this item?');
 }
 </script>
 

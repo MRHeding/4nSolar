@@ -28,13 +28,13 @@ $page_title = 'Login';
     <link href="assets/css/output.css" rel="stylesheet">
     <link href="assets/fontawesome/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-gradient-to-br from-solar-blue to-blue-800 min-h-screen flex items-center justify-center">
+<body class="bg-gradient-to-br from-solar-blue to-blue-800 dark:from-gray-900 dark:to-gray-800 min-h-screen flex items-center justify-center">
     <div class="max-w-md w-full mx-4">
-        <div class="bg-white rounded-lg shadow-2xl p-8">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-8">
             <div class="text-center mb-8">
                 <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-16 w-auto mx-auto mb-4">
                 <h1 class="text-3xl font-bold text-solar-blue">4NSOLAR ELECTRICZ</h1>
-                <p class="text-gray-600 mt-2">Inventory Management System</p>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">Inventory Management System</p>
             </div>
 
             <?php if ($error): ?>
@@ -45,7 +45,7 @@ $page_title = 'Login';
 
             <form method="POST" class="space-y-6">
                 <div>
-                    <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+                    <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         <i class="fas fa-user mr-2"></i>Username
                     </label>
                     <input type="text" id="username" name="username" required
@@ -54,7 +54,7 @@ $page_title = 'Login';
                 </div>
 
                 <div>
-                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                    <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         <i class="fas fa-lock mr-2"></i>Password
                     </label>
                     <input type="password" id="password" name="password" required
@@ -68,7 +68,7 @@ $page_title = 'Login';
                 </button>
             </form>
 
-            <div class="mt-8 text-center text-sm text-gray-600">
+            <div class="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
                 <p class="mt-2 text-xs">© 2025 4NSOLAR ELECTRICZ. All rights reserved.</p>
             </div>
         </div>

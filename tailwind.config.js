@@ -6,12 +6,18 @@ module.exports = {
     "./assets/js/*.js",
     "./assets/css/*.css"
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
         'solar-blue': '#1E40AF',
         'solar-yellow': '#FCD34D',
         'solar-green': '#059669',
+        'dark-bg': '#1a1a1a',
+        'dark-surface': '#2d2d2d',
+        'dark-border': '#404040',
+        'dark-text': '#e5e5e5',
+        'dark-text-secondary': '#a3a3a3',
       },
       fontFamily: {
         'sans': ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Noto Sans', 'sans-serif'],

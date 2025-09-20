@@ -157,7 +157,7 @@ function createPayroll($pdo, $data) {
                 )";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([
+        $result = $stmt->execute([
             $data['employee_id'],
             $data['pay_period_start'],
             $data['pay_period_end'],
@@ -181,6 +181,10 @@ function createPayroll($pdo, $data) {
             $_SESSION['user_id'] ?? null
         ]);
         
+        if (!$result) {
+            throw new Exception("Failed to insert payroll record: " . implode(', ', $stmt->errorInfo()));
+        }
+        
         $payroll_id = $pdo->lastInsertId();
         
         // Insert package salaries
@@ -190,11 +194,34 @@ function createPayroll($pdo, $data) {
             
             foreach ($data['packages'] as $package) {
                 if (!empty($package['name']) && $package['amount'] > 0) {
-                    $package_stmt->execute([
+                    $result = $package_stmt->execute([
                         $payroll_id,
                         $package['name'],
                         $package['amount']
                     ]);
+                    if (!$result) {
+                        throw new Exception("Failed to insert package: " . implode(', ', $package_stmt->errorInfo()));
+                    }
+                }
+            }
+        }
+        
+        // Insert custom deductions
+        if (!empty($data['custom_deductions'])) {
+            $deduction_sql = "INSERT INTO payroll_deductions (payroll_id, deduction_type, description, amount) VALUES (?, ?, ?, ?)";
+            $deduction_stmt = $pdo->prepare($deduction_sql);
+            
+            foreach ($data['custom_deductions'] as $deduction) {
+                if (!empty($deduction['name']) && $deduction['amount'] > 0) {
+                    $result = $deduction_stmt->execute([
+                        $payroll_id,
+                        'custom', // deduction_type
+                        $deduction['name'], // description
+                        $deduction['amount']
+                    ]);
+                    if (!$result) {
+                        throw new Exception("Failed to insert deduction: " . implode(', ', $deduction_stmt->errorInfo()));
+                    }
                 }
             }
         }
@@ -204,6 +231,7 @@ function createPayroll($pdo, $data) {
         
     } catch (Exception $e) {
         $pdo->rollBack();
+        error_log("Payroll creation error: " . $e->getMessage());
         return false;
     }
 }
@@ -248,6 +276,8 @@ function getPayrollById($pdo, $payroll_id) {
     if ($payroll) {
         // Get package salaries
         $payroll['packages'] = getPayrollPackages($pdo, $payroll_id);
+        // Get custom deductions
+        $payroll['custom_deductions'] = getPayrollDeductions($pdo, $payroll_id);
     }
     
     return $payroll;
@@ -256,6 +286,14 @@ function getPayrollById($pdo, $payroll_id) {
 // Get payroll packages
 function getPayrollPackages($pdo, $payroll_id) {
     $sql = "SELECT * FROM payroll_packages WHERE payroll_id = ? ORDER BY package_name";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$payroll_id]);
+    return $stmt->fetchAll();
+}
+
+// Get payroll deductions
+function getPayrollDeductions($pdo, $payroll_id) {
+    $sql = "SELECT * FROM payroll_deductions WHERE payroll_id = ? ORDER BY description";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$payroll_id]);
     return $stmt->fetchAll();
@@ -316,13 +354,24 @@ function calculatePayroll($pdo, $employee_id, $pay_period_start, $pay_period_end
     $gross_salary = $basic_salary + $total_packages + 
                    ($employee['allowances'] ?? 0) + $overtime_pay + ($adjustments['bonus_pay'] ?? 0);
     
+    // Calculate custom deductions total
+    $total_custom_deductions = 0;
+    if (!empty($adjustments['custom_deductions'])) {
+        foreach ($adjustments['custom_deductions'] as $deduction) {
+            if (!empty($deduction['amount']) && $deduction['amount'] > 0) {
+                $total_custom_deductions += $deduction['amount'];
+            }
+        }
+    }
+    
     // Deductions
     $deductions = [
         'cash_advance' => $adjustments['cash_advance'] ?? 0,
         'uniforms' => $adjustments['uniforms'] ?? 0,
         'tools' => $adjustments['tools'] ?? 0,
         'lates' => ($attendance['late_days'] ?? 0) * ($adjustments['late_penalty'] ?? 0),
-        'miscellaneous' => $adjustments['miscellaneous'] ?? 0
+        'miscellaneous' => $adjustments['miscellaneous'] ?? 0,
+        'custom_deductions' => $total_custom_deductions
     ];
     
     $total_deductions = array_sum($deductions);
@@ -350,6 +399,7 @@ function calculatePayroll($pdo, $employee_id, $pay_period_start, $pay_period_end
         'tools' => $deductions['tools'],
         'lates' => $deductions['lates'],
         'miscellaneous' => $deductions['miscellaneous'],
+        'custom_deductions' => $adjustments['custom_deductions'] ?? [],
         'gross_salary' => $gross_salary,
         'total_deductions' => $total_deductions,
         'net_salary' => $net_salary,

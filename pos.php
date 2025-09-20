@@ -20,6 +20,9 @@ if (isset($_GET['success'])) {
         case 'item_added':
             $message = 'Item added to sale successfully!';
             break;
+        case 'quotation_imported':
+            $message = 'Quotation items imported successfully!';
+            break;
         case 'quantity_updated':
             $message = 'Quantity updated successfully!';
             break;
@@ -50,12 +53,53 @@ if ($_POST) {
             
         case 'add_item':
             if ($sale_id && isset($_POST['inventory_item_id']) && isset($_POST['quantity'])) {
-                $result = addPOSSaleItem($sale_id, $_POST['inventory_item_id'], $_POST['quantity'], $_POST['discount_percentage'] ?? 0);
+                $selected_serials = isset($_POST['selected_serials']) ? $_POST['selected_serials'] : [];
+                
+                // Debug form submission
+                error_log("FORM DEBUG - POST data: " . print_r($_POST, true));
+                error_log("FORM DEBUG - Selected serials: " . print_r($selected_serials, true));
+                error_log("FORM DEBUG - Inventory item ID: " . $_POST['inventory_item_id']);
+                error_log("FORM DEBUG - Quantity: " . $_POST['quantity']);
+                
+                $result = addPOSSaleItemWithSerials($sale_id, $_POST['inventory_item_id'], $_POST['quantity'], $_POST['discount_percentage'] ?? 0, $selected_serials);
                 if ($result['success']) {
                     header("Location: ?action=sale&id=" . $sale_id . "&success=item_added");
                     exit();
                 } else {
                     $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'import_quotation':
+            if ($sale_id && isset($_POST['quote_identifier'])) {
+                $quote_identifier = trim($_POST['quote_identifier']);
+                
+                if (empty($quote_identifier)) {
+                    $error = 'Please enter a quotation code or ID.';
+                } else {
+                    $result = importQuotationToPOS($sale_id, $quote_identifier);
+                    if ($result['success']) {
+                        $imported_count = count($result['imported_items']);
+                        $message = "Successfully imported {$imported_count} items from quotation {$result['quote_number']}";
+                        
+                        // Add customer information to message if available
+                        if (!empty($result['customer_name'])) {
+                            $message .= " for customer: {$result['customer_name']}";
+                            if (!empty($result['customer_phone'])) {
+                                $message .= " ({$result['customer_phone']})";
+                            }
+                        }
+                        
+                        if (!empty($result['errors'])) {
+                            $message .= ". Warnings: " . implode(', ', $result['errors']);
+                        }
+                        
+                        header("Location: ?action=sale&id=" . $sale_id . "&success=quotation_imported");
+                        exit();
+                    } else {
+                        $error = $result['message'];
+                    }
                 }
             }
             break;
@@ -74,7 +118,7 @@ if ($_POST) {
             
         case 'complete_sale':
             if ($sale_id && isset($_POST['payment_method']) && isset($_POST['amount_paid'])) {
-                $result = completePOSSale(
+                $result = completePOSSaleWithSerials(
                     $sale_id, 
                     $_POST['payment_method'], 
                     $_POST['amount_paid'],
@@ -118,7 +162,7 @@ switch ($action) {
     case 'sale':
     case 'receipt':
         if ($sale_id) {
-            $sale = getPOSSale($sale_id);
+            $sale = getPOSSaleWithSerials($sale_id);
             if (!$sale) {
                 $error = 'Sale not found.';
                 $action = 'new';
@@ -186,8 +230,8 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Point of Sale</h1>
-            <p class="text-gray-600">Start a new sale for walk-in customers</p>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Point of Sale</h1>
+            <p class="text-gray-600 dark:text-gray-400">Start a new sale for walk-in customers</p>
         </div>
         <div class="space-x-2">
             <a href="?action=history" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
@@ -199,7 +243,7 @@ include 'includes/header.php';
 
 <!-- Today's Stats -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-green-100 text-green-600">
                 <i class="fas fa-shopping-cart text-xl"></i>
@@ -210,7 +254,7 @@ include 'includes/header.php';
             </div>
         </div>
     </div>
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-blue-100 text-blue-600">
                 <i class="fas fa-dollar-sign text-xl"></i>
@@ -221,7 +265,7 @@ include 'includes/header.php';
             </div>
         </div>
     </div>
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-yellow-100 text-yellow-600">
                 <i class="fas fa-boxes text-xl"></i>
@@ -235,8 +279,8 @@ include 'includes/header.php';
 </div>
 
 <!-- Start New Sale -->
-<div class="bg-white rounded-lg shadow p-6">
-    <h2 class="text-xl font-semibold text-gray-800 mb-4">Start New Sale</h2>
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Start New Sale</h2>
     <form method="POST" action="?action=create" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -269,8 +313,8 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Sale: <?php echo htmlspecialchars($sale['receipt_number']); ?></h1>
-            <p class="text-gray-600">
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Sale: <?php echo htmlspecialchars($sale['receipt_number']); ?></h1>
+            <p class="text-gray-600 dark:text-gray-400">
                 <?php if ($sale['customer_name']): ?>
                 Customer: <?php echo htmlspecialchars($sale['customer_name']); ?>
                 <?php if ($sale['customer_phone']): ?>
@@ -297,20 +341,26 @@ include 'includes/header.php';
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Sale Items -->
     <div class="lg:col-span-2">
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-gray-800">Sale Items</h2>
-                <?php if (!empty($inventory_items)): ?>
-                <button onclick="document.getElementById('add-item-modal').classList.remove('hidden')" 
-                        class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition text-sm">
-                    <i class="fas fa-plus mr-2"></i>Add Item
-                </button>
-                <?php else: ?>
-                <button disabled class="bg-gray-400 text-white px-4 py-2 rounded-lg cursor-not-allowed text-sm">
-                    <i class="fas fa-plus mr-2"></i>Add Item
-                </button>
-                <p class="text-xs text-gray-500 mt-1">No inventory available</p>
-                <?php endif; ?>
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200">Sale Items</h2>
+                <div class="flex space-x-2">
+                    <button onclick="document.getElementById('import-quotation-modal').classList.remove('hidden')" 
+                            class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm">
+                        <i class="fas fa-file-import mr-2"></i>Import Quote
+                    </button>
+                    <?php if (!empty($inventory_items)): ?>
+                    <button onclick="document.getElementById('add-item-modal').classList.remove('hidden')" 
+                            class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition text-sm">
+                        <i class="fas fa-plus mr-2"></i>Add Item
+                    </button>
+                    <?php else: ?>
+                    <button disabled class="bg-gray-400 text-white px-4 py-2 rounded-lg cursor-not-allowed text-sm">
+                        <i class="fas fa-plus mr-2"></i>Add Item
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1">No inventory available</p>
+                    <?php endif; ?>
+                </div>
             </div>
             
             <?php if (!empty($sale['items'])): ?>
@@ -333,6 +383,11 @@ include 'includes/header.php';
                                 <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
                                 <div class="text-xs text-gray-500"><?php echo htmlspecialchars($item['size_specification']); ?></div>
                                 <div class="text-xs text-blue-600">Stock: <?php echo $item['stock_quantity']; ?></div>
+                                <?php if (!empty($item['serial_numbers'])): ?>
+                                <div class="text-xs text-green-600 mt-1">
+                                    <strong>Serials:</strong> <?php echo htmlspecialchars($item['serial_numbers']); ?>
+                                </div>
+                                <?php endif; ?>
                             </td>
                             <td class="px-3 py-4 text-center">
                                 <form method="POST" action="?action=update_quantity&id=<?php echo $sale['id']; ?>" class="inline">
@@ -373,15 +428,15 @@ include 'includes/header.php';
     
     <!-- Sale Summary & Payment -->
     <div>
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Sale Summary</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Sale Summary</h2>
             <div class="space-y-3">
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Subtotal:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Subtotal:</span>
                     <span class="font-medium"><?php echo formatCurrency($sale['subtotal']); ?></span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Discount:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Discount:</span>
                     <span class="font-medium text-green-600">-<?php echo formatCurrency($sale['total_discount']); ?></span>
                 </div>
                 <div class="flex justify-between text-lg font-bold border-t pt-3">
@@ -393,8 +448,8 @@ include 'includes/header.php';
         
         <?php if ($sale['status'] === 'pending' && !empty($sale['items'])): ?>
         <!-- Payment Form -->
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Process Payment</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Process Payment</h2>
             <form method="POST" action="?action=complete_sale&id=<?php echo $sale['id']; ?>" class="space-y-4">
                 <div>
                     <label for="payment_method" class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
@@ -473,17 +528,18 @@ include 'includes/header.php';
             </div>
             
             <!-- Items Grid -->
-            <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+            <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
                 <?php if (!empty($inventory_items)): ?>
                 <div id="items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
                     <?php foreach ($inventory_items as $inv_item): ?>
-                    <div class="item-card border border-gray-200 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
+                    <div class="item-card border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
                          data-item-id="<?php echo $inv_item['id']; ?>"
                          data-brand="<?php echo strtolower($inv_item['brand']); ?>"
                          data-model="<?php echo strtolower($inv_item['model']); ?>"
                          data-category="<?php echo strtolower($inv_item['category_name'] ?? ''); ?>"
                          data-price="<?php echo $inv_item['selling_price']; ?>"
                          data-stock="<?php echo $inv_item['stock_quantity']; ?>"
+                         data-generates-serials="<?php echo $inv_item['generate_serials'] ? '1' : '0'; ?>"
                          onclick="selectItem(this)">
                         
                         <div class="flex items-center space-x-3">
@@ -502,6 +558,11 @@ include 'includes/header.php';
                                 <div class="text-xs text-gray-400">
                                     <?php echo htmlspecialchars($inv_item['category_name'] ?? 'N/A'); ?>
                                 </div>
+                                <?php if ($inv_item['generate_serials'] && $inv_item['available_serials'] > 0): ?>
+                                <div class="text-xs text-blue-600">
+                                    <i class="fas fa-barcode mr-1"></i><?php echo $inv_item['available_serials']; ?> serials available
+                                </div>
+                                <?php endif; ?>
                             </div>
                             <div class="text-right">
                                 <div class="text-sm font-medium text-gray-900">
@@ -541,7 +602,7 @@ include 'includes/header.php';
             </div>
             
             <!-- Selected Item Form -->
-            <form id="add-item-form" method="POST" action="?action=add_item&id=<?php echo $sale['id']; ?>" class="hidden">
+            <form id="add-item-form" method="POST" action="?action=add_item&id=<?php echo $sale['id']; ?>" class="hidden" onsubmit="return validateFormSubmission()">
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                     <h4 class="font-medium text-gray-900 mb-2">Selected Item:</h4>
                     <div id="selected-item-display" class="text-sm text-gray-700"></div>
@@ -554,7 +615,7 @@ include 'includes/header.php';
                         <label for="quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
                         <input type="number" min="1" id="quantity" name="quantity" required value="1"
                                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
-                               oninput="updateTotalPreview()">
+                               oninput="updateTotalPreview(); loadAvailableSerials()">
                     </div>
                     <div>
                         <label for="discount_percentage" class="block text-sm font-medium text-gray-700 mb-2">Discount %</label>
@@ -564,7 +625,19 @@ include 'includes/header.php';
                     </div>
                 </div>
                 
-                <div id="total-preview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 hidden">
+                <!-- Serial Number Selection -->
+                <div id="serial-selection-section" class="mb-4 hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Serial Numbers</label>
+                    <div id="serial-selection-status" class="text-sm text-blue-600 mb-2 font-medium">
+                        <!-- Status will be updated here -->
+                    </div>
+                    <div id="available-serials" class="border border-gray-300 rounded-md p-3 max-h-32 overflow-y-auto">
+                        <!-- Serial numbers will be loaded here -->
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Select the specific serial numbers to sell</p>
+                </div>
+                
+                <div id="total-preview" class="bg-gray-50 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mb-4 hidden">
                     <div class="flex justify-between text-sm">
                         <span>Subtotal:</span>
                         <span id="subtotal-amount">₱0.00</span>
@@ -597,6 +670,49 @@ include 'includes/header.php';
                     Close
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Quotation Modal -->
+<div id="import-quotation-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Import Items from Quotation</h3>
+            
+            <form method="POST" action="?action=import_quotation&id=<?php echo $sale['id']; ?>" onsubmit="return validateQuotationImport()">
+                <div class="space-y-4">
+                    <div>
+                        <label for="quote_identifier" class="block text-sm font-medium text-gray-700 mb-2">Quotation Code or ID</label>
+                        <input type="text" id="quote_identifier" name="quote_identifier" required
+                               placeholder="Enter quotation code (e.g., QTE20241220-0001) or ID"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">You can paste the quotation code or enter the quotation ID</p>
+                    </div>
+                    
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 class="font-medium text-blue-900 mb-2">Import Information:</h4>
+                        <ul class="text-sm text-blue-800 space-y-1">
+                            <li>• All items from the quotation will be added to this sale</li>
+                            <li>• Customer name and phone number will be imported</li>
+                            <li>• Original prices, quantities, and discounts will be preserved</li>
+                            <li>• Items that are out of stock will be skipped with a warning</li>
+                            <li>• If items already exist in the sale, quantities will be combined</li>
+                            <li>• Prices will match exactly what was used in the quotation</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="document.getElementById('import-quotation-modal').classList.add('hidden')"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+                        <i class="fas fa-file-import mr-2"></i>Import Items
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -677,12 +793,15 @@ function selectItem(cardElement) {
     cardElement.classList.add('bg-blue-100', 'border-blue-500');
     
     // Store selected item data
+    const dataGeneratesSerials = cardElement.getAttribute('data-generates-serials');
+    
     selectedItemData = {
         id: cardElement.getAttribute('data-item-id'),
         brand: cardElement.querySelector('.text-sm.font-medium').textContent,
         model: cardElement.querySelector('.text-sm.text-gray-500').textContent,
         price: parseFloat(cardElement.getAttribute('data-price')),
-        stock: parseInt(cardElement.getAttribute('data-stock'))
+        stock: parseInt(cardElement.getAttribute('data-stock')),
+        generatesSerials: dataGeneratesSerials === '1'
     };
     
     // Update form
@@ -697,6 +816,13 @@ function selectItem(cardElement) {
     
     // Update quantity max
     document.getElementById('quantity').max = selectedItemData.stock;
+    
+    // Load available serials if item generates them
+    if (selectedItemData.generatesSerials) {
+        loadAvailableSerials();
+    } else {
+        document.getElementById('serial-selection-section').classList.add('hidden');
+    }
 }
 
 function clearSelection() {
@@ -705,9 +831,133 @@ function clearSelection() {
         card.classList.remove('bg-blue-100', 'border-blue-500');
     });
     
-    // Hide form
+    // Hide form and serial selection
     document.getElementById('add-item-form').classList.add('hidden');
+    document.getElementById('serial-selection-section').classList.add('hidden');
     selectedItemData = null;
+}
+
+function loadAvailableSerials() {
+    if (!selectedItemData || !selectedItemData.generatesSerials) {
+        return;
+    }
+    
+    const quantity = parseInt(document.getElementById('quantity').value) || 1;
+    
+    // Fetch available serials via AJAX
+    fetch(`get_available_serials.php?item_id=${selectedItemData.id}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displaySerialSelection(data.serials, quantity);
+            } else {
+                console.error('Failed to load serials:', data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading serials:', error);
+        });
+}
+
+function displaySerialSelection(serials, quantity) {
+    const container = document.getElementById('available-serials');
+    const section = document.getElementById('serial-selection-section');
+    
+    if (serials.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">No serial numbers available</p>';
+        section.classList.add('hidden');
+        return;
+    }
+    
+    if (quantity > serials.length) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Only ${serials.length} serial numbers available, but ${quantity} requested</p>`;
+        section.classList.add('hidden');
+        return;
+    }
+    
+    let html = '<div class="space-y-2">';
+    serials.forEach(serial => {
+        html += `
+            <label class="flex items-center">
+                <input type="checkbox" name="selected_serials[]" value="${serial.serial_number}" 
+                       class="serial-checkbox rounded border-gray-300 text-solar-blue focus:ring-solar-blue"
+                       onchange="validateSerialSelection()">
+                <span class="ml-2 text-sm font-mono">${serial.serial_number}</span>
+            </label>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    section.classList.remove('hidden');
+    
+    // Update submit button state after displaying serials
+    updateSubmitButtonState();
+}
+
+function validateSerialSelection() {
+    const quantity = parseInt(document.getElementById('quantity').value) || 1;
+    const checkboxes = document.querySelectorAll('.serial-checkbox:checked');
+    
+    if (checkboxes.length > quantity) {
+        alert(`You can only select ${quantity} serial number(s). Please uncheck some selections.`);
+        // Uncheck the last selected checkbox
+        checkboxes[checkboxes.length - 1].checked = false;
+    }
+    
+    // Update submit button state based on validation
+    updateSubmitButtonState();
+}
+
+function updateSubmitButtonState() {
+    const quantity = parseInt(document.getElementById('quantity').value) || 1;
+    const checkboxes = document.querySelectorAll('.serial-checkbox:checked');
+    const submitButton = document.querySelector('#add-item-form button[type="submit"]');
+    const serialSection = document.getElementById('serial-selection-section');
+    const statusElement = document.getElementById('serial-selection-status');
+    
+    // Check if this is a serialized item
+    if (selectedItemData && selectedItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
+        const selectedCount = checkboxes.length;
+        
+        // Update status message
+        if (statusElement) {
+            if (selectedCount === 0) {
+                statusElement.textContent = `Please select ${quantity} serial number(s)`;
+                statusElement.className = 'text-sm text-red-600 mb-2 font-medium';
+            } else if (selectedCount < quantity) {
+                statusElement.textContent = `Selected ${selectedCount} of ${quantity} serial number(s)`;
+                statusElement.className = 'text-sm text-orange-600 mb-2 font-medium';
+            } else if (selectedCount === quantity) {
+                statusElement.textContent = `✓ Selected ${selectedCount} serial number(s) - Ready to add`;
+                statusElement.className = 'text-sm text-green-600 mb-2 font-medium';
+            } else {
+                statusElement.textContent = `Too many selected (${selectedCount}/${quantity})`;
+                statusElement.className = 'text-sm text-red-600 mb-2 font-medium';
+            }
+        }
+        
+        if (checkboxes.length !== quantity) {
+            submitButton.disabled = true;
+            submitButton.textContent = `Select ${quantity} Serial Number(s)`;
+            submitButton.classList.add('bg-gray-400', 'cursor-not-allowed');
+            submitButton.classList.remove('bg-solar-blue', 'hover:bg-blue-800');
+        } else {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Add to Sale';
+            submitButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            submitButton.classList.add('bg-solar-blue', 'hover:bg-blue-800');
+        }
+    } else {
+        // For non-serialized items, always enable the button
+        if (statusElement) {
+            statusElement.textContent = '';
+        }
+        submitButton.disabled = false;
+        submitButton.textContent = 'Add to Sale';
+        submitButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+        submitButton.classList.add('bg-solar-blue', 'hover:bg-blue-800');
+    }
 }
 
 function updateTotalPreview() {
@@ -725,6 +975,36 @@ function updateTotalPreview() {
     document.getElementById('total-amount').textContent = formatCurrency(total);
     
     document.getElementById('total-preview').classList.remove('hidden');
+    
+    // Update submit button state when quantity changes
+    updateSubmitButtonState();
+}
+
+function validateQuotationImport() {
+    const quoteIdentifier = document.getElementById('quote_identifier').value.trim();
+    
+    if (!quoteIdentifier) {
+        alert('Please enter a quotation code or ID.');
+        return false;
+    }
+    
+    return confirm('Are you sure you want to import items from this quotation? This will add all items to the current sale.');
+}
+
+function validateFormSubmission() {
+    const quantity = parseInt(document.getElementById('quantity').value) || 1;
+    const checkboxes = document.querySelectorAll('.serial-checkbox:checked');
+    const serialSection = document.getElementById('serial-selection-section');
+    
+    // Check if this is a serialized item
+    if (selectedItemData && selectedItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
+        if (checkboxes.length !== quantity) {
+            alert(`Please select exactly ${quantity} serial number(s). Currently selected: ${checkboxes.length}`);
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 function formatCurrency(amount) {
@@ -737,8 +1017,8 @@ function formatCurrency(amount) {
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Sale Receipt</h1>
-            <p class="text-gray-600">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></p>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Sale Receipt</h1>
+            <p class="text-gray-600 dark:text-gray-400">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></p>
         </div>
         <div class="space-x-2">
             <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
@@ -752,10 +1032,10 @@ function formatCurrency(amount) {
 </div>
 
 <!-- Receipt Content -->
-<div class="bg-white rounded-lg shadow p-8 max-w-2xl mx-auto print:shadow-none print:max-w-none">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 max-w-2xl mx-auto print:shadow-none print:max-w-none">
     <div class="text-center mb-6">
-        <h2 class="text-2xl font-bold text-gray-800">4nSolar</h2>
-        <p class="text-gray-600">Solar Equipment & Services</p>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200">4nSolar</h2>
+        <p class="text-gray-600 dark:text-gray-400">Solar Equipment & Services</p>
         <p class="text-sm text-gray-500">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></p>
     </div>
     
@@ -791,19 +1071,9 @@ function formatCurrency(amount) {
             <tr class="border-b">
                 <td class="py-2">
                     <div class="font-medium"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
-                    <div class="text-xs text-gray-500"><?php echo htmlspecialchars($item['size_specification']); ?></div>
-                    <?php if ($item['discount_percentage'] > 0): ?>
-                    <div class="text-xs text-green-600"><?php echo $item['discount_percentage']; ?>% discount applied</div>
-                    <?php endif; ?>
                 </td>
                 <td class="text-center py-2"><?php echo $item['quantity']; ?></td>
-                <td class="text-right py-2">
-                    <?php echo formatCurrency($item['unit_price']); ?>
-                    <?php if ($item['discount_percentage'] > 0): ?>
-                    <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($item['unit_price']); ?></div>
-                    <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_price'] * (1 - $item['discount_percentage'] / 100)); ?></div>
-                    <?php endif; ?>
-                </td>
+                <td class="text-right py-2"><?php echo formatCurrency($item['unit_price']); ?></td>
                 <td class="text-right py-2">
                     <?php if ($item['discount_percentage'] > 0): ?>
                     <span class="text-green-600 font-medium"><?php echo $item['discount_percentage']; ?>%</span>
@@ -865,8 +1135,8 @@ function formatCurrency(amount) {
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Sales History</h1>
-            <p class="text-gray-600">View all POS sales transactions</p>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Sales History</h1>
+            <p class="text-gray-600 dark:text-gray-400">View all POS sales transactions</p>
         </div>
         <a href="?" class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition">
             <i class="fas fa-plus mr-2"></i>New Sale
@@ -875,7 +1145,7 @@ function formatCurrency(amount) {
 </div>
 
 <!-- Filters -->
-<div class="bg-white rounded-lg shadow p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
     <form method="GET" class="flex flex-wrap gap-4 items-end">
         <input type="hidden" name="action" value="history">
         <div>
@@ -908,26 +1178,26 @@ function formatCurrency(amount) {
 
 <!-- Stats Summary -->
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 class="text-sm font-medium text-gray-500">Total Sales</h3>
         <p class="text-2xl font-bold text-gray-900"><?php echo $stats['total_sales']; ?></p>
     </div>
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 class="text-sm font-medium text-gray-500">Total Revenue</h3>
         <p class="text-2xl font-bold text-gray-900"><?php echo formatCurrency($stats['total_revenue']); ?></p>
     </div>
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 class="text-sm font-medium text-gray-500">Today's Sales</h3>
         <p class="text-2xl font-bold text-gray-900"><?php echo $stats['today_sales']; ?></p>
     </div>
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 class="text-sm font-medium text-gray-500">Today's Revenue</h3>
         <p class="text-2xl font-bold text-gray-900"><?php echo formatCurrency($stats['today_revenue']); ?></p>
     </div>
 </div>
 
 <!-- Sales Table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
     <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
             <tr>

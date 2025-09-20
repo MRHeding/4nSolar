@@ -82,7 +82,7 @@ switch ($action) {
         break;
         
     default:
-        $suppliers = getSuppliers(false); // Include inactive suppliers
+        $suppliers = getSuppliers();
         break;
 }
 
@@ -123,13 +123,10 @@ include 'includes/header.php';
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     <?php if (!empty($suppliers)): ?>
         <?php foreach ($suppliers as $supplier): ?>
-        <div class="bg-white rounded-lg shadow p-6 <?php echo !$supplier['is_active'] ? 'opacity-60' : ''; ?>">
+        <div class="bg-white rounded-lg shadow p-6">
             <div class="flex justify-between items-start mb-4">
                 <div>
                     <h3 class="text-lg font-semibold text-gray-800"><?php echo htmlspecialchars($supplier['name']); ?></h3>
-                    <?php if (!$supplier['is_active']): ?>
-                    <span class="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">Inactive</span>
-                    <?php endif; ?>
                 </div>
                 <div class="flex space-x-2">
                     <?php if (hasPermission([ROLE_ADMIN, ROLE_HR])): ?>
