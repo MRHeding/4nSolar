@@ -5,7 +5,7 @@
 [![Database](https://img.shields.io/badge/database-mysql-orange.svg)]()
 [![License](https://img.shields.io/badge/license-proprietary-red.svg)]()
 
-A comprehensive solar equipment inventory and project management system designed for 4nSolar ELECTRICZ. This system provides complete business management capabilities including inventory tracking, project quotations, point-of-sale functionality, payroll management, installment payment tracking, employee attendance, and comprehensive reporting with advanced analytics.
+A comprehensive solar equipment inventory and project management system designed for 4nSolar ELECTRICZ. This system provides complete business management capabilities including inventory tracking with serial number management, project quotations, point-of-sale functionality with quotation import, payroll management, installment payment tracking, employee attendance, and comprehensive reporting with advanced analytics.
 
 ## 🚀 Quick Start
 
@@ -74,6 +74,10 @@ A comprehensive solar equipment inventory and project management system designed
 - **Stock Movements**: Complete audit trail of all inventory changes
 - **Low Stock Alerts**: Configurable minimum stock thresholds
 - **CSV Export**: Bulk data export capabilities
+- **Serial Number Management**: Unique serial number generation and tracking
+- **Serial Status Tracking**: Available, reserved, sold, damaged, returned statuses
+- **Automatic Serial Generation**: Auto-generate serials when stock increases
+- **Serial Number Validation**: Prevent duplicate serial numbers
 
 ### 🏗️ Solar Project Management
 - **Project Lifecycle**: From quote to completion tracking
@@ -96,6 +100,10 @@ A comprehensive solar equipment inventory and project management system designed
 - **Real-time Inventory**: Automatic stock updates
 - **Customer Management**: Optional customer information capture
 - **Discount Support**: Item-level and percentage discounts with visual feedback
+- **Quotation Import**: Import items from quotations directly to POS sales
+- **Customer Information Transfer**: Automatic customer name and phone import from quotations
+- **Serial Number Selection**: Select specific serial numbers for serialized items
+- **Serial Number Tracking**: Track which serials are sold in each transaction
 
 ### 🏢 Business Management
 - **Supplier Management**: Contact details and relationship tracking
@@ -111,6 +119,9 @@ A comprehensive solar equipment inventory and project management system designed
 - **Deduction Management**: Cash advances, uniforms, tools, late penalties
 - **Payroll Reports**: Detailed payslips and earnings statements
 - **Leave Management**: Track leaves and balance calculations
+- **Custom Deductions**: Dynamic deduction fields for flexible payroll management
+- **Manual Employee Codes**: User-defined employee codes with duplicate validation
+- **Real-time Validation**: Instant employee code availability checking
 
 ### 💳 Payment & Finance
 - **Installment System**: Flexible payment plans for solar projects
@@ -174,21 +185,23 @@ A comprehensive solar equipment inventory and project management system designed
 - **`users`** - System users with role-based access
 - **`suppliers`** - Equipment suppliers and contact information
 - **`categories`** - Product categories for organization
-- **`inventory_items`** - Solar equipment and products
+- **`inventory_items`** - Solar equipment and products with serial number settings
 - **`stock_movements`** - Complete inventory audit trail
+- **`inventory_serials`** - Serial number tracking and status management
 
 #### Project Management
 - **`solar_projects`** - Customer projects and quotes
 - **`solar_project_items`** - Items included in each project
 
 #### Point of Sale
-- **`pos_sales`** - Retail transaction records
-- **`pos_sale_items`** - Individual items in each sale
+- **`pos_sales`** - Retail transaction records with customer information
+- **`pos_sale_items`** - Individual items in each sale with serial number tracking
 
 #### Human Resources & Payroll
-- **`employees`** - Employee profiles and details
+- **`employees`** - Employee profiles and details with manual employee codes
 - **`employee_attendance`** - Daily attendance records
 - **`payroll`** - Payroll calculations and records
+- **`payroll_deductions`** - Custom deduction tracking
 
 #### Payment & Finance
 - **`installment_plans`** - Payment plan configurations
@@ -210,9 +223,13 @@ A comprehensive solar equipment inventory and project management system designed
 #### Inventory Management (`includes/inventory.php`)
 - `getInventoryItems()` - Retrieve inventory with filters
 - `addInventoryItem()` - Create new inventory items
-- `updateStock()` - Stock level management
+- `updateStock()` - Stock level management with automatic serial generation
 - `getStockMovements()` - Movement history
 - `getLowStockItems()` - Alert system
+- `generateSerialNumbers()` - Create unique serial numbers for items
+- `getAvailableSerials()` - Retrieve available serial numbers
+- `reserveSpecificSerialsForQuote()` - Reserve serials for quotations
+- `releaseSpecificSerials()` - Release reserved serial numbers
 
 #### Project Management (`includes/projects.php`)
 - `createSolarProject()` - New project creation
@@ -223,17 +240,19 @@ A comprehensive solar equipment inventory and project management system designed
 
 #### POS System (`includes/pos.php`)
 - `createPOSSale()` - New sale transaction
-- `addPOSSaleItem()` - Add items to sale
-- `completePOSSale()` - Process payment
+- `addPOSSaleItemWithSerials()` - Add items to sale with serial number selection
+- `completePOSSaleWithSerials()` - Process payment with serial tracking
 - `generateReceiptNumber()` - Unique receipt IDs
 - `getPOSStats()` - Sales analytics
+- `importQuotationToPOS()` - Import quotation items to POS sale
+- `getQuotationForPOS()` - Retrieve quotation data for import
 
 #### Payroll System (`includes/payroll.php`)
-- `addEmployee()` - Create employee records
+- `addEmployee()` - Create employee records with manual employee codes
 - `addAttendance()` - Record daily attendance
-- `calculatePayroll()` - Process salary calculations
-- `generateEmployeeCode()` - Unique employee identifiers
+- `calculatePayroll()` - Process salary calculations with custom deductions
 - `getEmployeeAttendance()` - Retrieve attendance history
+- `getPayrollDeductions()` - Retrieve custom deduction records
 
 #### Installment System (`includes/installments.php`)
 - `createInstallmentPlan()` - Setup payment plans
@@ -319,7 +338,19 @@ The test suite automatically:
 
 ## 🔄 Recent Updates & Changelog
 
-### Version 3.1 (Latest - December 2024)
+### Version 3.2 (Latest - December 2024)
+- ✅ **Serial Number Management System**: Complete serial number tracking and management
+- ✅ **Quotation Import to POS**: Import quotation items directly to POS sales
+- ✅ **Customer Information Transfer**: Automatic customer data import from quotations
+- ✅ **Serial Number Selection**: Select specific serials for serialized items in POS
+- ✅ **Custom Payroll Deductions**: Dynamic deduction fields for flexible payroll
+- ✅ **Manual Employee Codes**: User-defined employee codes with validation
+- ✅ **Enhanced Inventory Tracking**: Serial number status management (available, reserved, sold, damaged, returned)
+- ✅ **Automatic Serial Generation**: Auto-generate serials when stock increases
+- ✅ **Duplicate Prevention**: Robust serial number duplicate prevention system
+- ✅ **Comprehensive Testing**: Complete system validation and error detection
+
+### Version 3.1 (December 2024)
 - ✅ **Enhanced Print Functionality**: Improved quotation and receipt printing
 - ✅ **Discount Display System**: Visual discount indicators in all print formats
 - ✅ **Professional Receipt Layout**: Clean print layouts with proper margins
@@ -352,6 +383,23 @@ The test suite automatically:
 - ✅ **Stock Movement Tracking**: Complete inventory audit trail
 - ✅ **Role-based Permissions**: Enhanced security model
 - ✅ **Responsive Design**: Mobile-friendly interface
+
+### 🔢 Serial Number Management System
+- **Unique Serial Generation**: Automatic generation with customizable prefixes and formats
+- **Status Tracking**: Available, reserved, sold, damaged, returned statuses
+- **POS Integration**: Select specific serials when selling serialized items
+- **Quotation Integration**: Reserve serials when creating quotations
+- **Inventory Integration**: Auto-generate serials when stock increases
+- **Duplicate Prevention**: Robust system to prevent duplicate serial numbers
+- **Audit Trail**: Complete tracking of serial number movements and status changes
+
+### 🔄 Quotation to POS Integration
+- **Seamless Import**: Import quotation items directly to POS sales
+- **Customer Data Transfer**: Automatic import of customer name and phone number
+- **Price Preservation**: Maintain original quotation prices in POS
+- **Stock Validation**: Check availability before import
+- **Error Handling**: Graceful handling of out-of-stock items
+- **Success Feedback**: Clear confirmation of imported items and customer data
 
 ### Planned Features
 - 🔮 **Wire Management Module**: Cable and wire inventory (in development)
@@ -400,11 +448,11 @@ All rights reserved. This software is licensed for use by 4nSolar ELECTRICZ and 
 
 ### Contact Information
 - **System**: 4nSolar Management System
-- **Version**: 3.1
+- **Version**: 3.2
 - **Last Updated**: December 2024
-- **Latest Features**: Enhanced Print Functionality, Visual Discount Indicators, Professional Receipt Layouts
-- **Previous Features**: Payroll, Installments, Battery Planning, Revenue Analysis
-- **Test Suite**: Comprehensive validation included
+- **Latest Features**: Serial Number Management, Quotation Import to POS, Customer Information Transfer, Custom Payroll Deductions
+- **Previous Features**: Enhanced Print Functionality, Payroll, Installments, Battery Planning, Revenue Analysis
+- **Test Suite**: Comprehensive validation included with 94.44% success rate
 
 ---
 
