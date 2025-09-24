@@ -183,7 +183,7 @@ function getAvailableBrands() {
 }
 
 // Update stock quantity
-function updateStock($item_id, $new_quantity, $movement_type, $reference_type, $reference_id = null, $notes = '') {
+function updateStock($item_id, $new_quantity, $movement_type, $reference_type, $reference_id = null, $notes = '', $selected_serials = '') {
     global $pdo;
     
     // Validate quantity is not negative
@@ -212,18 +212,50 @@ function updateStock($item_id, $new_quantity, $movement_type, $reference_type, $
         $stmt->execute([$item_id, $movement_type, abs($quantity_change), $current_stock, $new_quantity, 
                        $reference_type, $reference_id, $notes, $_SESSION['user_id'] ?? 1]);
         
-        // If stock increased and item generates serials, automatically generate serial numbers
-        if ($quantity_change > 0) {
-            $stmt = $pdo->prepare("SELECT generate_serials FROM inventory_items WHERE id = ?");
-            $stmt->execute([$item_id]);
-            $generates_serials = $stmt->fetchColumn();
-            
-            if ($generates_serials) {
-                // Generate serial numbers for the new stock
+        // Handle serial numbers based on stock change
+        $stmt = $pdo->prepare("SELECT generate_serials FROM inventory_items WHERE id = ?");
+        $stmt->execute([$item_id]);
+        $generates_serials = $stmt->fetchColumn();
+        
+        if ($generates_serials) {
+            if ($quantity_change > 0) {
+                // Stock increased - generate serial numbers for the new stock
                 $serial_result = generateSerialNumbers($item_id, $quantity_change, $_SESSION['user_id'] ?? 1);
                 if (!$serial_result['success']) {
                     // Log error but don't fail the stock update
                     error_log("Failed to auto-generate serials for item $item_id: " . $serial_result['message']);
+                }
+            } elseif ($quantity_change < 0) {
+                // Stock decreased - remove selected serial numbers or auto-remove excess
+                if (!empty($selected_serials)) {
+                    // Remove specific selected serials
+                    $serials_to_remove = explode(',', $selected_serials);
+                    $serials_to_remove = array_map('trim', $serials_to_remove);
+                    
+                    $remove_result = removeSpecificSerials($item_id, $serials_to_remove, $notes);
+                    
+                    if (!$remove_result['success']) {
+                        // Log error but don't fail the stock update
+                        error_log("Failed to remove selected serials for item $item_id: " . $remove_result['message']);
+                    } else {
+                        // Log successful removal
+                        if (!empty($remove_result['removed_serials'])) {
+                            error_log("Removed selected serial numbers for item $item_id: " . implode(', ', $remove_result['removed_serials']));
+                        }
+                    }
+                } else {
+                    // Auto-remove excess serial numbers to match new stock quantity
+                    $remove_result = removeExcessSerials($item_id, 0, $notes); // 0 because function calculates internally
+                    
+                    if (!$remove_result['success']) {
+                        // Log error but don't fail the stock update
+                        error_log("Failed to remove excess serials for item $item_id: " . $remove_result['message']);
+                    } else {
+                        // Log successful removal
+                        if (!empty($remove_result['removed_serials'])) {
+                            error_log("Removed " . count($remove_result['removed_serials']) . " serial numbers due to stock reduction for item $item_id: " . implode(', ', $remove_result['removed_serials']));
+                        }
+                    }
                 }
             }
         }
@@ -319,7 +351,7 @@ function generateQuoteNumber() {
 }
 
 // Get all quotations
-function getQuotes($status = null) {
+function getQuotes($status = null, $search_term = null, $date_filter = null) {
     global $pdo;
     
     $sql = "SELECT q.*, u.full_name as created_by_name,
@@ -332,9 +364,41 @@ function getQuotes($status = null) {
     
     $params = [];
     
+    // Status filter
     if ($status) {
         $sql .= " AND q.status = ?";
         $params[] = $status;
+    }
+    
+    // Search filter
+    if ($search_term) {
+        $sql .= " AND (q.quote_number LIKE ? OR q.customer_name LIKE ? OR q.proposal_name LIKE ?)";
+        $searchParam = "%{$search_term}%";
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+    }
+    
+    // Date filter
+    if ($date_filter) {
+        $now = new DateTime();
+        switch ($date_filter) {
+            case 'today':
+                $sql .= " AND DATE(q.created_at) = CURDATE()";
+                break;
+            case 'week':
+                $sql .= " AND q.created_at >= DATE_SUB(NOW(), INTERVAL 1 WEEK)";
+                break;
+            case 'month':
+                $sql .= " AND q.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)";
+                break;
+            case 'quarter':
+                $sql .= " AND q.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)";
+                break;
+            case 'year':
+                $sql .= " AND q.created_at >= DATE_SUB(NOW(), INTERVAL 1 YEAR)";
+                break;
+        }
     }
     
     $sql .= " ORDER BY q.created_at DESC";
@@ -893,6 +957,68 @@ function updateQuoteItemDiscount($quote_item_id, $new_discount_percentage) {
     }
 }
 
+function updateQuoteItemUnitPrice($quote_item_id, $new_unit_price) {
+    global $pdo;
+    
+    try {
+        // Get current item details
+        $stmt = $pdo->prepare("SELECT qi.quote_id, qi.quantity, qi.discount_percentage, 
+                              qi.inventory_item_id, i.brand, i.model, i.is_active
+                              FROM quote_items qi
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id
+                              WHERE qi.id = ?");
+        $stmt->execute([$quote_item_id]);
+        $item = $stmt->fetch();
+        
+        if (!$item) return ['success' => false, 'message' => 'Item not found'];
+        
+        // Note: We allow updating prices even for inactive inventory items
+        // since the quote item already exists and users should be able to adjust pricing
+        if (!$item['is_active']) {
+            // Log a warning but don't block the update
+            error_log("Warning: Updating price for inactive inventory item ID: {$item['inventory_item_id']} in quote item ID: {$quote_item_id}");
+        }
+        
+        $new_unit_price = floatval($new_unit_price);
+        if ($new_unit_price < 0) {
+            return ['success' => false, 'message' => 'Unit price cannot be negative'];
+        }
+        
+        $pdo->beginTransaction();
+        
+        // Calculate new totals
+        $quantity = floatval($item['quantity']);
+        $discount_percentage = floatval($item['discount_percentage']);
+        $subtotal = $new_unit_price * $quantity;
+        $discount_amount = $subtotal * ($discount_percentage / 100);
+        $total_amount = $subtotal - $discount_amount;
+        
+        // Update the quote item
+        $stmt = $pdo->prepare("UPDATE quote_items SET 
+                              unit_price = ?, 
+                              discount_amount = ?, 
+                              total_amount = ?
+                              WHERE id = ?");
+        $result = $stmt->execute([$new_unit_price, $discount_amount, $total_amount, $quote_item_id]);
+        
+        if ($result) {
+            // Update quote totals
+            updateQuoteTotals($item['quote_id']);
+            $pdo->commit();
+            return ['success' => true, 'message' => 'Unit price updated successfully'];
+        }
+        
+        $pdo->rollback();
+        return ['success' => false, 'message' => 'Failed to update unit price'];
+        
+    } catch(PDOException $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollback();
+        }
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
+}
+
 // Get available inventory items for quotes (all active items)
 function getQuoteInventoryItems() {
     global $pdo;
@@ -1317,6 +1443,21 @@ function getSolarProjectDetails($quote_id) {
     return $stmt->fetch();
 }
 
+// Update quotation proposal name
+function updateQuoteProposalName($quote_id, $proposal_name) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE quotations SET proposal_name = ?, updated_at = NOW() WHERE id = ?");
+        $result = $stmt->execute([$proposal_name, $quote_id]);
+        
+        return $result;
+    } catch (PDOException $e) {
+        error_log("Error updating proposal name: " . $e->getMessage());
+        return false;
+    }
+}
+
 // ================== SERIAL NUMBER FUNCTIONS ==================
 
 // Get available serials for an inventory item
@@ -1498,6 +1639,198 @@ function reserveSerialsForQuote($quote_id, $inventory_item_id, $quantity) {
     } catch(PDOException $e) {
         $pdo->rollback();
         return ['success' => false, 'message' => 'Failed to reserve serial numbers: ' . $e->getMessage()];
+    }
+}
+
+// Remove specific serial numbers by serial number (without transaction management)
+function removeSpecificSerials($inventory_item_id, $serial_numbers_to_remove, $notes = '') {
+    global $pdo;
+    
+    try {
+        if (empty($serial_numbers_to_remove) || !is_array($serial_numbers_to_remove)) {
+            return [
+                'success' => true, 
+                'message' => 'No serial numbers specified for removal',
+                'removed_serials' => []
+            ];
+        }
+        
+        // Validate that all specified serials exist and belong to this item
+        $placeholders = str_repeat('?,', count($serial_numbers_to_remove) - 1) . '?';
+        $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                              WHERE inventory_item_id = ? AND serial_number IN ($placeholders)");
+        $params = array_merge([$inventory_item_id], $serial_numbers_to_remove);
+        $stmt->execute($params);
+        $existing_serials = $stmt->fetchAll();
+        
+        if (count($existing_serials) !== count($serial_numbers_to_remove)) {
+            $found_serials = array_column($existing_serials, 'serial_number');
+            $missing_serials = array_diff($serial_numbers_to_remove, $found_serials);
+            return [
+                'success' => false, 
+                'message' => 'Some serial numbers not found or do not belong to this item: ' . implode(', ', $missing_serials)
+            ];
+        }
+        
+        // Remove the specified serials
+        $serial_ids = array_column($existing_serials, 'id');
+        $placeholders = str_repeat('?,', count($serial_ids) - 1) . '?';
+        $stmt = $pdo->prepare("DELETE FROM inventory_serials WHERE id IN ($placeholders)");
+        $stmt->execute($serial_ids);
+        
+        $removed_serial_numbers = array_column($existing_serials, 'serial_number');
+        return [
+            'success' => true, 
+            'message' => 'Removed ' . count($removed_serial_numbers) . ' selected serial number(s)',
+            'removed_serials' => $removed_serial_numbers
+        ];
+    } catch(PDOException $e) {
+        return [
+            'success' => false, 
+            'message' => 'Failed to remove selected serial numbers: ' . $e->getMessage()
+        ];
+    }
+}
+
+// Remove excess serial numbers when stock is reduced (without transaction management)
+function removeExcessSerials($inventory_item_id, $quantity_to_remove, $notes = '') {
+    global $pdo;
+    
+    try {
+        // First, get total count of serials for this item
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_serials WHERE inventory_item_id = ?");
+        $stmt->execute([$inventory_item_id]);
+        $total_serials = $stmt->fetchColumn();
+        
+        // Get current stock quantity
+        $stmt = $pdo->prepare("SELECT stock_quantity FROM inventory_items WHERE id = ?");
+        $stmt->execute([$inventory_item_id]);
+        $current_stock = $stmt->fetchColumn();
+        
+        // Calculate how many serials we actually need to remove
+        $serials_to_remove = $total_serials - $current_stock;
+        
+        if ($serials_to_remove <= 0) {
+            return [
+                'success' => true, 
+                'message' => 'No serial numbers need to be removed (stock and serials are in sync)',
+                'removed_serials' => []
+            ];
+        }
+        
+        // Get available serials to remove first (oldest first)
+        $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                              WHERE inventory_item_id = ? AND status = 'available' 
+                              ORDER BY created_at ASC LIMIT " . intval($serials_to_remove));
+        $stmt->execute([$inventory_item_id]);
+        $available_serials_to_delete = $stmt->fetchAll();
+        
+        $serials_deleted = 0;
+        $removed_serial_numbers = [];
+        
+        // Remove available serials first
+        if (count($available_serials_to_delete) > 0) {
+            $serial_ids = array_column($available_serials_to_delete, 'id');
+            $placeholders = str_repeat('?,', count($serial_ids) - 1) . '?';
+            
+            // Delete the available serial numbers
+            $stmt = $pdo->prepare("DELETE FROM inventory_serials WHERE id IN ($placeholders)");
+            $stmt->execute($serial_ids);
+            
+            $serials_deleted += count($serial_ids);
+            $removed_serial_numbers = array_merge($removed_serial_numbers, array_column($available_serials_to_delete, 'serial_number'));
+        }
+        
+        // If we still need to remove more serials and there are no more available ones,
+        // we need to remove from other statuses (reserved, sold, etc.)
+        $remaining_to_remove = $serials_to_remove - $serials_deleted;
+        
+        if ($remaining_to_remove > 0) {
+            // Get other serials to remove (oldest first, excluding available since we already removed those)
+            $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                                  WHERE inventory_item_id = ? AND status != 'available' 
+                                  ORDER BY created_at ASC LIMIT " . intval($remaining_to_remove));
+            $stmt->execute([$inventory_item_id]);
+            $other_serials_to_delete = $stmt->fetchAll();
+            
+            if (count($other_serials_to_delete) > 0) {
+                $serial_ids = array_column($other_serials_to_delete, 'id');
+                $placeholders = str_repeat('?,', count($serial_ids) - 1) . '?';
+                
+                // Delete the other serial numbers
+                $stmt = $pdo->prepare("DELETE FROM inventory_serials WHERE id IN ($placeholders)");
+                $stmt->execute($serial_ids);
+                
+                $serials_deleted += count($serial_ids);
+                $removed_serial_numbers = array_merge($removed_serial_numbers, array_column($other_serials_to_delete, 'serial_number'));
+            }
+        }
+        
+        if ($serials_deleted > 0) {
+            return [
+                'success' => true, 
+                'message' => "Removed {$serials_deleted} serial number(s) to sync with stock quantity",
+                'removed_serials' => $removed_serial_numbers
+            ];
+        } else {
+            return [
+                'success' => true, 
+                'message' => 'No serial numbers could be removed',
+                'removed_serials' => []
+            ];
+        }
+    } catch(PDOException $e) {
+        return [
+            'success' => false, 
+            'message' => 'Failed to remove serial numbers: ' . $e->getMessage()
+        ];
+    }
+}
+
+// Remove excess serial numbers when stock is reduced (with transaction management - for standalone use)
+function removeExcessSerialsWithTransaction($inventory_item_id, $quantity_to_remove, $notes = '') {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get available serials to remove (oldest first)
+        $stmt = $pdo->prepare("SELECT id, serial_number FROM inventory_serials 
+                              WHERE inventory_item_id = ? AND status = 'available' 
+                              ORDER BY created_at ASC LIMIT ?");
+        $stmt->execute([$inventory_item_id, $quantity_to_remove]);
+        $serials_to_delete = $stmt->fetchAll();
+        
+        if (count($serials_to_delete) > 0) {
+            $serial_ids = array_column($serials_to_delete, 'id');
+            $placeholders = str_repeat('?,', count($serial_ids) - 1) . '?';
+            
+            // Delete the serial numbers
+            $stmt = $pdo->prepare("DELETE FROM inventory_serials WHERE id IN ($placeholders)");
+            $stmt->execute($serial_ids);
+            
+            $pdo->commit();
+            
+            $serial_numbers = array_column($serials_to_delete, 'serial_number');
+            return [
+                'success' => true, 
+                'message' => 'Removed ' . count($serial_numbers) . ' serial numbers due to stock reduction',
+                'removed_serials' => $serial_numbers
+            ];
+        } else {
+            $pdo->commit();
+            return [
+                'success' => true, 
+                'message' => 'No available serial numbers to remove',
+                'removed_serials' => []
+            ];
+        }
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return [
+            'success' => false, 
+            'message' => 'Failed to remove serial numbers: ' . $e->getMessage()
+        ];
     }
 }
 
@@ -1742,6 +2075,35 @@ function searchInventoryBySerial($serial_number) {
                           WHERE ser.serial_number LIKE ? AND i.is_active = 1
                           ORDER BY ser.serial_number");
     $stmt->execute(['%' . $serial_number . '%']);
+    return $stmt->fetchAll();
+}
+
+// Get serialized inventory items (items that generate serial numbers)
+function getSerializedItems($category_id = null, $brand_filter = null) {
+    global $pdo;
+    
+    $sql = "SELECT i.*, s.name as supplier_name, c.name as category_name 
+            FROM inventory_items i 
+            LEFT JOIN suppliers s ON i.supplier_id = s.id 
+            LEFT JOIN categories c ON i.category_id = c.id 
+            WHERE i.is_active = 1 AND i.generate_serials = 1";
+    
+    $params = [];
+    
+    if ($category_id) {
+        $sql .= " AND i.category_id = ?";
+        $params[] = $category_id;
+    }
+    
+    if ($brand_filter) {
+        $sql .= " AND i.brand = ?";
+        $params[] = $brand_filter;
+    }
+    
+    $sql .= " ORDER BY i.brand, i.model";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     return $stmt->fetchAll();
 }
 ?>

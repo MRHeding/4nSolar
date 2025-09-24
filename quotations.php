@@ -55,11 +55,18 @@ if ($action === 'get_customer_details' && $quote_id) {
         // Get solar project details
         $solar_details = getSolarProjectDetails($quote_id);
         
+        // Get quote items to check for existing labor fee
+        $quote_items = [];
+        if ($quote && isset($quote['items'])) {
+            $quote_items = $quote['items'];
+        }
+        
         echo json_encode([
             'success' => true,
             'quote_info' => $quote,
             'customer_info' => $customer_info,
-            'solar_details' => $solar_details
+            'solar_details' => $solar_details,
+            'quote_items' => $quote_items
         ]);
     } catch (Exception $e) {
         echo json_encode([
@@ -80,6 +87,8 @@ if ($_POST) {
     switch ($action) {
         case 'create_installment_plan':
             if ($quote_id) {
+                // Debug: Log the form data being submitted
+                error_log("Creating installment plan with data: " . print_r($_POST, true));
                 $result = createInstallmentPlan($quote_id, $_POST);
                 if ($result['success']) {
                     header("Location: ?action=installments&quote_id=" . $quote_id . "&message=" . urlencode($result['message']));
@@ -226,13 +235,55 @@ if ($_POST) {
             }
             break;
             
+        case 'update_quote_unit_price':
+            if (isset($_POST['quote_item_id']) && isset($_POST['new_unit_price'])) {
+                $result = updateQuoteItemUnitPrice($_POST['quote_item_id'], $_POST['new_unit_price']);
+                if ($result['success']) {
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Unit price updated successfully!'));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
         case 'update_customer_details':
             if ($quote_id) {
                 $customer_updated = saveCustomerInfo($quote_id, $_POST);
                 $solar_updated = saveSolarProjectDetails($quote_id, $_POST);
                 
-                if ($customer_updated && $solar_updated) {
-                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Customer and solar project details updated successfully!'));
+                // Update proposal name if provided
+                $proposal_updated = true;
+                if (isset($_POST['proposal_name'])) {
+                    $proposal_updated = updateQuoteProposalName($quote_id, $_POST['proposal_name']);
+                }
+                
+                // Check if KW and Labor Fee are provided and add to Quote Items
+                $kw = floatval($_POST['kw'] ?? 0);
+                $labor_fee = floatval($_POST['labor_fee'] ?? 0);
+                $labor_added = true;
+                
+                if ($kw > 0 && $labor_fee > 0) {
+                    $total_labor_cost = $kw * $labor_fee;
+                    $labor_item_name = "Labor Fee Calculation";
+                    
+                    // Add labor fee as a custom quote item
+                    $labor_result = addCustomQuoteItem($quote_id, $labor_item_name, $kw, $labor_fee);
+                    if (!$labor_result['success']) {
+                        $labor_added = false;
+                    }
+                }
+                
+                if ($customer_updated && $solar_updated && $proposal_updated) {
+                    $message = 'Customer and solar project details updated successfully!';
+                    if ($kw > 0 && $labor_fee > 0) {
+                        if ($labor_added) {
+                            $message .= ' Labor fee has been added to quote items.';
+                        } else {
+                            $message .= ' Note: Failed to add labor fee to quote items.';
+                        }
+                    }
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($message));
                     exit();
                 } else {
                     $error = 'Failed to update customer or solar project details.';
@@ -367,7 +418,12 @@ switch ($action) {
         break;
         
     default:
-        $quotes = getQuotes();
+        // Get filter parameters from URL
+        $status_filter = $_GET['status'] ?? null;
+        $search_term = $_GET['search'] ?? null;
+        $date_filter = $_GET['date'] ?? null;
+        
+        $quotes = getQuotes($status_filter, $search_term, $date_filter);
         break;
 }
 
@@ -458,6 +514,92 @@ include 'includes/header.php';
     </div>
 </div>
 
+<!-- Filters and Search -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Search Bar -->
+        <div class="lg:col-span-2">
+            <label for="quote-search" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search Quotations</label>
+            <input type="text" id="quote-search" placeholder="Search by customer name, quote number, or proposal..." 
+                   class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-700 dark:text-white"
+                   oninput="filterQuotations()">
+        </div>
+        
+        <!-- Status Filter -->
+        <div>
+            <label for="status-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
+            <select id="status-filter" onchange="filterQuotations()" 
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-700 dark:text-white">
+                <option value="">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+                <option value="under_review">Under Review</option>
+                <option value="accepted">Accepted</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="expired">Expired</option>
+            </select>
+        </div>
+        
+        <!-- Date Range Filter -->
+        <div>
+            <label for="date-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Date Range</label>
+            <select id="date-filter" onchange="filterQuotations()" 
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-700 dark:text-white">
+                <option value="">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="quarter">This Quarter</option>
+                <option value="year">This Year</option>
+            </select>
+        </div>
+    </div>
+    
+    <!-- Quick Filter Buttons -->
+    <div class="mt-4">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quick Filters</label>
+        <div class="flex flex-wrap gap-2">
+            <button onclick="setQuickFilter('')" class="quick-filter-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition active">
+                All Quotations
+            </button>
+            <button onclick="setQuickFilter('draft')" class="quick-filter-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+                Draft
+            </button>
+            <button onclick="setQuickFilter('sent')" class="quick-filter-btn px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition">
+                Sent
+            </button>
+            <button onclick="setQuickFilter('under_review')" class="quick-filter-btn px-3 py-1 text-sm bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-md hover:bg-purple-200 dark:hover:bg-purple-800 transition">
+                Under Review
+            </button>
+            <button onclick="setQuickFilter('approved')" class="quick-filter-btn px-3 py-1 text-sm bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-800 transition">
+                Approved
+            </button>
+            <button onclick="setQuickFilter('rejected')" class="quick-filter-btn px-3 py-1 text-sm bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-md hover:bg-red-200 dark:hover:bg-red-800 transition">
+                Rejected
+            </button>
+            <button onclick="setQuickFilter('installment')" class="quick-filter-btn px-3 py-1 text-sm bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 rounded-md hover:bg-orange-200 dark:hover:bg-orange-800 transition">
+                With Installments
+            </button>
+        </div>
+    </div>
+    
+    <!-- Results Summary -->
+    <div class="mt-4 flex justify-between items-center">
+        <div class="text-sm text-gray-600 dark:text-gray-400">
+            Showing <span id="filtered-count">0</span> of <span id="total-count">0</span> quotations
+        </div>
+        <div class="flex gap-2">
+            <button onclick="clearFilters()" class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+                Clear Filters
+            </button>
+            <button onclick="exportFilteredQuotations()" class="px-3 py-1 text-sm bg-green-100 dark:bg-green-700 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-600 transition">
+                <i class="fas fa-download mr-1"></i>Export
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Quotations Table -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
     <table class="min-w-full divide-y divide-gray-200 compact-table">
@@ -476,7 +618,15 @@ include 'includes/header.php';
         <tbody class="bg-white divide-y divide-gray-200">
             <?php if (!empty($quotes)): ?>
                 <?php foreach ($quotes as $quote): ?>
-                <tr class="hover:bg-gray-50">
+                <tr class="hover:bg-gray-50 quote-row" 
+                    data-quote-number="<?php echo htmlspecialchars($quote['quote_number']); ?>"
+                    data-customer-name="<?php echo htmlspecialchars(strtolower($quote['customer_name'])); ?>"
+                    data-proposal-name="<?php echo htmlspecialchars(strtolower($quote['proposal_name'] ?? '')); ?>"
+                    data-status="<?php echo $quote['status']; ?>"
+                    data-date="<?php echo date('Y-m-d', strtotime($quote['created_at'])); ?>"
+                    data-has-installment="<?php echo $quote['has_installment_plan'] > 0 ? 'yes' : 'no'; ?>"
+                    data-total-amount="<?php echo $quote['total_amount']; ?>"
+                    data-items-count="<?php echo $quote['items_count']; ?>">
                     <td class="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                         <?php echo htmlspecialchars($quote['quote_number']); ?>
                     </td>
@@ -883,6 +1033,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     document.getElementById('kw').addEventListener('input', updateTotal);
     document.getElementById('labor_fee').addEventListener('input', updateTotal);
+    
 });
 </script>
 
@@ -986,7 +1137,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </form>
                             </td>
                             <td class="px-3 py-4 text-sm text-gray-900">
-                                <?php echo formatCurrency($item['unit_price']); ?>
+                                <form method="POST" action="?action=update_quote_unit_price&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                                    <input type="hidden" name="quote_item_id" value="<?php echo $item['id']; ?>">
+                                    <input type="number" name="new_unit_price" value="<?php echo $item['unit_price']; ?>" 
+                                           min="0" step="0.01" class="w-20 px-2 py-1 border rounded text-center text-sm"
+                                           onchange="this.form.submit()" 
+                                           oninput="calculateItemTotal(this, <?php echo $item['quantity']; ?>, <?php echo $item['discount_percentage']; ?>)"
+                                           title="Click to edit unit price">
+                                </form>
                             </td>
                             <td class="px-3 py-4 text-sm text-gray-900">
                                 <form method="POST" action="?action=update_quote_discount&quote_id=<?php echo $quote['id']; ?>" class="inline">
@@ -997,7 +1155,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </form>
                             </td>
                             <td class="px-3 py-4 text-sm font-medium text-gray-900">
-                                <?php echo formatCurrency($item['total_amount']); ?>
+                                <span id="total_<?php echo $item['id']; ?>"><?php echo formatCurrency($item['total_amount']); ?></span>
                             </td>
                             <td class="px-3 py-4 text-center">
                                 <a href="?action=remove_quote_item&quote_id=<?php echo $quote['id']; ?>&item_id=<?php echo $item['id']; ?>" 
@@ -1586,9 +1744,14 @@ function updateQuoteTotalPreview() {
     const discountAmount = subtotal * (discountPercent / 100);
     const total = subtotal - discountAmount;
     
-    document.getElementById('quote-subtotal-amount').textContent = formatCurrency(subtotal);
-    document.getElementById('quote-discount-amount').textContent = formatCurrency(discountAmount);
-    document.getElementById('quote-total-amount').textContent = formatCurrency(total);
+    // Round all calculations to 2 decimal places
+    const roundedSubtotal = Math.round(subtotal * 100) / 100;
+    const roundedDiscountAmount = Math.round(discountAmount * 100) / 100;
+    const roundedTotal = Math.round(total * 100) / 100;
+    
+    document.getElementById('quote-subtotal-amount').textContent = formatCurrency(roundedSubtotal);
+    document.getElementById('quote-discount-amount').textContent = formatCurrency(roundedDiscountAmount);
+    document.getElementById('quote-total-amount').textContent = formatCurrency(roundedTotal);
     
     document.getElementById('quote-total-preview').classList.remove('hidden');
     
@@ -1679,10 +1842,18 @@ function displayProfitData(profitData) {
         const profitMargin = baseCost > 0 ? ((profit / baseCost) * 100) : 0;
         const profitMarginAfterDiscount = baseCost > 0 ? ((profitAfterDiscount / baseCost) * 100) : 0;
         
-        totalBaseCost += baseCost;
-        totalSellingPrice += sellingPrice;
-        totalProfit += profit;
-        totalProfitAfterDiscount += profitAfterDiscount;
+        // Round all calculations to 2 decimal places
+        const roundedBaseCost = Math.round(baseCost * 100) / 100;
+        const roundedSellingPrice = Math.round(sellingPrice * 100) / 100;
+        const roundedProfit = Math.round(profit * 100) / 100;
+        const roundedProfitAfterDiscount = Math.round(profitAfterDiscount * 100) / 100;
+        const roundedProfitMargin = Math.round(profitMargin * 10) / 10;
+        const roundedProfitMarginAfterDiscount = Math.round(profitMarginAfterDiscount * 10) / 10;
+        
+        totalBaseCost += roundedBaseCost;
+        totalSellingPrice += roundedSellingPrice;
+        totalProfit += roundedProfit;
+        totalProfitAfterDiscount += roundedProfitAfterDiscount;
         
         itemsHtml += `
             <tr class="hover:bg-gray-50">
@@ -1693,18 +1864,18 @@ function displayProfitData(profitData) {
                 <td class="px-3 py-3 border-b text-center text-sm">${item.quantity}</td>
                 <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(item.base_price)}</td>
                 <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(item.unit_price)}</td>
-                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(baseCost)}</td>
-                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(sellingPrice)}</td>
-                <td class="px-3 py-3 border-b text-sm text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}">
-                    ${formatCurrency(profit)}
-                    <div class="text-xs ${profitMargin >= 0 ? 'text-green-500' : 'text-red-500'}">(${profitMargin.toFixed(1)}%)</div>
+                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(roundedBaseCost)}</td>
+                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(roundedSellingPrice)}</td>
+                <td class="px-3 py-3 border-b text-sm text-right font-medium ${roundedProfit >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${formatCurrency(roundedProfit)}
+                    <div class="text-xs ${roundedProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}">(${roundedProfitMargin.toFixed(1)}%)</div>
                 </td>
                 <td class="px-3 py-3 border-b text-sm text-center">
                     <span class="text-xs ${item.discount_percentage > 0 ? 'text-orange-600' : 'text-gray-400'}">${item.discount_percentage}%</span>
                 </td>
-                <td class="px-3 py-3 border-b text-sm text-right font-medium ${profitAfterDiscount >= 0 ? 'text-green-600' : 'text-red-600'}">
-                    ${formatCurrency(profitAfterDiscount)}
-                    <div class="text-xs ${profitMarginAfterDiscount >= 0 ? 'text-green-500' : 'text-red-500'}">(${profitMarginAfterDiscount.toFixed(1)}%)</div>
+                <td class="px-3 py-3 border-b text-sm text-right font-medium ${roundedProfitAfterDiscount >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${formatCurrency(roundedProfitAfterDiscount)}
+                    <div class="text-xs ${roundedProfitMarginAfterDiscount >= 0 ? 'text-green-500' : 'text-red-500'}">(${roundedProfitMarginAfterDiscount.toFixed(1)}%)</div>
                 </td>
             </tr>
         `;
@@ -1713,26 +1884,34 @@ function displayProfitData(profitData) {
     const overallProfitMargin = totalBaseCost > 0 ? ((totalProfit / totalBaseCost) * 100) : 0;
     const overallProfitMarginAfterDiscount = totalBaseCost > 0 ? ((totalProfitAfterDiscount / totalBaseCost) * 100) : 0;
     
+    // Round overall totals to 2 decimal places
+    const roundedTotalBaseCost = Math.round(totalBaseCost * 100) / 100;
+    const roundedTotalSellingPrice = Math.round(totalSellingPrice * 100) / 100;
+    const roundedTotalProfit = Math.round(totalProfit * 100) / 100;
+    const roundedTotalProfitAfterDiscount = Math.round(totalProfitAfterDiscount * 100) / 100;
+    const roundedOverallProfitMargin = Math.round(overallProfitMargin * 10) / 10;
+    const roundedOverallProfitMarginAfterDiscount = Math.round(overallProfitMarginAfterDiscount * 10) / 10;
+    
     contentDiv.innerHTML = `
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-blue-800">Total Base Cost</div>
-                <div class="text-xl font-bold text-blue-900">${formatCurrency(totalBaseCost)}</div>
+                <div class="text-xl font-bold text-blue-900">${formatCurrency(roundedTotalBaseCost)}</div>
             </div>
             <div class="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-green-800">Total Selling Price</div>
-                <div class="text-xl font-bold text-green-900">${formatCurrency(totalSellingPrice)}</div>
+                <div class="text-xl font-bold text-green-900">${formatCurrency(roundedTotalSellingPrice)}</div>
             </div>
             <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-purple-800">Gross Profit</div>
-                <div class="text-xl font-bold ${totalProfit >= 0 ? 'text-purple-900' : 'text-red-600'}">${formatCurrency(totalProfit)}</div>
-                <div class="text-sm ${overallProfitMargin >= 0 ? 'text-purple-600' : 'text-red-500'}">(${overallProfitMargin.toFixed(1)}% margin)</div>
+                <div class="text-xl font-bold ${roundedTotalProfit >= 0 ? 'text-purple-900' : 'text-red-600'}">${formatCurrency(roundedTotalProfit)}</div>
+                <div class="text-sm ${roundedOverallProfitMargin >= 0 ? 'text-purple-600' : 'text-red-500'}">(${roundedOverallProfitMargin.toFixed(1)}% margin)</div>
             </div>
             <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-orange-800">Net Profit (After Discounts)</div>
-                <div class="text-xl font-bold ${totalProfitAfterDiscount >= 0 ? 'text-orange-900' : 'text-red-600'}">${formatCurrency(totalProfitAfterDiscount)}</div>
-                <div class="text-sm ${overallProfitMarginAfterDiscount >= 0 ? 'text-orange-600' : 'text-red-500'}">(${overallProfitMarginAfterDiscount.toFixed(1)}% margin)</div>
+                <div class="text-xl font-bold ${roundedTotalProfitAfterDiscount >= 0 ? 'text-orange-900' : 'text-red-600'}">${formatCurrency(roundedTotalProfitAfterDiscount)}</div>
+                <div class="text-sm ${roundedOverallProfitMarginAfterDiscount >= 0 ? 'text-orange-600' : 'text-red-500'}">(${roundedOverallProfitMarginAfterDiscount.toFixed(1)}% margin)</div>
             </div>
         </div>
         
@@ -1762,16 +1941,16 @@ function displayProfitData(profitData) {
                     <tfoot class="bg-gray-50 border-t-2 border-gray-300">
                         <tr class="font-medium">
                             <td class="px-4 py-3 text-sm font-bold text-gray-900" colspan="4">TOTAL</td>
-                            <td class="px-3 py-3 text-sm font-bold text-gray-900 text-right">${formatCurrency(totalBaseCost)}</td>
-                            <td class="px-3 py-3 text-sm font-bold text-gray-900 text-right">${formatCurrency(totalSellingPrice)}</td>
-                            <td class="px-3 py-3 text-sm font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'} text-right">
-                                ${formatCurrency(totalProfit)}
-                                <div class="text-xs ${overallProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}">(${overallProfitMargin.toFixed(1)}%)</div>
+                            <td class="px-3 py-3 text-sm font-bold text-gray-900 text-right">${formatCurrency(roundedTotalBaseCost)}</td>
+                            <td class="px-3 py-3 text-sm font-bold text-gray-900 text-right">${formatCurrency(roundedTotalSellingPrice)}</td>
+                            <td class="px-3 py-3 text-sm font-bold ${roundedTotalProfit >= 0 ? 'text-green-600' : 'text-red-600'} text-right">
+                                ${formatCurrency(roundedTotalProfit)}
+                                <div class="text-xs ${roundedOverallProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}">(${roundedOverallProfitMargin.toFixed(1)}%)</div>
                             </td>
                             <td class="px-3 py-3 text-sm text-center">-</td>
-                            <td class="px-3 py-3 text-sm font-bold ${totalProfitAfterDiscount >= 0 ? 'text-orange-600' : 'text-red-600'} text-right">
-                                ${formatCurrency(totalProfitAfterDiscount)}
-                                <div class="text-xs ${overallProfitMarginAfterDiscount >= 0 ? 'text-orange-500' : 'text-red-500'}">(${overallProfitMarginAfterDiscount.toFixed(1)}%)</div>
+                            <td class="px-3 py-3 text-sm font-bold ${roundedTotalProfitAfterDiscount >= 0 ? 'text-orange-600' : 'text-red-600'} text-right">
+                                ${formatCurrency(roundedTotalProfitAfterDiscount)}
+                                <div class="text-xs ${roundedOverallProfitMarginAfterDiscount >= 0 ? 'text-orange-500' : 'text-red-500'}">(${roundedOverallProfitMarginAfterDiscount.toFixed(1)}%)</div>
                             </td>
                         </tr>
                     </tfoot>
@@ -2231,7 +2410,7 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                 </div>
                 <div class="flex justify-between">
                     <span class="text-gray-600 dark:text-gray-400">Interest Rate:</span>
-                    <span class="font-medium"><?php echo $installment_plan['interest_rate']; ?>% annually</span>
+                    <span class="font-medium"><?php echo $installment_plan['interest_rate']; ?>% monthly</span>
                 </div>
                 <div class="flex justify-between">
                     <span class="text-gray-600 dark:text-gray-400">Frequency:</span>
@@ -2314,9 +2493,9 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
         
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-                <label for="interest_rate" class="block text-sm font-medium text-gray-700 mb-2">Interest Rate (% annually)</label>
+                <label for="interest_rate" class="block text-sm font-medium text-gray-700 mb-2">Interest Rate (% monthly)</label>
                 <input type="number" id="interest_rate" name="interest_rate" step="0.01" min="0" 
-                       value="2.5" oninput="calculateInstallments()"
+                       value="0.21" oninput="calculateInstallments()"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
             </div>
             <div>
@@ -2439,6 +2618,11 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
 </div>
 
 <script>
+// Currency formatting function
+function formatCurrency(amount) {
+    return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 // Installment calculation functions
 function calculateInstallments() {
     const totalAmount = parseFloat(document.getElementById('total_amount').value) || 0;
@@ -2446,8 +2630,18 @@ function calculateInstallments() {
     const numInstallments = parseInt(document.getElementById('number_of_installments').value) || 12;
     const interestRate = parseFloat(document.getElementById('interest_rate').value) || 0;
     
-    const remainingAmount = totalAmount - downPayment;
-    const monthlyInterestRate = interestRate / 100 / 12;
+    let remainingAmount = totalAmount - downPayment;
+    const monthlyInterestRate = interestRate / 100;
+    
+    // Debug logging
+    console.log('Calculation inputs:', {
+        totalAmount,
+        downPayment,
+        numInstallments,
+        interestRate,
+        remainingAmount,
+        monthlyInterestRate
+    });
     
     let monthlyPayment;
     let totalInterest;
@@ -2461,6 +2655,19 @@ function calculateInstallments() {
         monthlyPayment = remainingAmount / numInstallments;
         totalInterest = 0;
     }
+    
+    // Round all calculations to 2 decimal places
+    // Round monthly payment to nearest 0.50 (e.g., 17713.59 becomes 17713.50)
+    monthlyPayment = Math.floor(monthlyPayment * 2) / 2;
+    totalInterest = Math.round(totalInterest * 100) / 100;
+    remainingAmount = Math.round(remainingAmount * 100) / 100;
+    
+    // Debug logging for calculated values
+    console.log('Calculated values:', {
+        monthlyPayment,
+        totalInterest,
+        remainingAmount
+    });
     
     document.getElementById('remaining-amount').textContent = formatCurrency(remainingAmount);
     document.getElementById('monthly-payment').textContent = formatCurrency(monthlyPayment);
@@ -2496,14 +2703,51 @@ function viewReceipt(receiptNumber) {
 }
 
 // Currency formatting function
-function formatCurrency(amount) {
-    return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+// Real-time calculation for unit price changes
+function calculateItemTotal(unitPriceInput, quantity, discountPercentage) {
+    const unitPrice = parseFloat(unitPriceInput.value) || 0;
+    const qty = parseFloat(quantity) || 0;
+    const discount = parseFloat(discountPercentage) || 0;
+    
+    // Calculate subtotal
+    const subtotal = unitPrice * qty;
+    
+    // Calculate discount amount
+    const discountAmount = subtotal * (discount / 100);
+    
+    // Calculate total amount
+    const totalAmount = subtotal - discountAmount;
+    
+    // Round all calculations to 2 decimal places
+    const roundedSubtotal = Math.round(subtotal * 100) / 100;
+    const roundedDiscountAmount = Math.round(discountAmount * 100) / 100;
+    const roundedTotalAmount = Math.round(totalAmount * 100) / 100;
+    
+    // Find the item ID from the input's form
+    const form = unitPriceInput.closest('form');
+    const quoteItemId = form.querySelector('input[name="quote_item_id"]').value;
+    
+    // Update the total display
+    const totalElement = document.getElementById('total_' + quoteItemId);
+    if (totalElement) {
+        totalElement.textContent = formatCurrency(roundedTotalAmount);
+    }
 }
 
 // Initialize calculations on page load
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('total_amount')) {
         calculateInstallments();
+        
+        // Add event listeners for real-time updates
+        const inputs = ['total_amount', 'down_payment', 'number_of_installments', 'interest_rate'];
+        inputs.forEach(inputId => {
+            const element = document.getElementById(inputId);
+            if (element) {
+                element.addEventListener('input', calculateInstallments);
+                element.addEventListener('change', calculateInstallments);
+            }
+        });
     }
 });
 </script>
@@ -2553,6 +2797,19 @@ document.addEventListener('DOMContentLoaded', function() {
             
             <form id="edit-customer-form" method="POST" class="space-y-6">
                 <input type="hidden" id="edit_quote_id" name="quote_id" value="">
+                
+                <!-- Basic Quotation Info Section -->
+                <div class="border-b pb-6">
+                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Quotation Information</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="edit_proposal_name" class="block text-sm font-medium text-gray-700 mb-2">Proposal Name</label>
+                            <input type="text" id="edit_proposal_name" name="proposal_name"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                                   placeholder="Enter proposal name">
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Customer Information Section -->
                 <div class="border-b pb-6">
@@ -2606,6 +2863,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 <!-- Solar Project Details Section -->
                 <div class="pb-6">
                     <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Solar Project Details</h4>
+                    
+                    <!-- KW and Labor Fee Section -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                        <div>
+                            <label for="edit_kw" class="block text-sm font-medium text-gray-700 mb-2">KW</label>
+                            <input type="number" id="edit_kw" name="kw" min="0" step="any" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent" 
+                                   placeholder="Enter KW value">
+                        </div>
+                        <div>
+                            <label for="edit_labor_fee" class="block text-sm font-medium text-gray-700 mb-2">Labor Fee (PHP)</label>
+                            <input type="number" id="edit_labor_fee" name="labor_fee" min="0" step="any" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent" 
+                                   placeholder="Enter Labor Fee">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Total (KW * Labor Fee)</label>
+                            <input type="text" id="edit_total_kw_labor" readonly 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100" 
+                                   value="" placeholder="Total will appear here">
+                        </div>
+                    </div>
+                    
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">System Type</label>
@@ -2874,7 +3154,7 @@ function loadCustomerDetails(quoteId) {
 function displayCustomerDetails(customerInfo, solarDetails, quoteInfo) {
     const contentDiv = document.getElementById('customer-details-content');
     
-    // Helper function to display boolean as Yes/No
+    // Helper function to display boolean as Yes/No ewwwwwwwwwwwwwwwwwwwwww                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
     const boolToYesNo = (value) => value ? 'Yes' : 'No';
     
     // Helper function to display checkbox arrays
@@ -3014,10 +3294,34 @@ function showCustomerDetailsError(message) {
     `;
 }
 
+// Edit modal calculation function
+function updateEditTotal() {
+    var kw = parseFloat(document.getElementById('edit_kw').value) || 0;
+    var labor = parseFloat(document.getElementById('edit_labor_fee').value) || 0;
+    var total = kw * labor;
+    document.getElementById('edit_total_kw_labor').value = total > 0 ? 
+        total.toLocaleString('en-PH', {style: 'currency', currency: 'PHP'}) : '';
+}
+
 // Edit Customer Details Modal Functions
 function editCustomerDetails(quoteId) {
     const modal = document.getElementById('edit-customer-modal');
     modal.classList.remove('hidden');
+    
+    // Add event listeners for KW and Labor Fee calculation
+    const editKwField = document.getElementById('edit_kw');
+    const editLaborFeeField = document.getElementById('edit_labor_fee');
+    
+    if (editKwField && editLaborFeeField) {
+        // Remove existing listeners to avoid duplicates
+        editKwField.removeEventListener('input', updateEditTotal);
+        editLaborFeeField.removeEventListener('input', updateEditTotal);
+        
+        // Add new listeners
+        editKwField.addEventListener('input', updateEditTotal);
+        editLaborFeeField.addEventListener('input', updateEditTotal);
+    }
+    
     loadCustomerDetailsForEdit(quoteId);
 }
 
@@ -3039,7 +3343,7 @@ function loadCustomerDetailsForEdit(quoteId) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                populateEditForm(data.customer_info, data.solar_details);
+                populateEditForm(data.customer_info, data.solar_details, data.quote_items, data.quote_info);
             } else {
                 alert('Failed to load customer details for editing');
             }
@@ -3050,7 +3354,12 @@ function loadCustomerDetailsForEdit(quoteId) {
         });
 }
 
-function populateEditForm(customerInfo, solarDetails) {
+function populateEditForm(customerInfo, solarDetails, quoteItems, quoteInfo) {
+    // Populate quotation information
+    if (quoteInfo) {
+        document.getElementById('edit_proposal_name').value = quoteInfo.proposal_name || '';
+    }
+    
     // Populate customer information
     if (customerInfo) {
         document.getElementById('edit_full_name').value = customerInfo.full_name || '';
@@ -3117,6 +3426,25 @@ function populateEditForm(customerInfo, solarDetails) {
         // Show/hide battery capacity input based on selection
         toggleEditBatteryCapacityInput();
     }
+    
+    // Try to populate KW and Labor Fee from existing labor fee quote items
+    if (quoteItems && Array.isArray(quoteItems)) {
+        const laborFeeItem = quoteItems.find(item => 
+            item.brand && item.brand.toLowerCase().includes('labor fee calculation')
+        );
+        
+        if (laborFeeItem) {
+            // Extract KW from quantity and Labor Fee from unit price
+            document.getElementById('edit_kw').value = laborFeeItem.quantity || '';
+            document.getElementById('edit_labor_fee').value = laborFeeItem.unit_price || '';
+            
+            // Trigger calculation
+            updateEditTotal();
+        }
+    }
+    
+    // Always trigger calculation at the end to ensure total is updated
+    updateEditTotal();
 }
 
 // Battery Backup Capacity Input Toggle Functions
@@ -3179,6 +3507,201 @@ function confirmQuoteApproval() {
     form.appendChild(statusInput);
     document.body.appendChild(form);
     form.submit();
+}
+
+// Quotations Filtering Functions
+let allQuotes = [];
+let filteredQuotes = [];
+
+// Initialize filtering on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Store all quotes data
+    const quoteRows = document.querySelectorAll('.quote-row');
+    allQuotes = Array.from(quoteRows).map(row => ({
+        element: row,
+        quoteNumber: row.getAttribute('data-quote-number'),
+        customerName: row.getAttribute('data-customer-name'),
+        proposalName: row.getAttribute('data-proposal-name'),
+        status: row.getAttribute('data-status'),
+        date: row.getAttribute('data-date'),
+        hasInstallment: row.getAttribute('data-has-installment'),
+        totalAmount: parseFloat(row.getAttribute('data-total-amount')),
+        itemsCount: parseInt(row.getAttribute('data-items-count'))
+    }));
+    
+    filteredQuotes = [...allQuotes];
+    updateResultsCount();
+});
+
+function filterQuotations() {
+    const searchTerm = document.getElementById('quote-search').value.toLowerCase();
+    const statusFilter = document.getElementById('status-filter').value;
+    const dateFilter = document.getElementById('date-filter').value;
+    
+    filteredQuotes = allQuotes.filter(quote => {
+        // Search filter
+        const matchesSearch = !searchTerm || 
+            quote.quoteNumber.toLowerCase().includes(searchTerm) ||
+            quote.customerName.includes(searchTerm) ||
+            quote.proposalName.includes(searchTerm);
+        
+        // Status filter
+        const matchesStatus = !statusFilter || quote.status === statusFilter;
+        
+        // Date filter
+        const matchesDate = !dateFilter || isDateInRange(quote.date, dateFilter);
+        
+        return matchesSearch && matchesStatus && matchesDate;
+    });
+    
+    updateTableDisplay();
+    updateResultsCount();
+}
+
+function setQuickFilter(filterType) {
+    // Update button states
+    document.querySelectorAll('.quick-filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white');
+        btn.classList.add('bg-gray-100', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300');
+    });
+    
+    // Highlight active button
+    event.target.classList.remove('bg-gray-100', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300');
+    event.target.classList.add('active', 'bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white');
+    
+    // Set filters based on quick filter type
+    if (filterType === 'installment') {
+        document.getElementById('status-filter').value = '';
+        filteredQuotes = allQuotes.filter(quote => quote.hasInstallment === 'yes');
+    } else {
+        document.getElementById('status-filter').value = filterType;
+        filterQuotations();
+    }
+    
+    updateTableDisplay();
+    updateResultsCount();
+}
+
+function isDateInRange(dateString, range) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (range) {
+        case 'today':
+            return date.toDateString() === today.toDateString();
+        
+        case 'week':
+            const weekAgo = new Date(today);
+            weekAgo.setDate(today.getDate() - 7);
+            return date >= weekAgo && date <= today;
+        
+        case 'month':
+            const monthAgo = new Date(today);
+            monthAgo.setMonth(today.getMonth() - 1);
+            return date >= monthAgo && date <= today;
+        
+        case 'quarter':
+            const quarterAgo = new Date(today);
+            quarterAgo.setMonth(today.getMonth() - 3);
+            return date >= quarterAgo && date <= today;
+        
+        case 'year':
+            const yearAgo = new Date(today);
+            yearAgo.setFullYear(today.getFullYear() - 1);
+            return date >= yearAgo && date <= today;
+        
+        default:
+            return true;
+    }
+}
+
+function updateTableDisplay() {
+    // Hide all rows first
+    allQuotes.forEach(quote => {
+        quote.element.style.display = 'none';
+    });
+    
+    // Show filtered rows
+    filteredQuotes.forEach(quote => {
+        quote.element.style.display = '';
+    });
+    
+    // Show/hide no results message
+    const noResultsRow = document.querySelector('.no-results-row');
+    if (filteredQuotes.length === 0) {
+        if (!noResultsRow) {
+            const tbody = document.querySelector('tbody');
+            const noResultsTr = document.createElement('tr');
+            noResultsTr.className = 'no-results-row';
+            noResultsTr.innerHTML = `
+                <td colspan="8" class="px-6 py-8 text-center text-gray-500">
+                    <i class="fas fa-search text-2xl mb-2"></i>
+                    <p>No quotations found matching your criteria.</p>
+                </td>
+            `;
+            tbody.appendChild(noResultsTr);
+        }
+    } else if (noResultsRow) {
+        noResultsRow.remove();
+    }
+}
+
+function updateResultsCount() {
+    document.getElementById('filtered-count').textContent = filteredQuotes.length;
+    document.getElementById('total-count').textContent = allQuotes.length;
+}
+
+function clearFilters() {
+    document.getElementById('quote-search').value = '';
+    document.getElementById('status-filter').value = '';
+    document.getElementById('date-filter').value = '';
+    
+    // Reset quick filter buttons
+    document.querySelectorAll('.quick-filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white');
+        btn.classList.add('bg-gray-100', 'text-gray-700', 'dark:bg-gray-700', 'dark:text-gray-300');
+    });
+    
+    // Show all quotations
+    filteredQuotes = [...allQuotes];
+    updateTableDisplay();
+    updateResultsCount();
+}
+
+function exportFilteredQuotations() {
+    if (filteredQuotes.length === 0) {
+        alert('No quotations to export. Please adjust your filters.');
+        return;
+    }
+    
+    // Create CSV content
+    let csvContent = 'Quote Number,Customer Name,Proposal,Items Count,Total Amount,Status,Date Created,Has Installment\n';
+    
+    filteredQuotes.forEach(quote => {
+        const row = [
+            quote.quoteNumber,
+            quote.customerName,
+            quote.proposalName || '',
+            quote.itemsCount,
+            quote.totalAmount.toFixed(2),
+            quote.status,
+            quote.date,
+            quote.hasInstallment === 'yes' ? 'Yes' : 'No'
+        ];
+        csvContent += row.map(field => `"${field}"`).join(',') + '\n';
+    });
+    
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quotations_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
 }
 </script>
 

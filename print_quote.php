@@ -40,9 +40,9 @@ if (!$project) {
             <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
                 <i class="fas fa-print mr-2"></i>Print Quote
             </button>
-            <button onclick="window.close()" class="ml-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                Close
-            </button>
+            <a href="quotations.php" class="ml-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition inline-block">
+                <i class="fas fa-arrow-left mr-2"></i>Back to Quotations
+            </a>
         </div>
 
         <!-- Quote Header -->

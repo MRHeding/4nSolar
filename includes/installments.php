@@ -29,13 +29,16 @@ function createInstallmentPlan($quotation_id, $plan_data) {
         $number_of_installments = intval($plan_data['number_of_installments']);
         $interest_rate = floatval($plan_data['interest_rate'] ?? 0);
         
+        // Debug: Log the calculation inputs
+        error_log("Installment calculation inputs: total_amount=$total_amount, down_payment=$down_payment, number_of_installments=$number_of_installments, interest_rate=$interest_rate");
+        
         if ($total_amount <= 0 || $number_of_installments <= 0) {
             throw new Exception("Invalid plan parameters");
         }
         
         // Calculate installment amount with interest
         $remaining_amount = $total_amount - $down_payment;
-        $monthly_interest_rate = $interest_rate / 100 / 12;
+        $monthly_interest_rate = $interest_rate / 100;
         
         if ($interest_rate > 0) {
             // Calculate with compound interest
@@ -46,6 +49,12 @@ function createInstallmentPlan($quotation_id, $plan_data) {
             // Simple division without interest
             $installment_amount = $remaining_amount / $number_of_installments;
         }
+        
+        // Round installment amount down to nearest 0.50 (e.g., 13440.37 becomes 13440.50)
+        $installment_amount = floor($installment_amount * 2) / 2;
+        
+        // Debug: Log the calculated installment amount
+        error_log("Calculated installment amount: $installment_amount");
         
         // Insert installment plan
         $sql = "INSERT INTO installment_plans 
@@ -551,7 +560,7 @@ function calculateInstallmentOptions($total_amount, $down_payment = 0, $months_o
     $default_interest = getInstallmentSetting('default_interest_rate', 2.5);
     
     foreach ($months_options as $months) {
-        $monthly_rate = $default_interest / 100 / 12;
+        $monthly_rate = $default_interest / 100;
         
         if ($default_interest > 0) {
             $installment = $remaining_amount * 
@@ -564,11 +573,17 @@ function calculateInstallmentOptions($total_amount, $down_payment = 0, $months_o
         $total_to_pay = ($installment * $months) + $down_payment;
         $total_interest = $total_to_pay - $total_amount;
         
+        // Round all calculations to 2 decimal places
+        // Round installment amount down to nearest 0.50
+        $installment = floor($installment * 2) / 2;
+        $total_to_pay = round($total_to_pay, 2);
+        $total_interest = round($total_interest, 2);
+        
         $options[] = [
             'months' => $months,
-            'monthly_payment' => round($installment, 2),
-            'total_to_pay' => round($total_to_pay, 2),
-            'total_interest' => round($total_interest, 2),
+            'monthly_payment' => $installment,
+            'total_to_pay' => $total_to_pay,
+            'total_interest' => $total_interest,
             'interest_rate' => $default_interest
         ];
     }

@@ -84,15 +84,93 @@ if ($_POST) {
             
         case 'update_stock':
             if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
-                $new_quantity = $_POST['new_quantity'];
-                $movement_type = $new_quantity > $_POST['current_quantity'] ? 'in' : 'out';
-                $notes = $_POST['notes'] ?? '';
-                
-                if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes)) {
-                    header("Location: inventory.php?action=view&id=" . $item_id . "&message=" . urlencode('Stock updated successfully!'));
-                    exit();
+                // Handle both regular stock update and quick stock adjustment
+                if (isset($_POST['adjustment_amount'])) {
+                    // Quick stock adjustment
+                    $adjustment_amount = (int)$_POST['adjustment_amount'];
+                    $adjustment_type = $_POST['adjustment_type'];
+                    $current_quantity = (int)$_POST['current_quantity'];
+                    $notes = trim($_POST['notes'] ?? '');
+                    $selected_serials = $_POST['selected_serials'] ?? '';
+                    
+                    // Convert array to string if needed
+                    if (is_array($selected_serials)) {
+                        $selected_serials = implode(',', $selected_serials);
+                    }
+                    
+                    // Calculate new quantity based on adjustment type
+                    if ($adjustment_type === 'add') {
+                        $new_quantity = $current_quantity + $adjustment_amount;
+                        $movement_type = 'in';
+                    } else {
+                        $new_quantity = $current_quantity - $adjustment_amount;
+                        $movement_type = 'out';
+                    }
+                    
+                    // Validate that notes are provided
+                    if (empty($notes)) {
+                        $error = 'Notes are required for stock adjustments. Please provide a reason for the stock change.';
+                    } else {
+                        if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes, $selected_serials)) {
+                            $message = 'Stock updated successfully!';
+                            
+                            // Add information about serial number changes if applicable
+                            $quantity_change = $new_quantity - $current_quantity;
+                            if ($quantity_change < 0) {
+                                if (!empty($selected_serials)) {
+                                    $serial_count = count(explode(',', $selected_serials));
+                                    $message .= " {$serial_count} selected serial number(s) were removed.";
+                                } else {
+                                    $message .= " Serial numbers were automatically adjusted to match the new stock quantity.";
+                                }
+                            } elseif ($quantity_change > 0) {
+                                $message .= " {$quantity_change} new serial number(s) were automatically generated.";
+                            }
+                            
+                            header("Location: inventory.php?message=" . urlencode($message));
+                            exit();
+                        } else {
+                            $error = 'Failed to update stock.';
+                        }
+                    }
                 } else {
-                    $error = 'Failed to update stock.';
+                    // Regular stock update (existing functionality)
+                    $new_quantity = $_POST['new_quantity'];
+                    $movement_type = $new_quantity > $_POST['current_quantity'] ? 'in' : 'out';
+                    $notes = trim($_POST['notes'] ?? '');
+                    $selected_serials = $_POST['selected_serials'] ?? '';
+                    
+                    // Convert array to string if needed
+                    if (is_array($selected_serials)) {
+                        $selected_serials = implode(',', $selected_serials);
+                    }
+                    
+                    // Validate that notes are provided
+                    if (empty($notes)) {
+                        $error = 'Notes are required for stock adjustments. Please provide a reason for the stock change.';
+                    } else {
+                        if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes, $selected_serials)) {
+                            $message = 'Stock updated successfully!';
+                            
+                            // Add information about serial number changes if applicable
+                            $quantity_change = $new_quantity - $_POST['current_quantity'];
+                            if ($quantity_change < 0) {
+                                if (!empty($selected_serials)) {
+                                    $serial_count = count(explode(',', $selected_serials));
+                                    $message .= " {$serial_count} selected serial number(s) were removed.";
+                                } else {
+                                    $message .= " Serial numbers were automatically adjusted to match the new stock quantity.";
+                                }
+                            } elseif ($quantity_change > 0) {
+                                $message .= " {$quantity_change} new serial number(s) were automatically generated.";
+                            }
+                            
+                            header("Location: inventory.php?action=view&id=" . $item_id . "&message=" . urlencode($message));
+                            exit();
+                        } else {
+                            $error = 'Failed to update stock.';
+                        }
+                    }
                 }
             }
             break;
@@ -101,13 +179,23 @@ if ($_POST) {
             if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
                 $quantity = $_POST['quantity'] ?? 1;
                 
-                // Additional server-side validation
+                // Get current stock and existing serials
                 $stmt = $pdo->prepare("SELECT stock_quantity FROM inventory_items WHERE id = ?");
                 $stmt->execute([$item_id]);
                 $current_stock = $stmt->fetchColumn();
                 
-                if ($quantity > $current_stock) {
-                    $error = "Cannot generate more serials than current stock. Requested: {$quantity}, Current stock: {$current_stock}";
+                // Count existing serial numbers for this item
+                $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_serials WHERE inventory_item_id = ?");
+                $stmt->execute([$item_id]);
+                $existing_serials = $stmt->fetchColumn();
+                
+                // Calculate available slots for new serials
+                $available_slots = $current_stock - $existing_serials;
+                
+                if ($quantity > $available_slots) {
+                    $error = "Cannot generate {$quantity} serials. Available slots: {$available_slots} (Current stock: {$current_stock}, Existing serials: {$existing_serials})";
+                } elseif ($available_slots <= 0) {
+                    $error = "No available slots for new serials. Current stock: {$current_stock}, Existing serials: {$existing_serials}";
                 } else {
                     $result = generateSerialNumbers($item_id, $quantity);
                     if ($result['success']) {
@@ -185,6 +273,8 @@ switch ($action) {
             $items = getLowStockItems();
         } elseif ($filter == 'available_stock') {
             $items = getAvailableStockItems();
+        } elseif ($filter == 'serialized') {
+            $items = getSerializedItems($category_filter, $brand_filter);
         } else {
             $items = getInventoryItems($category_filter, $brand_filter);
         }
@@ -302,6 +392,10 @@ include 'includes/header.php';
                     <a href="?filter=available_stock" class="w-full flex items-center px-3 py-2 text-sm text-green-700 hover:bg-green-50 rounded-md transition">
                         <i class="fas fa-check-circle w-5 text-green-400"></i>
                         Available Stock
+                    </a>
+                    <a href="?filter=serialized" class="w-full flex items-center px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded-md transition">
+                        <i class="fas fa-barcode w-5 text-purple-400"></i>
+                        Serialized Items
                     </a>
                 </div>
                 
@@ -497,6 +591,12 @@ include 'includes/header.php';
                         Available Stock Items
                     </span>
                 <?php endif; ?>
+                <?php if (isset($_GET['filter']) && $_GET['filter'] == 'serialized'): ?>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                        <i class="fas fa-barcode mr-1"></i>
+                        Serialized Items
+                    </span>
+                <?php endif; ?>
             </div>
             <a href="?" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-300 transition">
                 <i class="fas fa-times mr-1"></i>Clear all filters
@@ -608,6 +708,7 @@ include 'includes/header.php';
             <?php if (!empty($items)): ?>
                 <?php foreach ($items as $item): ?>
                 <tr class="hover:bg-gray-50 inventory-item-row grid grid-cols-8 gap-4" 
+                    data-item-id="<?php echo $item['id']; ?>"
                     data-brand="<?php echo strtolower(htmlspecialchars($item['brand'])); ?>"
                     data-model="<?php echo strtolower(htmlspecialchars($item['model'])); ?>"
                     data-category="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
@@ -648,9 +749,30 @@ include 'includes/header.php';
                         <?php endif; ?>
                     </td>
                     <td class="px-6 py-4 text-center">
-                        <div class="text-sm text-gray-900"><?php echo $item['stock_quantity']; ?></div>
+                        <div class="flex items-center justify-center space-x-2">
+                            <div class="text-sm text-gray-900 font-medium stock-quantity"><?php echo $item['stock_quantity']; ?></div>
+                            <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
+                            <div class="flex flex-col space-y-1">
+                                <button onclick="adjustStock(<?php echo $item['id']; ?>, 1, '<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>', <?php echo $item['generate_serials'] ? 'true' : 'false'; ?>)" 
+                                        class="text-green-600 hover:text-green-800 text-xs px-1 py-0.5 rounded border border-green-300 hover:bg-green-50 transition"
+                                        title="Add Stock">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <button onclick="adjustStock(<?php echo $item['id']; ?>, -1, '<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>', <?php echo $item['generate_serials'] ? 'true' : 'false'; ?>)" 
+                                        class="text-red-600 hover:text-red-800 text-xs px-1 py-0.5 rounded border border-red-300 hover:bg-red-50 transition"
+                                        title="Deduct Stock">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                            </div>
+                            <?php endif; ?>
+                        </div>
                         <?php if ($item['stock_quantity'] <= $item['minimum_stock']): ?>
-                        <div class="text-xs text-red-600">Low Stock!</div>
+                        <div class="text-xs text-red-600 mt-1">Low Stock!</div>
+                        <?php endif; ?>
+                        <?php if ($item['generate_serials']): ?>
+                        <div class="text-xs text-blue-600 mt-1">
+                            <i class="fas fa-barcode mr-1"></i>Serialized
+                        </div>
                         <?php endif; ?>
                     </td>
                     <td class="px-6 py-4 text-sm text-gray-900">
@@ -660,7 +782,7 @@ include 'includes/header.php';
                         <a href="?action=view&id=<?php echo $item['id']; ?>" class="text-blue-600 hover:text-blue-900">
                             <i class="fas fa-eye"></i>
                         </a>
-                        <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
+                        <?php if (hasPermission([ROLE_ADMIN])): ?>
                         <a href="?action=edit&id=<?php echo $item['id']; ?>" class="text-indigo-600 hover:text-indigo-900">
                             <i class="fas fa-edit"></i>
                         </a>
@@ -841,18 +963,18 @@ include 'includes/header.php';
             <p class="text-gray-600"><?php echo htmlspecialchars($item['description']); ?></p>
         </div>
         <div class="space-x-2">
-            <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
+            <?php if (hasPermission([ROLE_ADMIN])): ?>
             <a href="?action=edit&id=<?php echo $item['id']; ?>" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
                 <i class="fas fa-edit mr-2"></i>Edit
             </a>
-            <button onclick="document.getElementById('stock-modal').classList.remove('hidden')" 
-                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                <i class="fas fa-boxes mr-2"></i>Update Stock
-            </button>
+            <?php endif; ?>
+            <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
             <?php if ($item['generate_serials']): ?>
             <button onclick="document.getElementById('serial-modal').classList.remove('hidden')" 
-                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                <i class="fas fa-barcode mr-2"></i>Manage Serials
+                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition <?php echo (count($serial_numbers) >= $item['stock_quantity']) ? 'opacity-50 cursor-not-allowed' : ''; ?>"
+                    <?php echo (count($serial_numbers) >= $item['stock_quantity']) ? 'disabled title="No available slots for new serials"' : ''; ?>>
+                <i class="fas fa-barcode mr-2"></i>
+                <?php echo (count($serial_numbers) >= $item['stock_quantity']) ? 'All Serials Generated' : 'Manage Serials'; ?>
             </button>
             <?php endif; ?>
             <button onclick="document.getElementById('serial-settings-modal').classList.remove('hidden')" 
@@ -1049,7 +1171,7 @@ include 'includes/header.php';
         <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Serial Numbers</h2>
         <?php if (!empty($serial_numbers)): ?>
         <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
+            <table id="serial-numbers-table" class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Serial Number</th>
@@ -1060,7 +1182,7 @@ include 'includes/header.php';
                 </thead>
                 <tbody class="divide-y divide-gray-200">
                     <?php foreach ($serial_numbers as $serial): ?>
-                    <tr>
+                    <tr data-serial-id="<?php echo $serial['id']; ?>">
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
                             <?php echo htmlspecialchars($serial['serial_number']); ?>
                         </td>
@@ -1105,40 +1227,6 @@ include 'includes/header.php';
 </div>
 <?php endif; ?>
 
-<!-- Stock Update Modal -->
-<?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
-<div id="stock-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <div class="mt-3">
-            <h3 class="text-lg font-medium text-gray-900 mb-4">Update Stock</h3>
-            <form method="POST" action="?action=update_stock&id=<?php echo $item['id']; ?>">
-                <input type="hidden" name="current_quantity" value="<?php echo $item['stock_quantity']; ?>">
-                <div class="mb-4">
-                    <label for="new_quantity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">New Quantity</label>
-                    <input type="number" min="0" id="new_quantity" name="new_quantity" 
-                           value="<?php echo $item['stock_quantity']; ?>" required
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-                </div>
-                <div class="mb-4">
-                    <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes</label>
-                    <textarea id="notes" name="notes" rows="3"
-                              class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
-                              placeholder="Reason for stock adjustment..."></textarea>
-                </div>
-                <div class="flex justify-end space-x-3">
-                    <button type="button" onclick="document.getElementById('stock-modal').classList.add('hidden')"
-                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">
-                        Cancel
-                    </button>
-                    <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
-                        Update Stock
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-<?php endif; ?>
 
 <!-- Serial Number Management Modal -->
 <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
@@ -1149,17 +1237,28 @@ include 'includes/header.php';
             <form method="POST" action="?action=generate_serials&id=<?php echo $item['id']; ?>">
                 <div class="mb-4">
                     <label for="quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity to Generate</label>
-                    <input type="number" min="1" max="<?php echo $item['stock_quantity']; ?>" id="quantity" name="quantity" value="<?php echo $item['stock_quantity']; ?>" required
+                    <input type="number" min="1" max="<?php echo $item['stock_quantity'] - count($serial_numbers); ?>" id="quantity" name="quantity" value="<?php echo max(1, $item['stock_quantity'] - count($serial_numbers)); ?>" required
                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
-                           onchange="validateSerialQuantity(this, <?php echo $item['stock_quantity']; ?>)">
-                    <p class="text-xs text-gray-500 mt-1">Generate serial numbers based on current stock (<?php echo $item['stock_quantity']; ?> items) - Cannot exceed current stock</p>
+                           onchange="validateSerialQuantity(this, <?php echo $item['stock_quantity'] - count($serial_numbers); ?>)">
+                    <p class="text-xs text-gray-500 mt-1">
+                        Available slots: <strong><?php echo $item['stock_quantity'] - count($serial_numbers); ?></strong> 
+                        (Current stock: <?php echo $item['stock_quantity']; ?>, Existing serials: <?php echo count($serial_numbers); ?>)
+                    </p>
+                    <?php if (count($serial_numbers) >= $item['stock_quantity']): ?>
+                    <p class="text-xs text-red-600 mt-1">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        No available slots for new serials. All stock items already have serial numbers.
+                    </p>
+                    <?php endif; ?>
                 </div>
                 <div class="flex justify-end space-x-3">
                     <button type="button" onclick="document.getElementById('serial-modal').classList.add('hidden')"
                             class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
                         Cancel
                     </button>
-                    <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
+                    <button type="submit" 
+                            class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition <?php echo (count($serial_numbers) >= $item['stock_quantity']) ? 'opacity-50 cursor-not-allowed' : ''; ?>"
+                            <?php echo (count($serial_numbers) >= $item['stock_quantity']) ? 'disabled' : ''; ?>>
                         Generate Serials
                     </button>
                 </div>
@@ -1222,6 +1321,68 @@ include 'includes/header.php';
 
 <?php endif; ?>
 
+<!-- Quick Stock Adjustment Modal -->
+<div id="quick-stock-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Stock Adjustment</h3>
+            
+            <form id="quick-stock-form" method="POST" action="" onsubmit="return validateQuickStockForm()">
+                <input type="hidden" id="quick-item-id" name="item_id">
+                <input type="hidden" id="quick-current-quantity" name="current_quantity">
+                <input type="hidden" id="quick-adjustment-type" name="adjustment_type">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Item</label>
+                    <div id="quick-item-name" class="text-sm text-gray-900 bg-gray-50 p-2 rounded border"></div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Current Stock</label>
+                    <div id="quick-current-stock" class="text-sm text-gray-900 bg-gray-50 p-2 rounded border"></div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="quick-adjustment-amount" class="block text-sm font-medium text-gray-700 mb-2">Adjustment Amount</label>
+                    <input type="number" id="quick-adjustment-amount" name="adjustment_amount" min="1" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter amount">
+                    <p class="text-xs text-gray-500 mt-1">Enter the amount to add or deduct</p>
+                </div>
+                
+                <!-- Serial Number Selection for Serialized Items -->
+                <div id="quick-serial-section" class="mb-4 hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Serial Numbers</label>
+                    <div id="quick-serial-checkboxes" class="space-y-2 max-h-32 overflow-y-auto border border-gray-300 rounded p-2">
+                        <!-- Serial checkboxes will be populated by JavaScript -->
+                    </div>
+                    <p class="text-xs text-blue-600 mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Select which serial numbers to add/remove
+                    </p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="quick-notes" class="block text-sm font-medium text-gray-700 mb-2">Notes <span class="text-red-500">*</span></label>
+                    <textarea id="quick-notes" name="notes" rows="2" required
+                              class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                              placeholder="Reason for stock adjustment..."></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeQuickStockModal()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
+                        Update Stock
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Image Modal -->
 <div id="image-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 overflow-y-auto h-full w-full z-50" onclick="closeImageModal()">
     <div class="relative min-h-screen flex items-center justify-center p-4">
@@ -1254,8 +1415,9 @@ function updateFilters(filterType, filterValue) {
     window.location.href = newUrl;
 }
 
+
 // Validate serial quantity input
-function validateSerialQuantity(input, maxStock) {
+function validateSerialQuantity(input, availableSlots) {
     const quantity = parseInt(input.value);
     const errorMsg = document.getElementById('quantity-error');
     
@@ -1264,18 +1426,18 @@ function validateSerialQuantity(input, maxStock) {
         errorMsg.remove();
     }
     
-    if (quantity > maxStock) {
+    if (quantity > availableSlots) {
         // Create error message
         const error = document.createElement('p');
         error.id = 'quantity-error';
         error.className = 'text-xs text-red-600 mt-1';
-        error.textContent = `Cannot generate more than ${maxStock} serials (current stock)`;
+        error.textContent = `Cannot generate more than ${availableSlots} serials (available slots)`;
         
         // Insert error message after the input
         input.parentNode.insertBefore(error, input.nextSibling);
         
-        // Reset to max stock
-        input.value = maxStock;
+        // Reset to available slots
+        input.value = availableSlots;
         
         // Add red border to input
         input.classList.add('border-red-500');
@@ -1368,9 +1530,143 @@ document.addEventListener('click', function(event) {
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
         closeImageModal();
+        closeQuickStockModal();
         document.getElementById('export-menu').classList.add('hidden');
     }
 });
+
+// Quick Stock Adjustment Functions
+function adjustStock(itemId, adjustment, itemName, isSerialized) {
+    // Get current stock quantity from the table
+    const stockElement = document.querySelector(`tr[data-item-id="${itemId}"] .stock-quantity`);
+    const currentStock = stockElement ? parseInt(stockElement.textContent) : 0;
+    
+    // Set up the modal
+    document.getElementById('quick-item-id').value = itemId;
+    document.getElementById('quick-current-quantity').value = currentStock;
+    document.getElementById('quick-item-name').textContent = itemName;
+    document.getElementById('quick-current-stock').textContent = currentStock;
+    document.getElementById('quick-adjustment-amount').value = Math.abs(adjustment);
+    document.getElementById('quick-notes').value = '';
+    
+    // Set form action URL
+    document.getElementById('quick-stock-form').action = `?action=update_stock&id=${itemId}`;
+    
+    // Set adjustment type
+    const adjustmentType = adjustment > 0 ? 'add' : 'deduct';
+    document.getElementById('quick-adjustment-type').value = adjustmentType;
+    
+    // Update modal title and button text based on adjustment type
+    const modal = document.getElementById('quick-stock-modal');
+    const title = modal.querySelector('h3');
+    const submitButton = modal.querySelector('button[type="submit"]');
+    
+    if (adjustment > 0) {
+        title.textContent = 'Add Stock';
+        submitButton.textContent = 'Add Stock';
+        submitButton.className = 'px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition';
+    } else {
+        title.textContent = 'Deduct Stock';
+        submitButton.textContent = 'Deduct Stock';
+        submitButton.className = 'px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition';
+    }
+    
+    // Handle serialized items
+    if (isSerialized) {
+        loadQuickSerialNumbers(itemId, adjustmentType);
+        document.getElementById('quick-serial-section').classList.remove('hidden');
+    } else {
+        document.getElementById('quick-serial-section').classList.add('hidden');
+    }
+    
+    // Show modal
+    modal.classList.remove('hidden');
+}
+
+function closeQuickStockModal() {
+    document.getElementById('quick-stock-modal').classList.add('hidden');
+    document.getElementById('quick-serial-checkboxes').innerHTML = '';
+}
+
+function loadQuickSerialNumbers(itemId, adjustmentType) {
+    // Fetch available serials for the item
+    fetch(`get_available_serials.php?item_id=${itemId}`)
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('quick-serial-checkboxes');
+            container.innerHTML = '';
+            
+            if (data.success && data.serials.length > 0) {
+                if (adjustmentType === 'add') {
+                    // For adding stock, show option to generate new serials
+                    container.innerHTML = `
+                        <div class="text-sm text-blue-600 mb-2">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            New serial numbers will be automatically generated when adding stock.
+                        </div>
+                    `;
+                } else {
+                    // For deducting stock, show existing serials to select
+                    data.serials.forEach(serial => {
+                        const checkbox = document.createElement('label');
+                        checkbox.className = 'flex items-center text-sm';
+                        checkbox.innerHTML = `
+                            <input type="checkbox" name="selected_serials[]" value="${serial.serial_number}" 
+                                   class="serial-checkbox rounded border-gray-300 text-solar-blue focus:ring-solar-blue mr-2"
+                                   onchange="validateQuickSerialSelection()">
+                            <span class="font-mono">${serial.serial_number}</span>
+                        `;
+                        container.appendChild(checkbox);
+                    });
+                }
+            } else {
+                container.innerHTML = '<div class="text-sm text-gray-500">No serial numbers available</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading serials:', error);
+            document.getElementById('quick-serial-checkboxes').innerHTML = 
+                '<div class="text-sm text-red-500">Error loading serial numbers</div>';
+        });
+}
+
+function validateQuickSerialSelection() {
+    const checkboxes = document.querySelectorAll('#quick-serial-checkboxes .serial-checkbox:checked');
+    const adjustmentAmount = parseInt(document.getElementById('quick-adjustment-amount').value);
+    
+    if (checkboxes.length > adjustmentAmount) {
+        alert(`You can only select ${adjustmentAmount} serial number(s). Please uncheck some selections.`);
+        // Uncheck the last selected checkbox
+        checkboxes[checkboxes.length - 1].checked = false;
+    }
+}
+
+function validateQuickStockForm() {
+    const adjustmentAmount = parseInt(document.getElementById('quick-adjustment-amount').value);
+    const notes = document.getElementById('quick-notes').value.trim();
+    const adjustmentType = document.getElementById('quick-adjustment-type').value;
+    
+    if (!notes) {
+        alert('Please provide notes for the stock adjustment.');
+        return false;
+    }
+    
+    if (adjustmentAmount < 1) {
+        alert('Adjustment amount must be at least 1.');
+        return false;
+    }
+    
+    // For deducting stock, validate serial selection
+    if (adjustmentType === 'deduct') {
+        const checkboxes = document.querySelectorAll('#quick-serial-checkboxes .serial-checkbox:checked');
+        if (checkboxes.length !== adjustmentAmount) {
+            alert(`Please select exactly ${adjustmentAmount} serial number(s) to remove.`);
+            return false;
+        }
+    }
+    
+    return true;
+}
 
 // Enhanced inventory table scrolling
 document.addEventListener('DOMContentLoaded', function() {

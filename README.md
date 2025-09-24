@@ -74,10 +74,13 @@ A comprehensive solar equipment inventory and project management system designed
 - **Stock Movements**: Complete audit trail of all inventory changes
 - **Low Stock Alerts**: Configurable minimum stock thresholds
 - **CSV Export**: Bulk data export capabilities
+- **Advanced Filtering**: Category, brand, stock status, and serialized item filters
+- **Quick Stock Adjustment**: Streamlined + and - buttons for rapid stock changes
 - **Serial Number Management**: Unique serial number generation and tracking
 - **Serial Status Tracking**: Available, reserved, sold, damaged, returned statuses
 - **Automatic Serial Generation**: Auto-generate serials when stock increases
 - **Serial Number Validation**: Prevent duplicate serial numbers
+- **Serialized Item Filter**: Quick filter to view only items with serial number tracking
 
 ### 🏗️ Solar Project Management
 - **Project Lifecycle**: From quote to completion tracking
@@ -134,8 +137,11 @@ A comprehensive solar equipment inventory and project management system designed
 ### 📱 User Experience
 - **Responsive Design**: Works on desktop, tablet, and mobile
 - **Modern UI**: Clean interface with Tailwind CSS
+- **Streamlined Interface**: Simplified inventory view with focused action buttons
+- **Quick Stock Adjustment**: Rapid + and - buttons for efficient stock management
 - **Professional Print Support**: Enhanced document generation with clean layouts
 - **Visual Discount Indicators**: Clear discount display across all print formats
+- **Advanced Filtering**: Intuitive filter system with visual indicators
 - **Fast Performance**: Optimized database queries
 - **Intuitive Navigation**: User-friendly menu system
 
@@ -226,6 +232,7 @@ A comprehensive solar equipment inventory and project management system designed
 - `updateStock()` - Stock level management with automatic serial generation
 - `getStockMovements()` - Movement history
 - `getLowStockItems()` - Alert system
+- `getSerializedItems()` - Filter items with serial number tracking
 - `generateSerialNumbers()` - Create unique serial numbers for items
 - `getAvailableSerials()` - Retrieve available serial numbers
 - `reserveSpecificSerialsForQuote()` - Reserve serials for quotations
@@ -338,7 +345,14 @@ The test suite automatically:
 
 ## 🔄 Recent Updates & Changelog
 
-### Version 3.2 (Latest - December 2024)
+### Version 3.3 (Latest - December 2024)
+- ✅ **Serialized Item Filter**: Quick filter to view only items with serial number tracking
+- ✅ **Streamlined Stock Management**: Removed Update Stock button from view page for cleaner interface
+- ✅ **Enhanced Quick Stock Adjustment**: Improved + and - buttons for rapid stock changes
+- ✅ **Advanced Inventory Filtering**: Category, brand, stock status, and serialized item filters
+- ✅ **Improved User Experience**: Cleaner inventory view with focused action buttons
+
+### Version 3.2 (December 2024)
 - ✅ **Serial Number Management System**: Complete serial number tracking and management
 - ✅ **Quotation Import to POS**: Import quotation items directly to POS sales
 - ✅ **Customer Information Transfer**: Automatic customer data import from quotations
@@ -401,6 +415,15 @@ The test suite automatically:
 - **Error Handling**: Graceful handling of out-of-stock items
 - **Success Feedback**: Clear confirmation of imported items and customer data
 
+### 🔍 Advanced Inventory Filtering System
+- **Multi-Level Filtering**: Category, brand, stock status, and serialized item filters
+- **Serialized Item Filter**: Quick access to items with serial number tracking
+- **Combined Filtering**: Use multiple filters simultaneously for precise results
+- **Visual Filter Indicators**: Clear badges showing active filters
+- **Quick Filter Dropdown**: Easy access to common filter combinations
+- **Filter Persistence**: Maintains filter state during navigation
+- **Export Filtered Results**: Export only filtered inventory data
+
 ### Planned Features
 - 🔮 **Wire Management Module**: Cable and wire inventory (in development)
 - 🔮 **Advanced Reporting Dashboard**: Custom report builder
@@ -448,10 +471,10 @@ All rights reserved. This software is licensed for use by 4nSolar ELECTRICZ and 
 
 ### Contact Information
 - **System**: 4nSolar Management System
-- **Version**: 3.2
+- **Version**: 3.3
 - **Last Updated**: December 2024
-- **Latest Features**: Serial Number Management, Quotation Import to POS, Customer Information Transfer, Custom Payroll Deductions
-- **Previous Features**: Enhanced Print Functionality, Payroll, Installments, Battery Planning, Revenue Analysis
+- **Latest Features**: Serialized Item Filter, Streamlined Stock Management, Enhanced Quick Stock Adjustment, Advanced Inventory Filtering
+- **Previous Features**: Serial Number Management, Quotation Import to POS, Customer Information Transfer, Custom Payroll Deductions
 - **Test Suite**: Comprehensive validation included with 94.44% success rate
 
 ---

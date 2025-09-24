@@ -29,69 +29,6 @@ if (isset($_GET['success'])) {
 // Handle form submissions
 if ($_POST) {
     switch ($action) {
-        case 'create':
-            $data = [
-                'project_name' => $_POST['project_name'],
-                'customer_name' => $_POST['customer_name'],
-                'customer_email' => $_POST['customer_email'],
-                'customer_phone' => $_POST['customer_phone'],
-                'customer_address' => $_POST['customer_address'],
-                'remarks' => $_POST['remarks'] ?? '',
-                'system_size_kw' => $_POST['system_size_kw']
-            ];
-            
-            $new_project_id = createSolarProject($data);
-            if ($new_project_id) {
-                $message = 'Project created successfully!';
-                $action = 'view';
-                $project_id = $new_project_id;
-            } else {
-                $error = 'Failed to create project.';
-            }
-            break;
-            
-        case 'update':
-            if ($project_id) {
-                $data = [
-                    'project_name' => $_POST['project_name'],
-                    'customer_name' => $_POST['customer_name'],
-                    'customer_email' => $_POST['customer_email'],
-                    'customer_phone' => $_POST['customer_phone'],
-                    'customer_address' => $_POST['customer_address'],
-                    'remarks' => $_POST['remarks'] ?? '',
-                    'system_size_kw' => $_POST['system_size_kw'],
-                    'project_status' => $_POST['project_status']
-                ];
-                
-                // Check if status is changing to approved/completed and validate inventory
-                $current_project = getSolarProject($project_id);
-                $current_status = $current_project['project_status'];
-                $new_status = $_POST['project_status'];
-                
-                // If changing to approved/completed, check inventory availability first
-                if (($current_status !== 'approved' && $current_status !== 'completed') && 
-                    ($new_status === 'approved' || $new_status === 'completed')) {
-                    
-                    // Check inventory availability before updating
-                    $inventory_check = checkProjectInventoryAvailability($project_id);
-                    if (!$inventory_check['available']) {
-                        $error = 'Cannot approve/complete project: ' . $inventory_check['message'];
-                        break;
-                    }
-                }
-                
-                if (updateSolarProject($project_id, $data)) {
-                    if (($current_status !== 'approved' && $current_status !== 'completed') && 
-                        ($new_status === 'approved' || $new_status === 'completed')) {
-                        $message = 'Project updated successfully! Inventory has been automatically deducted.';
-                    } else {
-                        $message = 'Project updated successfully!';
-                    }
-                } else {
-                    $error = 'Failed to update project. Please check inventory availability.';
-                }
-            }
-            break;
             
         case 'add_item':
             if ($project_id && isset($_POST['inventory_item_id']) && isset($_POST['quantity'])) {
@@ -142,7 +79,6 @@ if ($action == 'remove_item' && isset($_GET['item_id'])) {
 // Get data based on action
 switch ($action) {
     case 'view':
-    case 'edit':
         if ($project_id) {
             $project = getSolarProject($project_id);
             if (!$project) {
@@ -160,7 +96,7 @@ switch ($action) {
         break;
 }
 
-$page_title = 'Solar Projects';
+$page_title = 'Approved Projects';
 $content_start = true;
 include 'includes/header.php';
 ?>
@@ -183,11 +119,8 @@ include 'includes/header.php';
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Solar Projects</h1>
-            <p class="text-gray-600 dark:text-gray-400">Manage your solar installation projects</p>
+            <p class="text-gray-600 dark:text-gray-400">View approved quotes converted to projects</p>
         </div>
-        <a href="?action=create" class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition">
-            <i class="fas fa-plus mr-2"></i>New Project
-        </a>
     </div>
 </div>
 
@@ -276,14 +209,6 @@ include 'includes/header.php';
                                class="text-blue-600 hover:text-blue-900 p-1.5 rounded hover:bg-blue-50 transition" title="View">
                                 <i class="fas fa-eye text-sm"></i>
                             </a>
-                            <a href="?action=edit&id=<?php echo $project['id']; ?>" 
-                               class="text-indigo-600 hover:text-indigo-900 p-1.5 rounded hover:bg-indigo-50 transition" title="Edit">
-                                <i class="fas fa-edit text-sm"></i>
-                            </a>
-                            <a href="print_quote.php?id=<?php echo $project['id']; ?>" target="_blank" 
-                               class="text-green-600 hover:text-green-900 p-1.5 rounded hover:bg-green-50 transition" title="Print Quote">
-                                <i class="fas fa-print text-sm"></i>
-                            </a>
                             <?php if (hasRole(ROLE_ADMIN)): ?>
                             <a href="?action=delete&id=<?php echo $project['id']; ?>" 
                                class="text-red-600 hover:text-red-900 p-1.5 rounded hover:bg-red-50 transition" title="Delete"
@@ -307,70 +232,10 @@ include 'includes/header.php';
     </div>
 </div>
 
-<?php elseif ($action == 'create'): ?>
-<!-- Create Project Form -->
-<div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Create New Solar Project</h1>
-    <p class="text-gray-600 dark:text-gray-400">Enter the project details to get started</p>
-</div>
+<?php endif; ?>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <form method="POST" class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <label for="project_name" class="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
-                <input type="text" id="project_name" name="project_name" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="system_size_kw" class="block text-sm font-medium text-gray-700 mb-2">System Size (kW)</label>
-                <input type="number" step="0.01" id="system_size_kw" name="system_size_kw"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="customer_name" class="block text-sm font-medium text-gray-700 mb-2">Customer Name</label>
-                <input type="text" id="customer_name" name="customer_name" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="customer_email" class="block text-sm font-medium text-gray-700 mb-2">Customer Email</label>
-                <input type="email" id="customer_email" name="customer_email"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="customer_phone" class="block text-sm font-medium text-gray-700 mb-2">Customer Phone</label>
-                <input type="tel" id="customer_phone" name="customer_phone"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-        </div>
-        
-        <div>
-            <label for="customer_address" class="block text-sm font-medium text-gray-700 mb-2">Customer Address</label>
-            <textarea id="customer_address" name="customer_address" rows="3"
-                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"></textarea>
-        </div>
-        
-        <div>
-            <label for="remarks" class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
-            <textarea id="remarks" name="remarks" rows="3" placeholder="Additional notes, special requirements, installation details, etc."
-                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"></textarea>
-        </div>
-        
-        <div class="flex justify-end space-x-4">
-            <a href="?" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">Cancel</a>
-            <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
-                Create Project
-            </button>
-        </div>
-    </form>
-</div>
-
-<?php elseif (($action == 'view' || $action == 'edit') && isset($project)): ?>
-<!-- View/Edit Project -->
+<?php if ($action == 'view' && isset($project)): ?>
+<!-- View Project -->
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
@@ -378,15 +243,6 @@ include 'includes/header.php';
             <p class="text-gray-600 dark:text-gray-400">Project #<?php echo $project['id']; ?> - <?php echo htmlspecialchars($project['customer_name']); ?></p>
         </div>
         <div class="space-x-2">
-            <a href="print_quote.php?id=<?php echo $project['id']; ?>" target="_blank" 
-               class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                <i class="fas fa-print mr-2"></i>Print Quote
-            </a>
-            <?php if ($action == 'view'): ?>
-            <a href="?action=edit&id=<?php echo $project['id']; ?>" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                <i class="fas fa-edit mr-2"></i>Edit
-            </a>
-            <?php endif; ?>
             <a href="?" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
                 <i class="fas fa-arrow-left mr-2"></i>Back
             </a>
@@ -394,97 +250,6 @@ include 'includes/header.php';
     </div>
 </div>
 
-<?php if ($action == 'edit'): ?>
-<!-- Edit Project Form -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Project Details</h2>
-    <form method="POST" action="?action=update&id=<?php echo $project['id']; ?>" class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <label for="project_name" class="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
-                <input type="text" id="project_name" name="project_name" required
-                       value="<?php echo htmlspecialchars($project['project_name']); ?>"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="system_size_kw" class="block text-sm font-medium text-gray-700 mb-2">System Size (kW)</label>
-                <input type="number" step="0.01" id="system_size_kw" name="system_size_kw"
-                       value="<?php echo $project['system_size_kw']; ?>"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="customer_name" class="block text-sm font-medium text-gray-700 mb-2">Customer Name</label>
-                <input type="text" id="customer_name" name="customer_name" required
-                       value="<?php echo htmlspecialchars($project['customer_name']); ?>"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="customer_email" class="block text-sm font-medium text-gray-700 mb-2">Customer Email</label>
-                <input type="email" id="customer_email" name="customer_email"
-                       value="<?php echo htmlspecialchars($project['customer_email']); ?>"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="customer_phone" class="block text-sm font-medium text-gray-700 mb-2">Customer Phone</label>
-                <input type="tel" id="customer_phone" name="customer_phone"
-                       value="<?php echo htmlspecialchars($project['customer_phone']); ?>"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-            </div>
-            
-            <div>
-                <label for="project_status" class="block text-sm font-medium text-gray-700 mb-2">Project Status</label>
-                <select id="project_status" name="project_status" onchange="checkInventoryWarning()"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-                    <option value="draft" <?php echo $project['project_status'] == 'draft' ? 'selected' : ''; ?>>Draft</option>
-                    <option value="quoted" <?php echo $project['project_status'] == 'quoted' ? 'selected' : ''; ?>>Quoted</option>
-                    <option value="approved" <?php echo $project['project_status'] == 'approved' ? 'selected' : ''; ?>>Approved</option>
-                    <option value="in_progress" <?php echo $project['project_status'] == 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
-                    <option value="completed" <?php echo $project['project_status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
-                    <option value="cancelled" <?php echo $project['project_status'] == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
-                </select>
-                
-                <!-- Inventory Warning -->
-                <div id="inventory-warning" class="hidden mt-2 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
-                    <div class="flex items-center">
-                        <i class="fas fa-exclamation-triangle mr-2"></i>
-                        <span><strong>Inventory Alert:</strong> Changing to "Approved" or "Completed" will automatically deduct project items from inventory.</span>
-                    </div>
-                </div>
-                
-                <div id="inventory-restoration" class="hidden mt-2 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded">
-                    <div class="flex items-center">
-                        <i class="fas fa-info-circle mr-2"></i>
-                        <span><strong>Inventory Restoration:</strong> Changing from "Approved/Completed" to another status will restore items to inventory.</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div>
-            <label for="customer_address" class="block text-sm font-medium text-gray-700 mb-2">Customer Address</label>
-            <textarea id="customer_address" name="customer_address" rows="3"
-                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"><?php echo htmlspecialchars($project['customer_address']); ?></textarea>
-        </div>
-        
-        <div>
-            <label for="remarks" class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
-            <textarea id="remarks" name="remarks" rows="3" placeholder="Additional notes, special requirements, installation details, etc."
-                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"><?php echo htmlspecialchars($project['remarks'] ?? ''); ?></textarea>
-        </div>
-        
-        <div class="flex justify-end space-x-4">
-            <a href="?action=view&id=<?php echo $project['id']; ?>" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">Cancel</a>
-            <button type="submit" class="px-4 py-2 bg-solar-blue text-white rounded-md hover:bg-blue-800 transition">
-                Update Project
-            </button>
-        </div>
-    </form>
-</div>
-<?php endif; ?>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Project Items -->
@@ -933,41 +698,7 @@ function confirmDelete(message) {
 }
 </script>
 
+
 <?php endif; ?>
-
-<script>
-// Initialize inventory warning on page load
-document.addEventListener('DOMContentLoaded', function() {
-    checkInventoryWarning();
-});
-
-// Check and show inventory warning based on status selection
-function checkInventoryWarning() {
-    const statusSelect = document.getElementById('project_status');
-    const inventoryWarning = document.getElementById('inventory-warning');
-    const inventoryRestoration = document.getElementById('inventory-restoration');
-    
-    if (!statusSelect || !inventoryWarning || !inventoryRestoration) return;
-    
-    const currentStatus = '<?php echo $project['project_status'] ?? ''; ?>';
-    const selectedStatus = statusSelect.value;
-    
-    // Hide both warnings initially
-    inventoryWarning.classList.add('hidden');
-    inventoryRestoration.classList.add('hidden');
-    
-    // Show warning if changing TO approved/completed
-    if ((currentStatus !== 'approved' && currentStatus !== 'completed') && 
-        (selectedStatus === 'approved' || selectedStatus === 'completed')) {
-        inventoryWarning.classList.remove('hidden');
-    }
-    
-    // Show restoration notice if changing FROM approved/completed
-    if ((currentStatus === 'approved' || currentStatus === 'completed') && 
-        (selectedStatus !== 'approved' && selectedStatus !== 'completed')) {
-        inventoryRestoration.classList.remove('hidden');
-    }
-}
-</script>
 
 <?php include 'includes/footer.php'; ?>

@@ -338,7 +338,7 @@ if (!$quote) {
                 <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
                     <i class="fas fa-print mr-2"></i>Print
                 </button>
-                <a href="inventory.php?action=quote&quote_id=<?php echo $quote['id']; ?>" 
+                <a href="quotations.php?action=quote&quote_id=<?php echo $quote['id']; ?>" 
                    class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
                     <i class="fas fa-arrow-left mr-2"></i>Back to Quote
                 </a>
@@ -446,7 +446,7 @@ if (!$quote) {
                             <tr class="<?php echo $index % 2 === 0 ? 'bg-white' : 'bg-gray-50'; ?>">
                                 <td class="border border-gray-300 px-4 py-3 text-sm text-gray-900"><?php echo $index + 1; ?></td>
                                 <td class="border border-gray-300 px-4 py-3">
-                                    <div class="text-sm font-medium text-gray-900">
+                                    <div class="text-sm text-gray-900">
                                         <?php 
                                         // Show only the main item name, remove extra descriptions
                                         $item_name = $item['brand'] . ' ' . $item['model'];
@@ -564,7 +564,7 @@ if (!$quote) {
                 <div class="bg-blue-50 rounded p-3">
                     <h3 class="text-sm font-semibold text-gray-800 mb-2">Contact Us</h3>
                     <div class="text-xs text-gray-600">
-                        📧 info@4nsolar.com • 📞 +63 +63 906 386 1728 • Mon-Sat 8AM-6PM
+                        📧 info@4nsolar.com • 📞 +63 906 386 1728 • Mon-Sat 8AM-6PM
                     </div>
                 </div>
             </div>
