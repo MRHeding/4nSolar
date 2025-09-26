@@ -48,15 +48,15 @@ if (!$quote) {
                 display: none !important; 
             }
             .print-break { 
-                page-break-before: always; 
+                page-break-before: avoid; 
             }
             .print-break-before {
-                page-break-before: always;
-                margin-top: 20px;
+                page-break-before: avoid;
+                margin-top: 10px;
             }
             .print-break-after {
-                page-break-after: always;
-                margin-bottom: 20px;
+                page-break-after: avoid;
+                margin-bottom: 10px;
             }
             .shadow-lg, .shadow { 
                 box-shadow: none !important; 
@@ -192,27 +192,27 @@ if (!$quote) {
                 margin-right: 2% !important;
             }
             
-            /* Ensure totals section is always on a new page */
+            /* Keep totals section flowing with content */
             .totals-section {
-                page-break-before: always !important;
-                margin-top: 30px !important;
+                page-break-before: avoid !important;
+                margin-top: 15px !important;
                 clear: both !important;
             }
             
-            /* Prevent table from breaking across pages */
+            /* Allow table to break across pages naturally */
             .invoice-table {
-                page-break-inside: avoid !important;
+                page-break-inside: auto !important;
             }
             
-            /* Ensure summary box stays together */
+            /* Allow summary box to break if needed */
             .total-section {
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
+                page-break-inside: auto !important;
+                break-inside: auto !important;
             }
             
-            /* Add extra spacing for print */
+            /* Reduce spacing for continuous flow */
             .items-section {
-                margin-bottom: 40px !important;
+                margin-bottom: 15px !important;
             }
         }
         
@@ -244,14 +244,8 @@ if (!$quote) {
         }
         
         @page {
-            margin: 0.4in;
+            margin: 0.5in;
             size: A4;
-            @top-left { content: ""; }
-            @top-center { content: ""; }
-            @top-right { content: ""; }
-            @bottom-left { content: ""; }
-            @bottom-center { content: ""; }
-            @bottom-right { content: ""; }
         }
         
         .print-header {
@@ -465,9 +459,17 @@ if (!$quote) {
                                     <?php echo $item['quantity']; ?>
                                 </td>
                                 <td class="border border-gray-300 px-4 py-3 text-right text-sm text-gray-900">
+                                    <?php 
+                                    // Check if unit price was changed from original
+                                    $original_price = $item['original_unit_price'] ?? $item['unit_price'];
+                                    $price_changed = $original_price != $item['unit_price'];
+                                    ?>
                                     <?php if ($item['discount_percentage'] > 0): ?>
                                         <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($item['unit_price']); ?></div>
                                         <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_price'] * (1 - $item['discount_percentage'] / 100)); ?></div>
+                                    <?php elseif ($price_changed): ?>
+                                        <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($original_price); ?></div>
+                                        <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_price']); ?></div>
                                     <?php else: ?>
                                         <?php echo formatCurrency($item['unit_price']); ?>
                                     <?php endif; ?>

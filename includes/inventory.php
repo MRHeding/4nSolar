@@ -472,12 +472,12 @@ function addQuoteItem($quote_id, $inventory_item_id, $quantity, $discount_percen
         } else {
             // Add new item
             $stmt = $pdo->prepare("INSERT INTO quote_items 
-                                  (quote_id, inventory_item_id, quantity, unit_price, 
+                                  (quote_id, inventory_item_id, quantity, unit_price, original_unit_price,
                                    discount_percentage, discount_amount, total_amount) 
-                                  VALUES (?, ?, ?, ?, ?, ?, ?)");
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
             
             $result = $stmt->execute([
-                $quote_id, $inventory_item_id, $quantity, $unit_price,
+                $quote_id, $inventory_item_id, $quantity, $unit_price, $unit_price,
                 $discount_percentage, $discount_amount, $total_amount
             ]);
         }
@@ -539,12 +539,12 @@ function addCustomQuoteItem($quote_id, $item_name, $quantity, $unit_price, $disc
         $total_amount = ($unit_price * $quantity) - $discount_amount;
         
         $stmt = $pdo->prepare("INSERT INTO quote_items 
-                              (quote_id, inventory_item_id, quantity, unit_price, 
+                              (quote_id, inventory_item_id, quantity, unit_price, original_unit_price,
                                discount_percentage, discount_amount, total_amount) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?)");
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         
         $result = $stmt->execute([
-            $quote_id, $labor_item_id, $quantity, $unit_price,
+            $quote_id, $labor_item_id, $quantity, $unit_price, $unit_price,
             $discount_percentage, $discount_amount, $total_amount
         ]);
         
@@ -957,12 +957,13 @@ function updateQuoteItemDiscount($quote_item_id, $new_discount_percentage) {
     }
 }
 
+// Update quote item unit price
 function updateQuoteItemUnitPrice($quote_item_id, $new_unit_price) {
     global $pdo;
     
     try {
         // Get current item details
-        $stmt = $pdo->prepare("SELECT qi.quote_id, qi.quantity, qi.discount_percentage, 
+        $stmt = $pdo->prepare("SELECT qi.quote_id, qi.unit_price, qi.original_unit_price, qi.quantity, 
                               qi.inventory_item_id, i.brand, i.model, i.is_active
                               FROM quote_items qi
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id
@@ -972,49 +973,39 @@ function updateQuoteItemUnitPrice($quote_item_id, $new_unit_price) {
         
         if (!$item) return ['success' => false, 'message' => 'Item not found'];
         
-        // Note: We allow updating prices even for inactive inventory items
-        // since the quote item already exists and users should be able to adjust pricing
         if (!$item['is_active']) {
-            // Log a warning but don't block the update
-            error_log("Warning: Updating price for inactive inventory item ID: {$item['inventory_item_id']} in quote item ID: {$quote_item_id}");
+            return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
         }
         
-        $new_unit_price = floatval($new_unit_price);
+        // Validate unit price
         if ($new_unit_price < 0) {
             return ['success' => false, 'message' => 'Unit price cannot be negative'];
         }
         
-        $pdo->beginTransaction();
+        // Set original_unit_price if it's null (for existing records)
+        $original_unit_price = $item['original_unit_price'];
+        if ($original_unit_price === null) {
+            $original_unit_price = $item['unit_price'];
+        }
         
-        // Calculate new totals
-        $quantity = floatval($item['quantity']);
-        $discount_percentage = floatval($item['discount_percentage']);
-        $subtotal = $new_unit_price * $quantity;
-        $discount_amount = $subtotal * ($discount_percentage / 100);
-        $total_amount = $subtotal - $discount_amount;
+        $discount_amount = ($new_unit_price * $item['discount_percentage'] / 100) * $item['quantity'];
+        $total_amount = ($new_unit_price * $item['quantity']) - $discount_amount;
         
-        // Update the quote item
+        // Update the item
         $stmt = $pdo->prepare("UPDATE quote_items SET 
-                              unit_price = ?, 
-                              discount_amount = ?, 
-                              total_amount = ?
+                              unit_price = ?, discount_amount = ?, total_amount = ?, original_unit_price = ?
                               WHERE id = ?");
-        $result = $stmt->execute([$new_unit_price, $discount_amount, $total_amount, $quote_item_id]);
+        
+        $result = $stmt->execute([$new_unit_price, $discount_amount, $total_amount, $original_unit_price, $quote_item_id]);
         
         if ($result) {
-            // Update quote totals
             updateQuoteTotals($item['quote_id']);
-            $pdo->commit();
             return ['success' => true, 'message' => 'Unit price updated successfully'];
         }
         
-        $pdo->rollback();
         return ['success' => false, 'message' => 'Failed to update unit price'];
         
     } catch(PDOException $e) {
-        if (isset($pdo) && $pdo->inTransaction()) {
-            $pdo->rollback();
-        }
         return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
     }
 }
@@ -1281,6 +1272,27 @@ function restoreQuoteInventory($quote_id) {
     }
 }
 
+// Update customer information in quotations table
+function updateQuoteCustomerInfo($quote_id, $data) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE quotations SET 
+                              customer_name = ?, customer_phone = ?, updated_at = NOW()
+                              WHERE id = ?");
+        $stmt->execute([
+            $data['full_name'] ?? $data['customer_name'] ?? null,
+            $data['phone_number'] ?? $data['customer_phone'] ?? null,
+            $quote_id
+        ]);
+        
+        return true;
+    } catch(PDOException $e) {
+        error_log("Failed to update quote customer info: " . $e->getMessage());
+        return false;
+    }
+}
+
 // Save customer information for a quote
 function saveCustomerInfo($quote_id, $data) {
     global $pdo;
@@ -1327,6 +1339,9 @@ function saveCustomerInfo($quote_id, $data) {
                 $data['account_creation_date'] ?? null
             ]);
         }
+        
+        // Also update the quotations table to keep customer info in sync
+        updateQuoteCustomerInfo($quote_id, $data);
         
         return true;
     } catch (Exception $e) {

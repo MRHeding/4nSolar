@@ -29,7 +29,56 @@ if (!$project) {
     <style>
         @media print {
             .no-print { display: none !important; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
+                margin: 0;
+                padding: 0;
+            }
+            .max-w-4xl {
+                max-width: 100% !important;
+                margin: 0 !important;
+            }
+            .p-8 {
+                padding: 15px !important;
+            }
+            .mb-8 {
+                margin-bottom: 15px !important;
+            }
+            .mb-6 {
+                margin-bottom: 10px !important;
+            }
+            .pb-6 {
+                padding-bottom: 10px !important;
+            }
+            .pt-6 {
+                padding-top: 10px !important;
+            }
+            .gap-8 {
+                gap: 10px !important;
+            }
+            .space-y-2 > * + * {
+                margin-top: 5px !important;
+            }
+            table {
+                page-break-inside: auto !important;
+            }
+            tr {
+                page-break-inside: avoid !important;
+                page-break-after: auto !important;
+            }
+            .grid {
+                display: block !important;
+            }
+            .grid > div {
+                display: block !important;
+                width: 100% !important;
+                margin-bottom: 10px !important;
+            }
+        }
+        @page {
+            margin: 0.5in;
+            size: A4;
         }
     </style>
 </head>
@@ -137,11 +186,19 @@ if (!$project) {
                                     if ($item['discount_amount'] > 0 && $item['unit_selling_price'] > 0) {
                                         $discount_percentage = ($item['discount_amount'] / ($item['unit_selling_price'] * $item['quantity'])) * 100;
                                     }
+                                    
+                                    // Check if unit price was changed from original
+                                    $original_price = $item['original_unit_price'] ?? $item['unit_selling_price'];
+                                    $price_changed = $original_price != $item['unit_selling_price'];
+                                    
                                     if ($discount_percentage > 0): 
-                                        $original_price = $item['unit_selling_price'] / (1 - $discount_percentage / 100);
+                                        $discount_original_price = $item['unit_selling_price'] / (1 - $discount_percentage / 100);
                                     ?>
-                                        <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($original_price); ?></div>
+                                        <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($discount_original_price); ?></div>
                                         <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_selling_price']); ?></div>
+                                    <?php elseif ($price_changed): ?>
+                                        <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($original_price); ?></div>
+                                        <div class="text-sm text-blue-600 font-medium"><?php echo formatCurrency($item['unit_selling_price']); ?></div>
                                     <?php else: ?>
                                         <?php echo formatCurrency($item['unit_selling_price']); ?>
                                     <?php endif; ?>

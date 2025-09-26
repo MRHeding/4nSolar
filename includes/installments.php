@@ -334,10 +334,91 @@ function getInstallmentPlan($quotation_id) {
 }
 
 /**
+ * Get installment plan with adjusted amounts due to overpayments
+ */
+function getInstallmentPlanWithAdjustments($quotation_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT * FROM installment_plans WHERE quotation_id = ?");
+    $stmt->execute([$quotation_id]);
+    $plan = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$plan) {
+        return null;
+    }
+    
+    // Get all payments for this plan
+    $stmt = $pdo->prepare("SELECT * FROM installment_payments 
+                          WHERE plan_id = ? 
+                          ORDER BY installment_number ASC");
+    $stmt->execute([$plan['id']]);
+    $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $plan['payments'] = $payments;
+    
+    // Calculate total paid and remaining balance
+    $total_paid = floatval($plan['down_payment']); // Start with down payment
+    $total_remaining = 0;
+    
+    foreach ($payments as $payment) {
+        $total_paid += floatval($payment['paid_amount']);
+        $remaining = floatval($payment['due_amount']) - floatval($payment['paid_amount']);
+        if ($remaining > 0) {
+            $total_remaining += $remaining;
+        }
+    }
+    
+    
+    $plan['total_paid'] = $total_paid;
+    $plan['total_remaining'] = $total_remaining; // Use the calculated total_remaining from individual payments
+    
+    // Calculate completion percentage, capped at 100%
+    $completion_percentage = 0;
+    if ($plan['total_amount'] > 0) {
+        $completion_percentage = round(($total_paid / $plan['total_amount']) * 100, 2);
+        $completion_percentage = min($completion_percentage, 100); // Cap at 100%
+    }
+    $plan['completion_percentage'] = $completion_percentage;
+    
+    // Calculate summary statistics
+    $pending_amount = 0;
+    $overdue_amount = 0;
+    $today = new DateTime();
+    
+    foreach ($payments as $payment) {
+        $remaining = floatval($payment['due_amount']) - floatval($payment['paid_amount']);
+        if ($remaining > 0) {
+            $due_date = new DateTime($payment['due_date']);
+            if ($due_date < $today) {
+                $overdue_amount += $remaining;
+            } else {
+                $pending_amount += $remaining;
+            }
+        }
+    }
+    
+    $plan['summary'] = [
+        'total_paid' => $total_paid,
+        'pending_amount' => $pending_amount,
+        'overdue_amount' => $overdue_amount,
+        'total_remaining' => $plan['total_remaining'],
+        'completion_percentage' => $plan['completion_percentage']
+    ];
+    
+    return $plan;
+}
+
+/**
  * Calculate plan summary (paid, pending, overdue amounts)
  */
 function calculatePlanSummary($plan_id) {
     global $pdo;
+    
+    // Get plan details first to include down payment
+    $stmt = $pdo->prepare("SELECT down_payment FROM installment_plans WHERE id = ?");
+    $stmt->execute([$plan_id]);
+    $plan = $stmt->fetch(PDO::FETCH_ASSOC);
+    $down_payment = floatval($plan['down_payment'] ?? 0);
     
     $sql = "SELECT 
             COUNT(*) as total_installments,
@@ -352,7 +433,23 @@ function calculatePlanSummary($plan_id) {
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$plan_id]);
-    return $stmt->fetch(PDO::FETCH_ASSOC);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Add down payment to total paid and calculate total remaining
+    if ($result) {
+        $result['total_paid'] = floatval($result['total_paid']) + $down_payment;
+        
+        // Get plan total amount to calculate remaining
+        $stmt = $pdo->prepare("SELECT total_amount FROM installment_plans WHERE id = ?");
+        $stmt->execute([$plan_id]);
+        $plan_total = $stmt->fetch(PDO::FETCH_ASSOC);
+        $total_amount = floatval($plan_total['total_amount'] ?? 0);
+        
+        // Calculate total remaining as the sum of pending and overdue amounts
+        $result['total_remaining'] = floatval($result['pending_amount']) + floatval($result['overdue_amount']);
+    }
+    
+    return $result;
 }
 
 /**
@@ -589,6 +686,253 @@ function calculateInstallmentOptions($total_amount, $down_payment = 0, $months_o
     }
     
     return $options;
+}
+
+/**
+ * Update an existing installment plan
+ */
+function updateInstallmentPlan($plan_id, $plan_data) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get existing plan details
+        $stmt = $pdo->prepare("SELECT * FROM installment_plans WHERE id = ?");
+        $stmt->execute([$plan_id]);
+        $existing_plan = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$existing_plan) {
+            throw new Exception("Installment plan not found");
+        }
+        
+        // Validate plan data
+        $total_amount = floatval($plan_data['total_amount']);
+        $down_payment = floatval($plan_data['down_payment'] ?? 0);
+        $number_of_installments = intval($plan_data['number_of_installments']);
+        $interest_rate = floatval($plan_data['interest_rate'] ?? 0);
+        
+        if ($total_amount <= 0 || $number_of_installments <= 0) {
+            throw new Exception("Invalid plan parameters");
+        }
+        
+        // Calculate new installment amount with interest
+        $remaining_amount = $total_amount - $down_payment;
+        $monthly_interest_rate = $interest_rate / 100;
+        
+        if ($interest_rate > 0) {
+            // Calculate with compound interest
+            $installment_amount = $remaining_amount * 
+                ($monthly_interest_rate * pow(1 + $monthly_interest_rate, $number_of_installments)) /
+                (pow(1 + $monthly_interest_rate, $number_of_installments) - 1);
+        } else {
+            // Simple division without interest
+            $installment_amount = $remaining_amount / $number_of_installments;
+        }
+        
+        // Round installment amount down to nearest 0.50
+        $installment_amount = floor($installment_amount * 2) / 2;
+        
+        // Update installment plan
+        $sql = "UPDATE installment_plans SET 
+                plan_name = ?, total_amount = ?, down_payment = ?, installment_amount = ?, 
+                number_of_installments = ?, payment_frequency = ?, interest_rate = ?, 
+                late_fee_amount = ?, late_fee_type = ?, start_date = ?, notes = ?, 
+                updated_at = NOW()
+                WHERE id = ?";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            $plan_data['plan_name'] ?? 'Payment Plan',
+            $total_amount,
+            $down_payment,
+            round($installment_amount, 2),
+            $number_of_installments,
+            $plan_data['payment_frequency'] ?? 'monthly',
+            $interest_rate,
+            floatval($plan_data['late_fee_amount'] ?? 500),
+            $plan_data['late_fee_type'] ?? 'fixed',
+            $plan_data['start_date'],
+            $plan_data['notes'] ?? null,
+            $plan_id
+        ]);
+        
+        // Check if we need to regenerate payment schedule
+        $regenerate_payments = $plan_data['regenerate_payments'] ?? false;
+        
+        if ($regenerate_payments) {
+            // Delete existing payments (only if no payments have been made)
+            $stmt = $pdo->prepare("SELECT COUNT(*) as paid_count FROM installment_payments WHERE plan_id = ? AND paid_amount > 0");
+            $stmt->execute([$plan_id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result['paid_count'] > 0) {
+                throw new Exception("Cannot regenerate payment schedule when payments have already been made");
+            }
+            
+            // Delete existing payments
+            $stmt = $pdo->prepare("DELETE FROM installment_payments WHERE plan_id = ?");
+            $stmt->execute([$plan_id]);
+            
+            // Generate new payment schedule
+            generateInstallmentPayments($plan_id, $plan_data);
+        }
+        
+        $pdo->commit();
+        return ['success' => true, 'message' => 'Installment plan updated successfully'];
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Update an individual payment record
+ */
+function updateInstallmentPayment($payment_id, $payment_data) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get payment details
+        $stmt = $pdo->prepare("SELECT ip.*, pl.quotation_id 
+                              FROM installment_payments ip 
+                              JOIN installment_plans pl ON ip.plan_id = pl.id 
+                              WHERE ip.id = ?");
+        $stmt->execute([$payment_id]);
+        $payment = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$payment) {
+            throw new Exception("Payment record not found");
+        }
+        
+        $paid_amount = floatval($payment_data['paid_amount']);
+        $payment_method = $payment_data['payment_method'] ?? 'cash';
+        $payment_date = $payment_data['payment_date'] ?? date('Y-m-d');
+        $reference_number = $payment_data['reference_number'] ?? null;
+        $receipt_number = $payment_data['receipt_number'] ?? null;
+        
+        // Check for late fees
+        $late_fee = 0;
+        $due_date = new DateTime($payment['due_date']);
+        $pay_date = new DateTime($payment_date);
+        $grace_period = intval(getInstallmentSetting('grace_period_days', 5));
+        
+        $due_date_with_grace = clone $due_date;
+        $due_date_with_grace->add(new DateInterval("P{$grace_period}D"));
+        
+        if ($pay_date > $due_date_with_grace) {
+            // Apply late fee
+            $late_fee_amount = floatval(getInstallmentSetting('default_late_fee', 500));
+            $late_fee_type = getInstallmentSetting('late_fee_type', 'fixed');
+            
+            if ($late_fee_type === 'percentage') {
+                $late_fee = ($payment['due_amount'] * $late_fee_amount) / 100;
+            } else {
+                $late_fee = $late_fee_amount;
+            }
+        }
+        
+        // Determine payment status
+        $total_due = floatval($payment['due_amount']) + $late_fee;
+        $status = 'pending';
+        
+        if ($paid_amount >= $total_due) {
+            $status = 'paid';
+        } elseif ($paid_amount > 0) {
+            $status = 'partial';
+        }
+        
+        // Update payment record
+        $sql = "UPDATE installment_payments SET 
+                paid_amount = ?, payment_date = ?, late_fee_applied = ?, 
+                payment_method = ?, reference_number = ?, receipt_number = ?, 
+                status = ?, notes = ?, paid_by = ?, updated_at = NOW()
+                WHERE id = ?";
+        
+        $stmt = $pdo->prepare($sql);
+        $result = $stmt->execute([
+            $paid_amount,
+            $payment_date,
+            $late_fee,
+            $payment_method,
+            $reference_number,
+            $receipt_number,
+            $status,
+            $payment_data['notes'] ?? null,
+            $_SESSION['user_id'] ?? 1,
+            $payment_id
+        ]);
+        
+        if (!$result) {
+            throw new Exception("Failed to update payment record");
+        }
+        
+        // Check if plan is completed
+        checkPlanCompletion($payment['plan_id']);
+        
+        $pdo->commit();
+        
+        $message = 'Payment updated successfully';
+        if ($late_fee > 0) {
+            $message .= ' (Late fee: ' . formatCurrency($late_fee) . ' applied)';
+        }
+        
+        return [
+            'success' => true, 
+            'message' => $message,
+            'receipt_number' => $receipt_number,
+            'reference_number' => $reference_number,
+            'late_fee' => $late_fee,
+            'total_paid' => $paid_amount,
+            'status' => $status
+        ];
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        return ['success' => false, 'message' => 'Payment update failed: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Delete an installment plan (only if no payments have been made)
+ */
+function deleteInstallmentPlan($plan_id) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Check if any payments have been made
+        $stmt = $pdo->prepare("SELECT COUNT(*) as paid_count FROM installment_payments WHERE plan_id = ? AND paid_amount > 0");
+        $stmt->execute([$plan_id]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result['paid_count'] > 0) {
+            throw new Exception("Cannot delete installment plan when payments have already been made");
+        }
+        
+        // Delete all payment records
+        $stmt = $pdo->prepare("DELETE FROM installment_payments WHERE plan_id = ?");
+        $stmt->execute([$plan_id]);
+        
+        // Delete the plan
+        $stmt = $pdo->prepare("DELETE FROM installment_plans WHERE id = ?");
+        $stmt->execute([$plan_id]);
+        
+        // Update quotation to remove installment plan reference
+        $stmt = $pdo->prepare("UPDATE quotations SET has_installment_plan = 0, installment_status = NULL WHERE id = (SELECT quotation_id FROM installment_plans WHERE id = ?)");
+        $stmt->execute([$plan_id]);
+        
+        $pdo->commit();
+        return ['success' => true, 'message' => 'Installment plan deleted successfully'];
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
 }
 
 ?>

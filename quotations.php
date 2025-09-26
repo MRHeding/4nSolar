@@ -77,6 +77,68 @@ if ($action === 'get_customer_details' && $quote_id) {
     exit();
 }
 
+// Handle AJAX request for payment details
+if ($action === 'get_payment_details' && isset($_GET['payment_id'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $payment_id = intval($_GET['payment_id']);
+        
+        $stmt = $pdo->prepare("SELECT * FROM installment_payments WHERE id = ?");
+        $stmt->execute([$payment_id]);
+        $payment = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($payment) {
+            echo json_encode([
+                'success' => true,
+                'payment' => $payment
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Payment not found'
+            ]);
+        }
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error loading payment details: ' . $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
+// Handle AJAX request for plan details
+if ($action === 'get_plan_details' && isset($_GET['plan_id'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $plan_id = intval($_GET['plan_id']);
+        
+        $stmt = $pdo->prepare("SELECT * FROM installment_plans WHERE id = ?");
+        $stmt->execute([$plan_id]);
+        $plan = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($plan) {
+            echo json_encode([
+                'success' => true,
+                'plan' => $plan
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Plan not found'
+            ]);
+        }
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error loading plan details: ' . $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
 // Check for success messages from redirects
 if (isset($_GET['message'])) {
     $message = $_GET['message'];
@@ -90,6 +152,42 @@ if ($_POST) {
                 // Debug: Log the form data being submitted
                 error_log("Creating installment plan with data: " . print_r($_POST, true));
                 $result = createInstallmentPlan($quote_id, $_POST);
+                if ($result['success']) {
+                    header("Location: ?action=installments&quote_id=" . $quote_id . "&message=" . urlencode($result['message']));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'update_installment_plan':
+            if (isset($_POST['plan_id'])) {
+                $result = updateInstallmentPlan($_POST['plan_id'], $_POST);
+                if ($result['success']) {
+                    header("Location: ?action=installments&quote_id=" . $quote_id . "&message=" . urlencode($result['message']));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'update_installment_payment':
+            if (isset($_POST['payment_id'])) {
+                $result = updateInstallmentPayment($_POST['payment_id'], $_POST);
+                if ($result['success']) {
+                    header("Location: ?action=installments&quote_id=" . $quote_id . "&message=" . urlencode($result['message']));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'delete_installment_plan':
+            if (isset($_POST['plan_id'])) {
+                $result = deleteInstallmentPlan($_POST['plan_id']);
                 if ($result['success']) {
                     header("Location: ?action=installments&quote_id=" . $quote_id . "&message=" . urlencode($result['message']));
                     exit();
@@ -380,7 +478,7 @@ switch ($action) {
                 $error = 'Quotation not found.';
                 $action = 'list';
             } else {
-                $installment_plan = getInstallmentPlan($quote_id);
+                $installment_plan = getInstallmentPlanWithAdjustments($quote_id);
                 $customer_info = getCustomerInfo($quote_id);
             }
         }
@@ -395,7 +493,7 @@ switch ($action) {
             } else {
                 $inventory_items = getQuoteInventoryItems();
                 // Check if quote has installment plan
-                $installment_plan = getInstallmentPlan($quote_id);
+                $installment_plan = getInstallmentPlanWithAdjustments($quote_id);
             }
         }
         break;
@@ -437,6 +535,7 @@ include 'includes/header.php';
 .actions-column {
     width: 140px;
     min-width: 140px;
+    max-width: 140px;
 }
 
 .action-buttons {
@@ -465,6 +564,30 @@ include 'includes/header.php';
     font-size: 10px;
 }
 
+/* Customer name cell styling */
+.customer-name-cell {
+    max-width: 200px;
+    min-width: 150px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.customer-name-text {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.customer-phone-text {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Ensure table doesn't break layout */
 .compact-table {
     table-layout: fixed;
@@ -474,6 +597,16 @@ include 'includes/header.php';
 .compact-table td:last-child {
     width: 140px;
 }
+
+/* Ensure table columns have proper widths */
+.compact-table th:nth-child(1), .compact-table td:nth-child(1) { width: 100px; } /* Quote # */
+.compact-table th:nth-child(2), .compact-table td:nth-child(2) { width: 200px; } /* Customer */
+.compact-table th:nth-child(3), .compact-table td:nth-child(3) { width: 150px; } /* Proposal */
+.compact-table th:nth-child(4), .compact-table td:nth-child(4) { width: 80px; }  /* Items */
+.compact-table th:nth-child(5), .compact-table td:nth-child(5) { width: 100px; } /* Total */
+.compact-table th:nth-child(6), .compact-table td:nth-child(6) { width: 100px; } /* Status */
+.compact-table th:nth-child(7), .compact-table td:nth-child(7) { width: 100px; } /* Date */
+.compact-table th:nth-child(8), .compact-table td:nth-child(8) { width: 140px; } /* Actions */
 
 
 /* Make table more compact */
@@ -606,7 +739,7 @@ include 'includes/header.php';
         <thead class="bg-gray-50">
             <tr>
                 <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quote #</th>
-                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider customer-name-cell">Customer</th>
                 <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proposal</th>
                 <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
                 <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
@@ -630,10 +763,14 @@ include 'includes/header.php';
                     <td class="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                         <?php echo htmlspecialchars($quote['quote_number']); ?>
                     </td>
-                    <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
-                        <?php echo htmlspecialchars($quote['customer_name']); ?>
+                    <td class="px-3 py-3 text-sm text-gray-900 customer-name-cell">
+                        <div class="customer-name-text" title="<?php echo htmlspecialchars($quote['customer_name']); ?>">
+                            <?php echo htmlspecialchars($quote['customer_name']); ?>
+                        </div>
                         <?php if ($quote['customer_phone']): ?>
-                        <div class="text-xs text-gray-500"><?php echo htmlspecialchars($quote['customer_phone']); ?></div>
+                        <div class="text-xs text-gray-500 customer-phone-text" title="<?php echo htmlspecialchars($quote['customer_phone']); ?>">
+                            <?php echo htmlspecialchars($quote['customer_phone']); ?>
+                        </div>
                         <?php endif; ?>
                     </td>
                     <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -1137,10 +1274,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </form>
                             </td>
                             <td class="px-3 py-4 text-sm text-gray-900">
+                                <?php 
+                                $original_price = $item['original_unit_price'] ?? $item['unit_price'];
+                                $price_changed = $original_price != $item['unit_price'];
+                                ?>
                                 <form method="POST" action="?action=update_quote_unit_price&quote_id=<?php echo $quote['id']; ?>" class="inline">
                                     <input type="hidden" name="quote_item_id" value="<?php echo $item['id']; ?>">
                                     <input type="number" name="new_unit_price" value="<?php echo $item['unit_price']; ?>" 
-                                           min="0" step="0.01" class="w-20 px-2 py-1 border rounded text-center text-sm"
+                                           min="0" step="0.01" class="w-20 px-2 py-1 border rounded text-center text-sm <?php echo $price_changed ? 'text-blue-600 font-medium' : ''; ?>"
                                            onchange="this.form.submit()" 
                                            oninput="calculateItemTotal(this, <?php echo $item['quantity']; ?>, <?php echo $item['discount_percentage']; ?>)"
                                            title="Click to edit unit price">
@@ -2278,6 +2419,10 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
             </p>
         </div>
         <div class="space-x-2">
+            <a href="print_installments.php?quote_id=<?php echo $quote_id; ?>" target="_blank" 
+               class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                <i class="fas fa-print mr-2"></i>Print Plan
+            </a>
         </div>
     </div>
 </div>
@@ -2287,22 +2432,26 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
     <!-- Plan Summary Cards -->
     <div class="lg:col-span-3">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-blue-800">Plan Status</div>
                 <div class="text-xl font-bold text-blue-900"><?php echo ucfirst($installment_plan['status']); ?></div>
             </div>
             <div class="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-green-800">Total Paid</div>
-                <div class="text-xl font-bold text-green-900"><?php echo formatCurrency($installment_plan['summary']['total_paid']); ?></div>
+                <div class="text-xl font-bold text-green-900"><?php echo formatCurrency($installment_plan['summary']['total_paid'] ?? 0); ?></div>
+            </div>
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div class="text-sm font-medium text-purple-800">Remaining to Pay</div>
+                <div class="text-xl font-bold text-purple-900"><?php echo formatCurrency($installment_plan['summary']['total_remaining'] ?? 0); ?></div>
             </div>
             <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-orange-800">Pending</div>
-                <div class="text-xl font-bold text-orange-900"><?php echo formatCurrency($installment_plan['summary']['pending_amount']); ?></div>
+                <div class="text-xl font-bold text-orange-900"><?php echo formatCurrency($installment_plan['summary']['pending_amount'] ?? 0); ?></div>
             </div>
             <div class="bg-red-50 border border-red-200 rounded-lg p-4">
                 <div class="text-sm font-medium text-red-800">Overdue</div>
-                <div class="text-xl font-bold text-red-900"><?php echo formatCurrency($installment_plan['summary']['overdue_amount']); ?></div>
+                <div class="text-xl font-bold text-red-900"><?php echo formatCurrency($installment_plan['summary']['overdue_amount'] ?? 0); ?></div>
             </div>
         </div>
     </div>
@@ -2314,6 +2463,14 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
     <div class="lg:col-span-2">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Payment Schedule</h2>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <div class="flex items-start">
+                    <i class="fas fa-info-circle text-blue-600 mt-0.5 mr-2"></i>
+                    <div class="text-sm text-blue-800">
+                        <strong>Overpayment Feature:</strong> If you pay more than the required amount, the extra payment will automatically be applied to future installments, reducing your remaining balance.
+                    </div>
+                </div>
+            </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -2322,6 +2479,7 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
                             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
                             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Remaining</th>
                             <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
                             <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                         </tr>
@@ -2348,6 +2506,19 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                                 <div class="text-xs text-gray-500"><?php echo date('M d, Y', strtotime($payment['payment_date'])); ?></div>
                                 <?php endif; ?>
                             </td>
+                            <td class="px-4 py-4 text-sm text-right text-gray-900">
+                                <?php 
+                                $total_due = floatval($payment['due_amount']) + floatval($payment['late_fee_applied']);
+                                $remaining = $total_due - floatval($payment['paid_amount']);
+                                ?>
+                                <?php if ($remaining > 0): ?>
+                                    <span class="font-medium text-orange-600"><?php echo formatCurrency($remaining); ?></span>
+                                    <div class="text-xs text-gray-500">to pay</div>
+                                <?php else: ?>
+                                    <span class="font-medium text-green-600">₱0.00</span>
+                                    <div class="text-xs text-green-600">Fully paid</div>
+                                <?php endif; ?>
+                            </td>
                             <td class="px-4 py-4 text-center">
                                 <span class="px-2 py-1 text-xs font-medium rounded-full 
                                     <?php 
@@ -2363,14 +2534,20 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                             </td>
                             <td class="px-4 py-4 text-center">
                                 <?php if ($payment['status'] !== 'paid'): ?>
-                                <button onclick="recordPayment(<?php echo $payment['id']; ?>, <?php echo $payment['due_amount']; ?>)" 
-                                        class="text-green-600 hover:text-green-900 p-0.5" title="Record Payment">
+                                <button onclick="recordPayment(<?php echo $payment['id']; ?>, <?php echo $remaining; ?>)" 
+                                        class="text-green-600 hover:text-green-900 p-0.5" title="Record Payment - Remaining: <?php echo formatCurrency($remaining); ?>">
                                     <i class="fas fa-dollar-sign"></i>
+                                </button>
+                                <?php endif; ?>
+                                <?php if ($payment['paid_amount'] > 0): ?>
+                                <button onclick="editPayment(<?php echo $payment['id']; ?>)" 
+                                        class="text-blue-600 hover:text-blue-900 p-0.5 ml-1" title="Edit Payment">
+                                    <i class="fas fa-edit"></i>
                                 </button>
                                 <?php endif; ?>
                                 <?php if ($payment['receipt_number']): ?>
                                 <button onclick="viewReceipt('<?php echo $payment['receipt_number']; ?>')" 
-                                        class="text-blue-600 hover:text-blue-900 p-1 ml-2" title="View Receipt">
+                                        class="text-purple-600 hover:text-purple-900 p-1 ml-1" title="View Receipt">
                                     <i class="fas fa-receipt"></i>
                                 </button>
                                 <?php endif; ?>
@@ -2386,7 +2563,19 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
     <!-- Plan Information -->
     <div>
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Plan Details</h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200">Plan Details</h2>
+                <div class="space-x-2">
+                    <button onclick="editInstallmentPlan(<?php echo $installment_plan['id']; ?>)" 
+                            class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition text-sm">
+                        <i class="fas fa-edit mr-1"></i>Edit Plan
+                    </button>
+                    <button onclick="deleteInstallmentPlan(<?php echo $installment_plan['id']; ?>)" 
+                            class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition text-sm">
+                        <i class="fas fa-trash mr-1"></i>Delete
+                    </button>
+                </div>
+            </div>
             <div class="space-y-3 text-sm">
                 <div class="flex justify-between">
                     <span class="text-gray-600 dark:text-gray-400">Plan Name:</span>
@@ -2428,6 +2617,21 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
                 <p class="text-sm text-gray-600 dark:text-gray-400"><?php echo nl2br(htmlspecialchars($installment_plan['notes'])); ?></p>
             </div>
             <?php endif; ?>
+            
+            <!-- Payment Summary -->
+            <div class="mt-4 pt-4 border-t">
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Payment Summary:</h4>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600 dark:text-gray-400">Total Paid:</span>
+                        <span class="font-medium text-green-600"><?php echo formatCurrency($installment_plan['total_paid']); ?></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600 dark:text-gray-400">Remaining Balance:</span>
+                        <span class="font-medium text-orange-600"><?php echo formatCurrency($installment_plan['total_remaining']); ?></span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -2617,6 +2821,204 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
     </div>
 </div>
 
+<!-- Edit Payment Modal -->
+<div id="edit-payment-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Edit Payment</h3>
+            
+            <form id="edit-payment-form" method="POST" action="">
+                <input type="hidden" id="edit_payment_id" name="payment_id">
+                <input type="hidden" name="action" value="update_installment_payment">
+                
+                <div class="mb-4">
+                    <label for="edit_paid_amount" class="block text-sm font-medium text-gray-700 mb-2">Amount Paid</label>
+                    <input type="number" id="edit_paid_amount" name="paid_amount" step="0.01" min="0" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="edit_payment_method" class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                    <select id="edit_payment_method" name="payment_method" required
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="cash">Cash</option>
+                        <option value="check">Check</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="gcash">GCash</option>
+                        <option value="paymaya">PayMaya</option>
+                        <option value="card">Credit/Debit Card</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="edit_payment_date" class="block text-sm font-medium text-gray-700 mb-2">Payment Date</label>
+                    <input type="date" id="edit_payment_date" name="payment_date" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="edit_reference_number" class="block text-sm font-medium text-gray-700 mb-2">Reference Number</label>
+                    <input type="text" id="edit_reference_number" name="reference_number"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           placeholder="Enter reference number">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="edit_receipt_number" class="block text-sm font-medium text-gray-700 mb-2">Receipt Number</label>
+                    <input type="text" id="edit_receipt_number" name="receipt_number"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           placeholder="Enter receipt number">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="edit_payment_notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                    <textarea id="edit_payment_notes" name="notes" rows="2"
+                              class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Optional notes about this payment..."></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeEditPaymentModal()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
+                        <i class="fas fa-save mr-2"></i>Update Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Installment Plan Modal -->
+<div id="edit-plan-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-10 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Edit Payment Plan</h3>
+            
+            <form id="edit-plan-form" method="POST" action="" class="space-y-6">
+                <input type="hidden" id="edit_plan_id" name="plan_id">
+                <input type="hidden" name="action" value="update_installment_plan">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="edit_plan_name" class="block text-sm font-medium text-gray-700 mb-2">Plan Name</label>
+                        <input type="text" id="edit_plan_name" name="plan_name" 
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label for="edit_total_amount" class="block text-sm font-medium text-gray-700 mb-2">Total Amount</label>
+                        <input type="number" id="edit_total_amount" name="total_amount" step="0.01" 
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label for="edit_down_payment" class="block text-sm font-medium text-gray-700 mb-2">Down Payment</label>
+                        <input type="number" id="edit_down_payment" name="down_payment" step="0.01" min="0" 
+                               oninput="calculateEditInstallments()"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label for="edit_number_of_installments" class="block text-sm font-medium text-gray-700 mb-2">Number of Payments</label>
+                        <select id="edit_number_of_installments" name="number_of_installments" onchange="calculateEditInstallments()"
+                                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="6">6 months</option>
+                            <option value="12">12 months</option>
+                            <option value="18">18 months</option>
+                            <option value="24">24 months</option>
+                            <option value="36">36 months</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="edit_payment_frequency" class="block text-sm font-medium text-gray-700 mb-2">Payment Frequency</label>
+                        <select id="edit_payment_frequency" name="payment_frequency"
+                                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label for="edit_interest_rate" class="block text-sm font-medium text-gray-700 mb-2">Interest Rate (% monthly)</label>
+                        <input type="number" id="edit_interest_rate" name="interest_rate" step="0.01" min="0" 
+                               oninput="calculateEditInstallments()"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label for="edit_late_fee_amount" class="block text-sm font-medium text-gray-700 mb-2">Late Fee Amount</label>
+                        <input type="number" id="edit_late_fee_amount" name="late_fee_amount" step="0.01" min="0" 
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label for="edit_start_date" class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                        <input type="date" id="edit_start_date" name="start_date" required
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                </div>
+                
+                <!-- Calculation Preview -->
+                <div id="edit-calculation-preview" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 class="font-medium text-blue-900 mb-2">Payment Calculation</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                            <span class="text-blue-700">Remaining Amount:</span>
+                            <div class="font-medium text-blue-900" id="edit-remaining-amount">₱0.00</div>
+                        </div>
+                        <div>
+                            <span class="text-blue-700">Monthly Payment:</span>
+                            <div class="font-medium text-blue-900" id="edit-monthly-payment">₱0.00</div>
+                        </div>
+                        <div>
+                            <span class="text-blue-700">Total Interest:</span>
+                            <div class="font-medium text-blue-900" id="edit-total-interest">₱0.00</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div class="flex items-start">
+                        <i class="fas fa-exclamation-triangle text-yellow-600 mt-0.5 mr-2"></i>
+                        <div class="text-sm text-yellow-800">
+                            <strong>Warning:</strong> Changing the payment schedule will regenerate all payment dates. This can only be done if no payments have been made yet.
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="edit_regenerate_payments" name="regenerate_payments" value="1"
+                                   class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            <span class="ml-2 text-sm text-yellow-800">Regenerate payment schedule</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="edit_notes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                    <textarea id="edit_notes" name="notes" rows="3"
+                              class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Additional notes about the payment plan..."></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeEditPlanModal()"
+                            class="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
+                        <i class="fas fa-save mr-2"></i>Update Payment Plan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 // Currency formatting function
 function formatCurrency(amount) {
@@ -2702,6 +3104,142 @@ function viewReceipt(receiptNumber) {
     alert('Receipt #' + receiptNumber + ' - Receipt viewing functionality to be implemented');
 }
 
+// Edit Payment Modal Functions
+function editPayment(paymentId) {
+    // Load payment data and populate the edit form
+    fetch(`quotations.php?action=get_payment_details&payment_id=${paymentId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                populateEditPaymentForm(data.payment);
+                document.getElementById('edit-payment-modal').classList.remove('hidden');
+            } else {
+                alert('Failed to load payment details');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Network error occurred while loading payment details');
+        });
+}
+
+function populateEditPaymentForm(payment) {
+    document.getElementById('edit_payment_id').value = payment.id;
+    document.getElementById('edit_paid_amount').value = payment.paid_amount;
+    document.getElementById('edit_payment_method').value = payment.payment_method || 'cash';
+    document.getElementById('edit_payment_date').value = payment.payment_date || '';
+    document.getElementById('edit_reference_number').value = payment.reference_number || '';
+    document.getElementById('edit_receipt_number').value = payment.receipt_number || '';
+    document.getElementById('edit_payment_notes').value = payment.notes || '';
+    
+    // Update form action
+    const quoteId = new URLSearchParams(window.location.search).get('quote_id');
+    if (quoteId) {
+        document.getElementById('edit-payment-form').action = `?action=update_installment_payment&quote_id=${quoteId}`;
+    }
+}
+
+function closeEditPaymentModal() {
+    document.getElementById('edit-payment-modal').classList.add('hidden');
+}
+
+// Edit Installment Plan Modal Functions
+function editInstallmentPlan(planId) {
+    // Load plan data and populate the edit form
+    fetch(`quotations.php?action=get_plan_details&plan_id=${planId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                populateEditPlanForm(data.plan);
+                document.getElementById('edit-plan-modal').classList.remove('hidden');
+            } else {
+                alert('Failed to load plan details');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Network error occurred while loading plan details');
+        });
+}
+
+function populateEditPlanForm(plan) {
+    document.getElementById('edit_plan_id').value = plan.id;
+    document.getElementById('edit_plan_name').value = plan.plan_name || '';
+    document.getElementById('edit_total_amount').value = plan.total_amount || '';
+    document.getElementById('edit_down_payment').value = plan.down_payment || '';
+    document.getElementById('edit_number_of_installments').value = plan.number_of_installments || '12';
+    document.getElementById('edit_payment_frequency').value = plan.payment_frequency || 'monthly';
+    document.getElementById('edit_interest_rate').value = plan.interest_rate || '';
+    document.getElementById('edit_late_fee_amount').value = plan.late_fee_amount || '';
+    document.getElementById('edit_start_date').value = plan.start_date || '';
+    document.getElementById('edit_notes').value = plan.notes || '';
+    
+    // Update form action
+    const quoteId = new URLSearchParams(window.location.search).get('quote_id');
+    if (quoteId) {
+        document.getElementById('edit-plan-form').action = `?action=update_installment_plan&quote_id=${quoteId}`;
+    }
+    
+    // Calculate and display current values
+    calculateEditInstallments();
+}
+
+function closeEditPlanModal() {
+    document.getElementById('edit-plan-modal').classList.add('hidden');
+}
+
+// Delete Installment Plan Function
+function deleteInstallmentPlan(planId) {
+    if (confirm('Are you sure you want to delete this installment plan? This action cannot be undone and can only be done if no payments have been made.')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `?action=delete_installment_plan&quote_id=${new URLSearchParams(window.location.search).get('quote_id')}`;
+        
+        const planIdInput = document.createElement('input');
+        planIdInput.type = 'hidden';
+        planIdInput.name = 'plan_id';
+        planIdInput.value = planId;
+        
+        form.appendChild(planIdInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// Edit Installment Calculation Function
+function calculateEditInstallments() {
+    const totalAmount = parseFloat(document.getElementById('edit_total_amount').value) || 0;
+    const downPayment = parseFloat(document.getElementById('edit_down_payment').value) || 0;
+    const numInstallments = parseInt(document.getElementById('edit_number_of_installments').value) || 12;
+    const interestRate = parseFloat(document.getElementById('edit_interest_rate').value) || 0;
+    
+    let remainingAmount = totalAmount - downPayment;
+    const monthlyInterestRate = interestRate / 100;
+    
+    let monthlyPayment;
+    let totalInterest;
+    
+    if (interestRate > 0) {
+        monthlyPayment = remainingAmount * 
+            (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numInstallments)) /
+            (Math.pow(1 + monthlyInterestRate, numInstallments) - 1);
+        totalInterest = (monthlyPayment * numInstallments) - remainingAmount;
+    } else {
+        monthlyPayment = remainingAmount / numInstallments;
+        totalInterest = 0;
+    }
+    
+    // Round all calculations to 2 decimal places
+    // Round monthly payment to nearest 0.50
+    monthlyPayment = Math.floor(monthlyPayment * 2) / 2;
+    totalInterest = Math.round(totalInterest * 100) / 100;
+    remainingAmount = Math.round(remainingAmount * 100) / 100;
+    
+    document.getElementById('edit-remaining-amount').textContent = formatCurrency(remainingAmount);
+    document.getElementById('edit-monthly-payment').textContent = formatCurrency(monthlyPayment);
+    document.getElementById('edit-total-interest').textContent = formatCurrency(totalInterest);
+}
+
 // Currency formatting function
 // Real-time calculation for unit price changes
 function calculateItemTotal(unitPriceInput, quantity, discountPercentage) {
@@ -2749,6 +3287,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+    
+    // Add event listeners for edit form calculations
+    const editInputs = ['edit_total_amount', 'edit_down_payment', 'edit_number_of_installments', 'edit_interest_rate'];
+    editInputs.forEach(inputId => {
+        const element = document.getElementById(inputId);
+        if (element) {
+            element.addEventListener('input', calculateEditInstallments);
+            element.addEventListener('change', calculateEditInstallments);
+        }
+    });
 });
 </script>
 
