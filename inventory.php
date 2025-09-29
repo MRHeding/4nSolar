@@ -24,9 +24,15 @@ if ($_POST) {
     switch ($action) {
         case 'add':
             if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])) {
+                // Handle model field - use custom model if provided, otherwise use selected model
+                $model = $_POST['model'];
+                if ($model === 'Custom' && !empty($_POST['custom_model'])) {
+                    $model = $_POST['custom_model'];
+                }
+                
                 $data = [
                     'brand' => $_POST['brand'],
-                    'model' => $_POST['model'],
+                    'model' => $model,
                     'category_id' => $_POST['category_id'],
                     'size_specification' => $_POST['size_specification'],
                     'base_price' => $_POST['base_price'],
@@ -56,9 +62,15 @@ if ($_POST) {
                 // Get current item to preserve existing image path
                 $current_item = getInventoryItem($item_id);
                 
+                // Handle model field - use custom model if provided, otherwise use selected model
+                $model = $_POST['model'];
+                if ($model === 'Custom' && !empty($_POST['custom_model'])) {
+                    $model = $_POST['custom_model'];
+                }
+                
                 $data = [
                     'brand' => $_POST['brand'],
-                    'model' => $_POST['model'],
+                    'model' => $model,
                     'category_id' => $_POST['category_id'],
                     'size_specification' => $_POST['size_specification'],
                     'base_price' => $_POST['base_price'],
@@ -836,7 +848,7 @@ include 'includes/header.php';
 </div>
 
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <form method="POST" enctype="multipart/form-data" class="space-y-6">
+    <form method="POST" enctype="multipart/form-data" class="space-y-6" onsubmit="return validateModelForm()">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Product Image -->
             <div class="md:col-span-2">
@@ -863,9 +875,18 @@ include 'includes/header.php';
             
             <div>
                 <label for="model" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Model</label>
-                <input type="text" id="model" name="model" required
-                       value="<?php echo isset($item) ? htmlspecialchars($item['model']) : ''; ?>"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                <div id="model-container">
+                    <select id="model" name="model" required
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                        <option value="">Select Model</option>
+                        <option value="No Model" <?php echo (isset($item) && $item['model'] === 'No Model') ? 'selected' : ''; ?>>No Model</option>
+                        <option value="Custom" <?php echo (isset($item) && $item['model'] !== 'No Model' && !empty($item['model'])) ? 'selected' : ''; ?>>Custom Model</option>
+                    </select>
+                    <input type="text" id="custom-model" name="custom_model" 
+                           value="<?php echo (isset($item) && $item['model'] !== 'No Model' && !empty($item['model'])) ? htmlspecialchars($item['model']) : ''; ?>"
+                           placeholder="Enter custom model name"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent mt-2 hidden">
+                </div>
             </div>
             
             <div>
@@ -1358,7 +1379,7 @@ include 'includes/header.php';
                     </div>
                     <p class="text-xs text-blue-600 mt-1">
                         <i class="fas fa-info-circle mr-1"></i>
-                        Select which serial numbers to add/remove
+                        <span id="serial-instruction-text">Select which serial numbers to add/remove</span>
                     </p>
                 </div>
                 
@@ -1575,6 +1596,16 @@ function adjustStock(itemId, adjustment, itemName, isSerialized) {
     if (isSerialized) {
         loadQuickSerialNumbers(itemId, adjustmentType);
         document.getElementById('quick-serial-section').classList.remove('hidden');
+        
+        // Update instruction text based on adjustment type
+        const instructionText = document.getElementById('serial-instruction-text');
+        if (instructionText) {
+            if (adjustmentType === 'add') {
+                instructionText.textContent = 'New serial numbers will be automatically generated when adding stock.';
+            } else {
+                instructionText.textContent = 'Select specific serial numbers to remove (optional - leave unselected to deduct without specifying serials).';
+            }
+        }
     } else {
         document.getElementById('quick-serial-section').classList.add('hidden');
     }
@@ -1607,6 +1638,23 @@ function loadQuickSerialNumbers(itemId, adjustmentType) {
                     `;
                 } else {
                     // For deducting stock, show existing serials to select
+                    // Add option to deduct without specifying serials
+                    const noSerialOption = document.createElement('label');
+                    noSerialOption.className = 'flex items-center text-sm p-2 bg-gray-50 rounded border-b border-gray-200';
+                    noSerialOption.innerHTML = `
+                        <input type="checkbox" id="no-serial-deduction" 
+                               class="rounded border-gray-300 text-solar-blue focus:ring-solar-blue mr-2"
+                               onchange="toggleSerialSelection(this)">
+                        <span class="font-medium text-gray-700">Deduct without specifying serials (automatic adjustment)</span>
+                    `;
+                    container.appendChild(noSerialOption);
+                    
+                    // Add separator
+                    const separator = document.createElement('div');
+                    separator.className = 'text-xs text-gray-500 text-center py-1';
+                    separator.textContent = 'OR select specific serials:';
+                    container.appendChild(separator);
+                    
                     data.serials.forEach(serial => {
                         const checkbox = document.createElement('label');
                         checkbox.className = 'flex items-center text-sm';
@@ -1630,12 +1678,29 @@ function loadQuickSerialNumbers(itemId, adjustmentType) {
         });
 }
 
+function toggleSerialSelection(noSerialCheckbox) {
+    const serialCheckboxes = document.querySelectorAll('#quick-serial-checkboxes .serial-checkbox');
+    
+    if (noSerialCheckbox.checked) {
+        // If "no serial" is checked, uncheck all specific serial checkboxes
+        serialCheckboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+}
+
 function validateQuickSerialSelection() {
     const checkboxes = document.querySelectorAll('#quick-serial-checkboxes .serial-checkbox:checked');
     const adjustmentAmount = parseInt(document.getElementById('quick-adjustment-amount').value);
+    const noSerialCheckbox = document.getElementById('no-serial-deduction');
+    
+    // If specific serials are selected, uncheck the "no serial" option
+    if (checkboxes.length > 0 && noSerialCheckbox) {
+        noSerialCheckbox.checked = false;
+    }
     
     if (checkboxes.length > adjustmentAmount) {
-        alert(`You can only select ${adjustmentAmount} serial number(s). Please uncheck some selections.`);
+        alert(`You can only select up to ${adjustmentAmount} serial number(s). Please uncheck some selections or leave all unselected to deduct without specifying serials.`);
         // Uncheck the last selected checkbox
         checkboxes[checkboxes.length - 1].checked = false;
     }
@@ -1656,13 +1721,18 @@ function validateQuickStockForm() {
         return false;
     }
     
-    // For deducting stock, validate serial selection
+    // For deducting stock, validate serial selection (optional)
     if (adjustmentType === 'deduct') {
         const checkboxes = document.querySelectorAll('#quick-serial-checkboxes .serial-checkbox:checked');
-        if (checkboxes.length !== adjustmentAmount) {
-            alert(`Please select exactly ${adjustmentAmount} serial number(s) to remove.`);
+        const noSerialCheckbox = document.getElementById('no-serial-deduction');
+        
+        // If specific serials are selected, validate the count
+        if (checkboxes.length > 0 && checkboxes.length !== adjustmentAmount) {
+            alert(`You selected ${checkboxes.length} serial number(s) but want to deduct ${adjustmentAmount}. Please select exactly ${adjustmentAmount} serial number(s) or use the "Deduct without specifying serials" option.`);
             return false;
         }
+        
+        // If neither specific serials nor "no serial" option is selected, that's fine (default behavior)
     }
     
     return true;
@@ -1752,7 +1822,94 @@ document.addEventListener('DOMContentLoaded', function() {
         // Initialize enhanced select dropdowns
         initializeEnhancedSelects();
     }
+    
+    // Initialize model dropdown functionality (works on all pages)
+    initializeModelDropdown();
 });
+
+// Initialize model dropdown functionality
+function initializeModelDropdown() {
+    const modelSelect = document.getElementById('model');
+    const customModelInput = document.getElementById('custom-model');
+    const brandInput = document.getElementById('brand');
+    
+    // Debug logging
+    console.log('Initializing model dropdown:', {
+        modelSelect: !!modelSelect,
+        customModelInput: !!customModelInput,
+        brandInput: !!brandInput
+    });
+    
+    if (modelSelect && customModelInput && brandInput) {
+        // Handle model selection change
+        modelSelect.addEventListener('change', function() {
+            console.log('Model selection changed to:', this.value);
+            if (this.value === 'Custom') {
+                customModelInput.classList.remove('hidden');
+                customModelInput.required = true;
+                customModelInput.focus();
+                console.log('Custom model input shown');
+            } else {
+                customModelInput.classList.add('hidden');
+                customModelInput.required = false;
+                customModelInput.value = '';
+                console.log('Custom model input hidden');
+            }
+        });
+        
+        // Handle brand input change to update model options
+        brandInput.addEventListener('input', function() {
+            const brandValue = this.value.trim();
+            const modelSelect = document.getElementById('model');
+            
+            if (brandValue === '') {
+                // If no brand, show "No Model" as default option
+                modelSelect.innerHTML = `
+                    <option value="">Select Model</option>
+                    <option value="No Model" selected>No Model</option>
+                    <option value="Custom">Custom Model</option>
+                `;
+                // Hide custom input if it was shown
+                customModelInput.classList.add('hidden');
+                customModelInput.required = false;
+            } else {
+                // If brand is entered, reset to default selection
+                modelSelect.innerHTML = `
+                    <option value="">Select Model</option>
+                    <option value="No Model">No Model</option>
+                    <option value="Custom">Custom Model</option>
+                `;
+            }
+        });
+        
+        // Initialize on page load
+        if (brandInput.value.trim() === '') {
+            modelSelect.innerHTML = `
+                <option value="">Select Model</option>
+                <option value="No Model" selected>No Model</option>
+                <option value="Custom">Custom Model</option>
+            `;
+        }
+        
+        // Show custom input if "Custom" is already selected
+        if (modelSelect.value === 'Custom') {
+            customModelInput.classList.remove('hidden');
+            customModelInput.required = true;
+            console.log('Custom model input shown on page load');
+        }
+        
+        console.log('Model dropdown initialized successfully');
+    } else {
+        console.log('Model dropdown elements not found');
+    }
+}
+
+// Initialize immediately when script loads (fallback)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeModelDropdown);
+} else {
+    initializeModelDropdown();
+}
 
 // Initialize enhanced select dropdowns
 function initializeEnhancedSelects() {
@@ -1991,6 +2148,24 @@ function focusInventorySearch() {
         searchInput.focus();
         searchInput.select();
     }
+}
+
+// Form validation for model field
+function validateModelForm() {
+    const modelSelect = document.getElementById('model');
+    const customModelInput = document.getElementById('custom-model');
+    
+    if (modelSelect && customModelInput) {
+        if (modelSelect.value === 'Custom') {
+            if (!customModelInput.value.trim()) {
+                alert('Please enter a custom model name.');
+                customModelInput.focus();
+                return false;
+            }
+        }
+    }
+    
+    return true;
 }
 
 // Print inventory report functionality
@@ -2254,6 +2429,38 @@ function printInventoryReport(type, categoryId = null, categoryName = null) {
     #export-menu {
         max-height: 75vh;
     }
+}
+
+/* Model dropdown custom input styling */
+#custom-model {
+    transition: all 0.3s ease;
+    border-left: 3px solid #3b82f6;
+    background-color: #f8fafc;
+}
+
+#custom-model:focus {
+    border-left-color: #1d4ed8;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    background-color: #ffffff;
+}
+
+#custom-model:not(.hidden) {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#model-container {
+    position: relative;
 }
 
 /* Shadow effects to indicate scrollable content */

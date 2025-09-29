@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo isset($page_title) ? $page_title . ' - ' : ''; ?>4NSOLAR ELECTRICZ</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="images/logo.png">
+    <link rel="shortcut icon" type="image/png" href="images/logo.png">
+    <link rel="apple-touch-icon" href="images/logo.png">
     <?php 
     // Determine if we're in the payroll section
     $payroll_pages = ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php'];
