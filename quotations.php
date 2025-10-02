@@ -108,6 +108,45 @@ if ($action === 'get_payment_details' && isset($_GET['payment_id'])) {
     exit();
 }
 
+// Handle AJAX request for inventory item details
+if ($action === 'get_inventory_item' && isset($_GET['item_id'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $item_id = intval($_GET['item_id']);
+        
+        // Get inventory item details
+        $stmt = $pdo->prepare("SELECT * FROM inventory_items WHERE id = ?");
+        $stmt->execute([$item_id]);
+        $item = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($item) {
+            // Get categories for dropdown
+            $stmt = $pdo->prepare("SELECT id, name FROM categories ORDER BY name");
+            $stmt->execute();
+            $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            $item['categories'] = $categories;
+            
+            echo json_encode([
+                'success' => true,
+                'item' => $item
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Inventory item not found'
+            ]);
+        }
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error loading inventory item: ' . $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
 // Handle AJAX request for plan details
 if ($action === 'get_plan_details' && isset($_GET['plan_id'])) {
     header('Content-Type: application/json');
@@ -444,6 +483,18 @@ if ($_POST) {
                     exit();
                 } else {
                     $error = 'Failed to update quotation status.';
+                }
+            }
+            break;
+            
+        case 'update_inventory_item':
+            if (isset($_POST['inventory_item_id'])) {
+                $result = updateInventoryItem($_POST['inventory_item_id'], $_POST);
+                if ($result['success']) {
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Inventory item updated successfully!'));
+                    exit();
+                } else {
+                    $error = $result['message'];
                 }
             }
             break;
@@ -1299,12 +1350,21 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <span id="total_<?php echo $item['id']; ?>"><?php echo formatCurrency($item['total_amount']); ?></span>
                             </td>
                             <td class="px-3 py-4 text-center">
-                                <a href="?action=remove_quote_item&quote_id=<?php echo $quote['id']; ?>&item_id=<?php echo $item['id']; ?>" 
-                                   class="text-red-600 hover:text-red-900 p-2"
-                                   onclick="return confirm('Remove this item?')"
-                                   title="Remove item">
-                                    <i class="fas fa-trash"></i>
-                                </a>
+                                <div class="flex justify-center space-x-2">
+                                    <?php if (isset($item['inventory_item_id']) && $item['inventory_item_id']): ?>
+                                    <button onclick="editInventoryItem(<?php echo $item['inventory_item_id']; ?>, '<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>')" 
+                                            class="text-blue-600 hover:text-blue-900 p-2"
+                                            title="Edit inventory item">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                    <a href="?action=remove_quote_item&quote_id=<?php echo $quote['id']; ?>&item_id=<?php echo $item['id']; ?>" 
+                                       class="text-red-600 hover:text-red-900 p-2"
+                                       onclick="return confirm('Remove this item?')"
+                                       title="Remove item">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -2221,6 +2281,11 @@ function showProfitError(message) {
                                 <div class="text-gray-500"><?php echo htmlspecialchars($item['model'] ?? $item['custom_item_name'] ?? ''); ?></div>
                                 <?php if (!empty($item['category'])): ?>
                                 <div class="text-xs text-blue-600 mt-1"><?php echo htmlspecialchars($item['category']); ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($item['serial_numbers'])): ?>
+                                <div class="text-xs text-green-600 mt-1">
+                                    <strong>Serials:</strong> <?php echo htmlspecialchars($item['serial_numbers']); ?>
+                                </div>
                                 <?php endif; ?>
                             </td>
                             <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
@@ -4251,6 +4316,146 @@ function exportFilteredQuotations() {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
 }
+
+// Edit inventory item functionality
+function editInventoryItem(itemId, itemName) {
+    // Show loading state
+    document.getElementById('edit-item-modal').classList.remove('hidden');
+    document.getElementById('edit-item-content').innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>Loading item details...</p></div>';
+    
+    // Fetch item details
+    fetch(`?action=get_inventory_item&item_id=${itemId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayEditForm(data.item);
+            } else {
+                document.getElementById('edit-item-content').innerHTML = `
+                    <div class="text-center py-8 text-red-600">
+                        <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                        <p>Error loading item: ${data.message}</p>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('edit-item-content').innerHTML = `
+                <div class="text-center py-8 text-red-600">
+                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                    <p>Error loading item details</p>
+                </div>
+            `;
+        });
+}
+
+function displayEditForm(item) {
+    const content = `
+        <div class="mb-4">
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Edit Inventory Item</h3>
+            <p class="text-sm text-gray-600">${item.brand} ${item.model}</p>
+        </div>
+        
+        <form id="edit-inventory-form" method="POST" action="?action=update_inventory_item&quote_id=<?php echo $quote_id; ?>" class="space-y-4">
+            <input type="hidden" name="inventory_item_id" value="${item.id}">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                    <input type="text" name="brand" value="${item.brand}" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Model</label>
+                    <input type="text" name="model" value="${item.model}" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Size/Specification</label>
+                <input type="text" name="size_specification" value="${item.size_specification || ''}"
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Base Price</label>
+                    <input type="number" name="base_price" value="${item.base_price}" step="0.01" min="0" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Selling Price</label>
+                    <input type="number" name="selling_price" value="${item.selling_price}" step="0.01" min="0" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
+                    <input type="number" name="stock_quantity" value="${item.stock_quantity}" min="0" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                    <select name="category_id" required
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">Select Category</option>
+                        ${item.categories.map(cat => 
+                            `<option value="${cat.id}" ${cat.id == item.category_id ? 'selected' : ''}>${cat.name}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <label class="flex items-center">
+                    <input type="checkbox" name="generate_serials" value="1" ${item.generate_serials ? 'checked' : ''}
+                           class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <span class="ml-2 text-sm text-gray-700">Generate Serial Numbers</span>
+                </label>
+                <label class="flex items-center">
+                    <input type="checkbox" name="is_active" value="1" ${item.is_active ? 'checked' : ''}
+                           class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <span class="ml-2 text-sm text-gray-700">Active</span>
+                </label>
+            </div>
+            
+            <div class="flex justify-end space-x-3 pt-4">
+                <button type="button" onclick="closeEditModal()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Cancel
+                </button>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
+                    Update Item
+                </button>
+            </div>
+        </form>
+    `;
+    
+    document.getElementById('edit-item-content').innerHTML = content;
+}
+
+function closeEditModal() {
+    document.getElementById('edit-item-modal').classList.add('hidden');
+}
 </script>
+
+<!-- Edit Inventory Item Modal -->
+<div id="edit-item-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Edit Inventory Item</h3>
+                <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="edit-item-content">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
 
 <?php include 'includes/footer.php'; ?>

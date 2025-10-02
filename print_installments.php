@@ -486,12 +486,7 @@ if (!$installment_plan) {
                             <span class="text-gray-600">Frequency: </span>
                             <span class="font-medium"><?php echo ucfirst($installment_plan['payment_frequency']); ?></span>
                         </div>
-                        <?php if ($installment_plan['interest_rate'] > 0): ?>
-                        <div>
-                            <span class="text-gray-600">Interest Rate: </span>
-                            <span class="font-medium"><?php echo $installment_plan['interest_rate']; ?>%</span>
-                        </div>
-                        <?php endif; ?>
+                        
                         <div>
                             <span class="text-gray-600">Start Date: </span>
                             <span class="font-medium"><?php echo date('M j, Y', strtotime($installment_plan['start_date'])); ?></span>

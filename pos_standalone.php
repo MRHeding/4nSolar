@@ -1,0 +1,833 @@
+<?php
+require_once 'includes/config.php';
+require_once 'includes/auth.php';
+require_once 'includes/pos.php';
+require_once 'includes/inventory.php';
+
+if (!isLoggedIn()) {
+    header("Location: login.php");
+    exit();
+}
+
+$message = '';
+$error = '';
+$action = $_GET['action'] ?? 'new';
+$sale_id = $_GET['id'] ?? null;
+
+// Handle form submissions
+if ($_POST) {
+    switch ($action) {
+        case 'create':
+            $available_inventory = getPOSInventoryItems();
+            if (empty($available_inventory)) {
+                $error = 'Cannot create sale: No inventory items available.';
+            } else {
+                $sale_id = createPOSSale($_POST['customer_name'] ?? null, $_POST['customer_phone'] ?? null);
+                if ($sale_id) {
+                    $message = 'New sale created successfully!';
+                    $action = 'sale';
+                } else {
+                    $error = 'Failed to create sale.';
+                }
+            }
+            break;
+            
+        case 'add_item':
+            if ($sale_id && isset($_POST['inventory_item_id']) && isset($_POST['quantity'])) {
+                $selected_serials = isset($_POST['selected_serials']) ? $_POST['selected_serials'] : [];
+                $result = addPOSSaleItemWithSerials($sale_id, $_POST['inventory_item_id'], $_POST['quantity'], $_POST['discount_percentage'] ?? 0, $selected_serials);
+                if ($result['success']) {
+                    header("Location: ?action=sale&id=" . $sale_id . "&success=item_added");
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
+        case 'complete_sale':
+            if ($sale_id && isset($_POST['payment_method']) && isset($_POST['amount_paid'])) {
+                $result = completePOSSaleWithSerials($sale_id, $_POST['payment_method'], $_POST['amount_paid'], $_POST['customer_name'] ?? null, $_POST['customer_phone'] ?? null);
+                if ($result['success']) {
+                    $message = $result['message'] . " Change: " . formatCurrency($result['change_amount']);
+                    header("Location: ?action=receipt&id=" . $sale_id);
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+    }
+}
+
+// Handle delete actions
+if ($action == 'remove_item' && isset($_GET['item_id'])) {
+    if (removePOSSaleItem($_GET['item_id'])) {
+        header("Location: ?action=sale&id=" . $sale_id . "&success=item_removed");
+        exit();
+    } else {
+        $error = 'Failed to remove item.';
+    }
+}
+
+// Get data based on action
+switch ($action) {
+    case 'sale':
+    case 'receipt':
+        if ($sale_id) {
+            $sale = getPOSSaleWithSerials($sale_id);
+            if (!$sale) {
+                $error = 'Sale not found.';
+                $action = 'new';
+            } else {
+                $inventory_items = getPOSInventoryItems();
+            }
+        }
+        break;
+        
+    default:
+        $inventory_items = getPOSInventoryItems();
+        $stats = getPOSStats(date('Y-m-d'), date('Y-m-d'));
+        break;
+}
+
+$has_inventory = !empty($inventory_items);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS - Point of Sale System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .pos-container { max-width: 1400px; margin: 0 auto; }
+        .item-card { transition: all 0.2s; }
+        .item-card:hover { transform: translateY(-2px); }
+        @media print {
+            body * { visibility: hidden; }
+            .print-content, .print-content * { visibility: visible; }
+            .print-content { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="pos-container p-4">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800">Point of Sale System</h1>
+                    <p class="text-gray-600">4nSolar Equipment & Services</p>
+                </div>
+                <div class="flex space-x-3">
+                    <a href="dashboard.php" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
+                        <i class="fas fa-home mr-2"></i>Dashboard
+                    </a>
+                    <a href="pos.php" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                        <i class="fas fa-cog mr-2"></i>Full POS
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <?php if ($message): ?>
+        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+            <?php echo htmlspecialchars($message); ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($error): ?>
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            <?php echo htmlspecialchars($error); ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!$has_inventory && in_array($action, ['new', 'sale'])): ?>
+        <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
+            <strong>Warning:</strong> No inventory items available for sale. Please add inventory items with stock.
+        </div>
+        <?php endif; ?>
+
+        <?php if ($action == 'new'): ?>
+        <!-- New Sale Screen -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Stats -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">Today's Summary</h2>
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Sales:</span>
+                            <span class="font-bold"><?php echo $stats['today_sales']; ?></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Revenue:</span>
+                            <span class="font-bold text-green-600"><?php echo formatCurrency($stats['today_revenue']); ?></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Available Items:</span>
+                            <span class="font-bold"><?php echo count($inventory_items); ?></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Start Sale Form -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">Start New Sale</h2>
+                    <form method="POST" action="?action=create" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Customer Name (Optional)</label>
+                                <input type="text" name="customer_name" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Enter customer name">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Customer Phone (Optional)</label>
+                                <input type="tel" name="customer_phone" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Enter phone number">
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" <?php echo !$has_inventory ? 'disabled' : ''; ?>
+                                    class="<?php echo $has_inventory ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'; ?> text-white px-6 py-3 rounded-lg transition text-lg">
+                                <i class="fas fa-plus mr-2"></i>Start Sale
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <?php elseif (($action == 'sale') && isset($sale)): ?>
+        <!-- Sale Screen -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Sale Items -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">Sale Items</h2>
+                        <div class="flex space-x-2">
+                            <button onclick="document.getElementById('add-item-modal').classList.remove('hidden')" 
+                                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">
+                                <i class="fas fa-plus mr-2"></i>Add Item
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <?php if (!empty($sale['items'])): ?>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">Qty</th>
+                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Unit Price</th>
+                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-20">Disc %</th>
+                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Total</th>
+                                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                <?php foreach ($sale['items'] as $item): ?>
+                                <tr>
+                                    <td class="px-4 py-4">
+                                        <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
+                                        <div class="text-xs text-gray-500"><?php echo htmlspecialchars($item['size_specification']); ?></div>
+                                        <?php if (!empty($item['serial_numbers'])): ?>
+                                        <div class="text-xs text-green-600 mt-1">
+                                            <strong>Serials:</strong> <?php echo htmlspecialchars($item['serial_numbers']); ?>
+                                        </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="px-3 py-4 text-center">
+                                        <span class="text-sm"><?php echo $item['quantity']; ?></span>
+                                    </td>
+                                    <td class="px-3 py-4 text-sm text-gray-900">
+                                        <?php echo formatCurrency($item['unit_price']); ?>
+                                    </td>
+                                    <td class="px-3 py-4 text-sm text-gray-900">
+                                        <?php echo $item['discount_percentage']; ?>%
+                                    </td>
+                                    <td class="px-3 py-4 text-sm font-medium text-gray-900">
+                                        <?php echo formatCurrency($item['total_amount']); ?>
+                                    </td>
+                                    <td class="px-3 py-4 text-center">
+                                        <a href="?action=remove_item&id=<?php echo $sale['id']; ?>&item_id=<?php echo $item['id']; ?>" 
+                                           class="text-red-600 hover:text-red-900 p-2"
+                                           onclick="return confirm('Remove this item?')"
+                                           title="Remove item">
+                                            <i class="fas fa-trash"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php else: ?>
+                    <p class="text-gray-500 text-center py-8">No items added to this sale yet.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
+            <!-- Sale Summary & Payment -->
+            <div>
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Sale Summary</h2>
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Subtotal:</span>
+                            <span class="font-medium"><?php echo formatCurrency($sale['subtotal']); ?></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Discount:</span>
+                            <span class="font-medium text-green-600">-<?php echo formatCurrency($sale['total_discount']); ?></span>
+                        </div>
+                        <div class="flex justify-between text-lg font-bold border-t pt-3">
+                            <span>Total:</span>
+                            <span class="text-blue-600"><?php echo formatCurrency($sale['total_amount']); ?></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <?php if ($sale['status'] === 'pending' && !empty($sale['items'])): ?>
+                <!-- Payment Form -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">Process Payment</h2>
+                    <form method="POST" action="?action=complete_sale&id=<?php echo $sale['id']; ?>" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                            <select name="payment_method" required class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <option value="cash">Cash</option>
+                                <option value="credit_card">Credit Card</option>
+                                <option value="debit_card">Debit Card</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                                <option value="check">Check</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Amount Paid</label>
+                            <input type="number" step="0.01" name="amount_paid" value="<?php echo $sale['total_amount']; ?>" required
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Customer Name</label>
+                            <input type="text" name="customer_name" value="<?php echo htmlspecialchars($sale['customer_name'] ?? ''); ?>"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Customer Phone</label>
+                            <input type="tel" name="customer_phone" value="<?php echo htmlspecialchars($sale['customer_phone'] ?? ''); ?>"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <button type="submit" class="w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition font-semibold">
+                            <i class="fas fa-credit-card mr-2"></i>Complete Sale
+                        </button>
+                    </form>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Add Item Modal -->
+        <div id="add-item-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div class="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+                <div class="mt-3">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Add Item to Sale</h3>
+                    
+                    <!-- Search Bar -->
+                    <div class="mb-4">
+                        <input type="text" id="item-search" placeholder="Search by brand, model, or category..." 
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               oninput="filterItems()">
+                    </div>
+                    
+                    <!-- Items Grid -->
+                    <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                        <?php if (!empty($inventory_items)): ?>
+                        <div id="items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+                            <?php foreach ($inventory_items as $inv_item): ?>
+                            <div class="item-card border border-gray-200 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 
+                                 data-item-id="<?php echo $inv_item['id']; ?>"
+                                 data-brand="<?php echo strtolower($inv_item['brand']); ?>"
+                                 data-model="<?php echo strtolower($inv_item['model']); ?>"
+                                 data-category="<?php echo strtolower($inv_item['category_name'] ?? ''); ?>"
+                                 data-price="<?php echo $inv_item['selling_price']; ?>"
+                                 data-stock="<?php echo $inv_item['stock_quantity']; ?>"
+                                 data-generates-serials="<?php echo $inv_item['generate_serials'] ? '1' : '0'; ?>"
+                                 onclick="selectItem(this)">
+                                
+                                <div class="flex items-center space-x-3">
+                                    <div class="flex-shrink-0">
+                                        <img class="h-12 w-12 rounded-lg object-cover border" 
+                                             src="<?php echo htmlspecialchars(getProductImageUrl($inv_item['image_path'])); ?>" 
+                                             alt="<?php echo htmlspecialchars($inv_item['brand'] . ' ' . $inv_item['model']); ?>">
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-sm font-medium text-gray-900 truncate">
+                                            <?php echo htmlspecialchars($inv_item['brand']); ?>
+                                        </div>
+                                        <div class="text-sm text-gray-500 truncate">
+                                            <?php echo htmlspecialchars($inv_item['model']); ?>
+                                        </div>
+                                        <div class="text-xs text-gray-400">
+                                            <?php echo htmlspecialchars($inv_item['category_name'] ?? 'N/A'); ?>
+                                        </div>
+                                        <?php if ($inv_item['generate_serials'] && $inv_item['available_serials'] > 0): ?>
+                                        <div class="text-xs text-blue-600">
+                                            <i class="fas fa-barcode mr-1"></i><?php echo $inv_item['available_serials']; ?> serials available
+                                        </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-sm font-medium text-gray-900">
+                                            <?php echo formatCurrency($inv_item['selling_price']); ?>
+                                        </div>
+                                        <div class="text-xs <?php echo $inv_item['stock_quantity'] > 0 ? 'text-green-600' : 'text-red-600'; ?>">
+                                            Stock: <?php echo $inv_item['stock_quantity']; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php else: ?>
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-box-open text-3xl mb-3"></i>
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">No Inventory Available</h3>
+                            <p class="text-sm text-gray-500 mb-4">There are no items with stock available for sale.</p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <!-- Selected Item Form -->
+                    <form id="add-item-form" method="POST" action="?action=add_item&id=<?php echo $sale['id']; ?>" class="hidden" onsubmit="return validateFormSubmission()">
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <h4 class="font-medium text-gray-900 mb-2">Selected Item:</h4>
+                            <div id="selected-item-display" class="text-sm text-gray-700"></div>
+                        </div>
+                        
+                        <input type="hidden" id="selected_inventory_item_id" name="inventory_item_id">
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                                <input type="number" min="1" id="quantity" name="quantity" required value="1"
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       oninput="updateTotalPreview(); loadAvailableSerials()">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Discount %</label>
+                                <input type="number" min="0" max="100" step="0.01" id="discount_percentage" name="discount_percentage" value="0"
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       oninput="updateTotalPreview()">
+                            </div>
+                        </div>
+                        
+                        <!-- Serial Number Selection -->
+                        <div id="serial-selection-section" class="mb-4 hidden">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Select Serial Numbers</label>
+                            <div id="serial-selection-status" class="text-sm text-blue-600 mb-2 font-medium">
+                                <!-- Status will be updated here -->
+                            </div>
+                            <div id="available-serials" class="border border-gray-300 rounded-md p-3 max-h-32 overflow-y-auto">
+                                <!-- Serial numbers will be loaded here -->
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Select the specific serial numbers to sell</p>
+                        </div>
+                        
+                        <div id="total-preview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 hidden">
+                            <div class="flex justify-between text-sm">
+                                <span>Subtotal:</span>
+                                <span id="subtotal-amount">₱0.00</span>
+                            </div>
+                            <div class="flex justify-between text-sm text-green-600">
+                                <span>Discount:</span>
+                                <span id="discount-amount">₱0.00</span>
+                            </div>
+                            <hr class="my-2">
+                            <div class="flex justify-between font-medium">
+                                <span>Total:</span>
+                                <span id="total-amount">₱0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3">
+                            <button type="button" onclick="clearSelection()"
+                                    class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                                Clear Selection
+                            </button>
+                            <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
+                                Add to Sale
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div class="flex justify-end mt-4">
+                        <button type="button" onclick="document.getElementById('add-item-modal').classList.add('hidden')"
+                                class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <?php elseif (($action == 'receipt') && isset($sale)): ?>
+        <!-- Receipt Screen -->
+        <div class="print-content bg-white rounded-lg shadow p-8 max-w-2xl mx-auto">
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">4nSolar</h2>
+                <p class="text-gray-600">Solar Equipment & Services</p>
+                <p class="text-sm text-gray-500">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></p>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-6 text-sm">
+                <div>
+                    <p><strong>Date:</strong> <?php echo date('M j, Y g:i A', strtotime($sale['completed_at'])); ?></p>
+                    <p><strong>Cashier:</strong> <?php echo htmlspecialchars($sale['cashier_name']); ?></p>
+                </div>
+                <div>
+                    <?php if ($sale['customer_name']): ?>
+                    <p><strong>Customer:</strong> <?php echo htmlspecialchars($sale['customer_name']); ?></p>
+                    <?php if ($sale['customer_phone']): ?>
+                    <p><strong>Phone:</strong> <?php echo htmlspecialchars($sale['customer_phone']); ?></p>
+                    <?php endif; ?>
+                    <?php else: ?>
+                    <p><strong>Customer:</strong> Walk-in</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
+            <table class="w-full mb-6">
+                <thead>
+                    <tr class="border-b">
+                        <th class="text-left py-2">Item</th>
+                        <th class="text-center py-2 w-16">Qty</th>
+                        <th class="text-right py-2 w-24">Price</th>
+                        <th class="text-right py-2 w-20">Disc %</th>
+                        <th class="text-right py-2 w-24">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($sale['items'] as $item): ?>
+                    <tr class="border-b">
+                        <td class="py-2">
+                            <div class="font-medium"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
+                        </td>
+                        <td class="text-center py-2"><?php echo $item['quantity']; ?></td>
+                        <td class="text-right py-2"><?php echo formatCurrency($item['unit_price']); ?></td>
+                        <td class="text-right py-2">
+                            <?php if ($item['discount_percentage'] > 0): ?>
+                            <span class="text-green-600 font-medium"><?php echo $item['discount_percentage']; ?>%</span>
+                            <?php else: ?>
+                            <span class="text-gray-400">0%</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-right py-2"><?php echo formatCurrency($item['total_amount']); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            
+            <div class="text-right space-y-1 mb-6">
+                <div class="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span><?php echo formatCurrency($sale['subtotal']); ?></span>
+                </div>
+                <?php if ($sale['total_discount'] > 0): ?>
+                <div class="flex justify-between text-green-600">
+                    <span>Discount:</span>
+                    <span>-<?php echo formatCurrency($sale['total_discount']); ?></span>
+                </div>
+                <?php endif; ?>
+                <div class="flex justify-between font-bold text-lg border-t pt-2">
+                    <span>Total:</span>
+                    <span><?php echo formatCurrency($sale['total_amount']); ?></span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Paid (<?php echo ucfirst(str_replace('_', ' ', $sale['payment_method'])); ?>):</span>
+                    <span><?php echo formatCurrency($sale['amount_paid']); ?></span>
+                </div>
+                <?php if ($sale['change_amount'] > 0): ?>
+                <div class="flex justify-between font-medium">
+                    <span>Change:</span>
+                    <span><?php echo formatCurrency($sale['change_amount']); ?></span>
+                </div>
+                <?php endif; ?>
+            </div>
+            
+            <div class="text-center text-sm text-gray-500 mb-8">
+                <p>Thank you for your business!</p>
+                <p>For warranty and support, please keep this receipt.</p>
+            </div>
+            
+            <!-- Signature Section -->
+            <div class="mt-8 pt-6 border-t border-gray-300">
+                <div class="flex justify-center">
+                    <div class="text-center" style="width: 45%;">
+                        <div class="border-b border-gray-400 mb-2 pb-8"></div>
+                        <p class="text-sm text-gray-700 font-medium">Cashier Authorized Representative</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-center mt-6">
+            <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">
+                <i class="fas fa-print mr-2"></i>Print Receipt
+            </button>
+            <a href="?" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition ml-4">
+                <i class="fas fa-plus mr-2"></i>New Sale
+            </a>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <script>
+    let selectedItemData = null;
+
+    function filterItems() {
+        const searchTerm = document.getElementById('item-search').value.toLowerCase();
+        const itemCards = document.querySelectorAll('.item-card');
+        
+        itemCards.forEach(card => {
+            const brand = card.getAttribute('data-brand');
+            const model = card.getAttribute('data-model');
+            const category = card.getAttribute('data-category');
+            
+            const matchesSearch = brand.includes(searchTerm) || 
+                                 model.includes(searchTerm) || 
+                                 category.includes(searchTerm);
+            
+            if (matchesSearch) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    function selectItem(cardElement) {
+        // Remove previous selection
+        document.querySelectorAll('.item-card').forEach(card => {
+            card.classList.remove('bg-blue-100', 'border-blue-500');
+        });
+        
+        // Mark current selection
+        cardElement.classList.add('bg-blue-100', 'border-blue-500');
+        
+        // Store selected item data
+        const dataGeneratesSerials = cardElement.getAttribute('data-generates-serials');
+        
+        selectedItemData = {
+            id: cardElement.getAttribute('data-item-id'),
+            brand: cardElement.querySelector('.text-sm.font-medium').textContent,
+            model: cardElement.querySelector('.text-sm.text-gray-500').textContent,
+            price: parseFloat(cardElement.getAttribute('data-price')),
+            stock: parseInt(cardElement.getAttribute('data-stock')),
+            generatesSerials: dataGeneratesSerials === '1'
+        };
+        
+        // Update form
+        document.getElementById('selected_inventory_item_id').value = selectedItemData.id;
+        document.getElementById('selected-item-display').innerHTML = 
+            `<strong>${selectedItemData.brand}</strong> - ${selectedItemData.model}<br>
+             Price: ${formatCurrency(selectedItemData.price)} | Available: ${selectedItemData.stock}`;
+        
+        // Show form and update preview
+        document.getElementById('add-item-form').classList.remove('hidden');
+        updateTotalPreview();
+        
+        // Update quantity max
+        document.getElementById('quantity').max = selectedItemData.stock;
+        
+        // Load available serials if item generates them
+        if (selectedItemData.generatesSerials) {
+            loadAvailableSerials();
+        } else {
+            document.getElementById('serial-selection-section').classList.add('hidden');
+        }
+    }
+
+    function clearSelection() {
+        // Clear visual selection
+        document.querySelectorAll('.item-card').forEach(card => {
+            card.classList.remove('bg-blue-100', 'border-blue-500');
+        });
+        
+        // Hide form and serial selection
+        document.getElementById('add-item-form').classList.add('hidden');
+        document.getElementById('serial-selection-section').classList.add('hidden');
+        selectedItemData = null;
+    }
+
+    function loadAvailableSerials() {
+        if (!selectedItemData || !selectedItemData.generatesSerials) {
+            return;
+        }
+        
+        const quantity = parseInt(document.getElementById('quantity').value) || 1;
+        
+        // Fetch available serials via AJAX
+        fetch(`get_available_serials.php?item_id=${selectedItemData.id}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displaySerialSelection(data.serials, quantity);
+                } else {
+                    console.error('Failed to load serials:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading serials:', error);
+            });
+    }
+
+    function displaySerialSelection(serials, quantity) {
+        const container = document.getElementById('available-serials');
+        const section = document.getElementById('serial-selection-section');
+        
+        if (serials.length === 0) {
+            container.innerHTML = '<p class="text-gray-500 text-sm">No serial numbers available</p>';
+            section.classList.add('hidden');
+            return;
+        }
+        
+        if (quantity > serials.length) {
+            container.innerHTML = `<p class="text-red-500 text-sm">Only ${serials.length} serial numbers available, but ${quantity} requested</p>`;
+            section.classList.add('hidden');
+            return;
+        }
+        
+        let html = '<div class="space-y-2">';
+        serials.forEach(serial => {
+            html += `
+                <label class="flex items-center">
+                    <input type="checkbox" name="selected_serials[]" value="${serial.serial_number}" 
+                           class="serial-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                           onchange="validateSerialSelection()">
+                    <span class="ml-2 text-sm font-mono">${serial.serial_number}</span>
+                </label>
+            `;
+        });
+        html += '</div>';
+        
+        container.innerHTML = html;
+        section.classList.remove('hidden');
+        
+        // Update submit button state after displaying serials
+        updateSubmitButtonState();
+    }
+
+    function validateSerialSelection() {
+        const quantity = parseInt(document.getElementById('quantity').value) || 1;
+        const checkboxes = document.querySelectorAll('.serial-checkbox:checked');
+        
+        if (checkboxes.length > quantity) {
+            alert(`You can only select ${quantity} serial number(s). Please uncheck some selections.`);
+            // Uncheck the last selected checkbox
+            checkboxes[checkboxes.length - 1].checked = false;
+        }
+        
+        // Update submit button state based on validation
+        updateSubmitButtonState();
+    }
+
+    function updateSubmitButtonState() {
+        const quantity = parseInt(document.getElementById('quantity').value) || 1;
+        const checkboxes = document.querySelectorAll('.serial-checkbox:checked');
+        const submitButton = document.querySelector('#add-item-form button[type="submit"]');
+        const serialSection = document.getElementById('serial-selection-section');
+        const statusElement = document.getElementById('serial-selection-status');
+        
+        // Check if this is a serialized item
+        if (selectedItemData && selectedItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
+            const selectedCount = checkboxes.length;
+            
+            // Update status message
+            if (statusElement) {
+                if (selectedCount === 0) {
+                    statusElement.textContent = `Please select ${quantity} serial number(s)`;
+                    statusElement.className = 'text-sm text-red-600 mb-2 font-medium';
+                } else if (selectedCount < quantity) {
+                    statusElement.textContent = `Selected ${selectedCount} of ${quantity} serial number(s)`;
+                    statusElement.className = 'text-sm text-orange-600 mb-2 font-medium';
+                } else if (selectedCount === quantity) {
+                    statusElement.textContent = `✓ Selected ${selectedCount} serial number(s) - Ready to add`;
+                    statusElement.className = 'text-sm text-green-600 mb-2 font-medium';
+                } else {
+                    statusElement.textContent = `Too many selected (${selectedCount}/${quantity})`;
+                    statusElement.className = 'text-sm text-red-600 mb-2 font-medium';
+                }
+            }
+            
+            if (checkboxes.length !== quantity) {
+                submitButton.disabled = true;
+                submitButton.textContent = `Select ${quantity} Serial Number(s)`;
+                submitButton.classList.add('bg-gray-400', 'cursor-not-allowed');
+                submitButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            } else {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Add to Sale';
+                submitButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                submitButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            }
+        } else {
+            // For non-serialized items, always enable the button
+            if (statusElement) {
+                statusElement.textContent = '';
+            }
+            submitButton.disabled = false;
+            submitButton.textContent = 'Add to Sale';
+            submitButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            submitButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        }
+    }
+
+    function updateTotalPreview() {
+        if (!selectedItemData) return;
+        
+        const quantity = parseInt(document.getElementById('quantity').value) || 0;
+        const discountPercent = parseFloat(document.getElementById('discount_percentage').value) || 0;
+        
+        const subtotal = selectedItemData.price * quantity;
+        const discountAmount = subtotal * (discountPercent / 100);
+        const total = subtotal - discountAmount;
+        
+        document.getElementById('subtotal-amount').textContent = formatCurrency(subtotal);
+        document.getElementById('discount-amount').textContent = formatCurrency(discountAmount);
+        document.getElementById('total-amount').textContent = formatCurrency(total);
+        
+        document.getElementById('total-preview').classList.remove('hidden');
+        
+        // Update submit button state when quantity changes
+        updateSubmitButtonState();
+    }
+
+    function validateFormSubmission() {
+        const quantity = parseInt(document.getElementById('quantity').value) || 1;
+        const checkboxes = document.querySelectorAll('.serial-checkbox:checked');
+        const serialSection = document.getElementById('serial-selection-section');
+        
+        // Check if this is a serialized item
+        if (selectedItemData && selectedItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
+            if (checkboxes.length !== quantity) {
+                alert(`Please select exactly ${quantity} serial number(s). Currently selected: ${checkboxes.length}`);
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    function formatCurrency(amount) {
+        return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    </script>
+</body>
+</html>
+
