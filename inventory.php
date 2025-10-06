@@ -867,17 +867,17 @@ include 'includes/header.php';
             </div>
             
             <div>
-                <label for="brand" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Brand</label>
+                <label for="brand" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
                 <input type="text" id="brand" name="brand" required
                        value="<?php echo isset($item) ? htmlspecialchars($item['brand']) : ''; ?>"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
             <div>
-                <label for="model" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><?php echo $action === 'edit' ? 'Description' : 'Model'; ?></label>
+                <label for="model" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Brand/Model</label>
                 <input type="text" id="model" name="model" required
                        value="<?php echo isset($item) ? htmlspecialchars($item['model']) : ''; ?>"
-                       placeholder="Enter model"
+                       placeholder="Enter brand model"
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
             </div>
             
@@ -953,9 +953,10 @@ include 'includes/header.php';
         </div>
         
         <div>
-            <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Full Description</label>
-            <textarea id="description" name="description" rows="3"
-                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"><?php echo isset($item) ? htmlspecialchars($item['description']) : ''; ?></textarea>
+            <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Brand</label>
+            <input type="text" id="description" name="description"
+                   value="<?php echo isset($item) ? htmlspecialchars($item['description']) : ''; ?>"
+                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
         </div>
         
         <div class="flex justify-end space-x-4">

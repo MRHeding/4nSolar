@@ -1034,8 +1034,11 @@ function formatCurrency(amount) {
 <!-- Receipt Content -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 max-w-2xl mx-auto print:shadow-none print:max-w-none">
     <div class="text-center mb-6">
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200">4nSolar</h2>
-        <p class="text-gray-600 dark:text-gray-400">Solar Equipment & Services</p>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200">4NSOLAR ELECTRICZ</h2>
+        <p class="text-gray-600 dark:text-gray-400">Solar Power Installation Services</p>
+        <p class="text-sm text-gray-500 mb-2">Your Trusted Partner in Solar Solutions</p>
+        <p class="text-xs text-gray-500 mb-2">NON VAT Reg TIN: 247-334-690-00001</p>
+        <p class="text-xs text-gray-500 mb-2">📧 info@4nsolar.com | 📞 +63 906 386 1728 | 📍 Zambonga City, Philippines</p>
         <p class="text-sm text-gray-500">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></p>
     </div>
     

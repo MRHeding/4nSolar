@@ -55,7 +55,7 @@ include 'includes/header.php';
 
 <div class="mb-6">
     <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Dashboard</h1>
-    <p class="text-gray-600 dark:text-gray-400">Welcome to 4NSOLAR ELECTRICZ Inventory Management System</p>
+    <p class="text-gray-600 dark:text-gray-400">Welcome to 4NSOLAR ELECTRICZ Business Management System</p>
 </div>
 
 <!-- Statistics Cards -->

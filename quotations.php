@@ -126,7 +126,13 @@ if ($action === 'get_inventory_item' && isset($_GET['item_id'])) {
             $stmt->execute();
             $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
+            // Get suppliers for dropdown
+            $stmt = $pdo->prepare("SELECT id, name FROM suppliers WHERE is_active = 1 ORDER BY name");
+            $stmt->execute();
+            $suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
             $item['categories'] = $categories;
+            $item['suppliers'] = $suppliers;
             
             echo json_encode([
                 'success' => true,
@@ -142,6 +148,60 @@ if ($action === 'get_inventory_item' && isset($_GET['item_id'])) {
         echo json_encode([
             'success' => false,
             'message' => 'Error loading inventory item: ' . $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
+// Handle AJAX request for checking stock availability
+if ($action === 'check_quote_stock' && isset($_GET['quote_id'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $quote_id = intval($_GET['quote_id']);
+        
+        // Get all items in this quote with stock information
+        $stmt = $pdo->prepare("SELECT qi.inventory_item_id, qi.quantity, 
+                                     i.brand, i.model, i.stock_quantity, i.generate_serials
+                              FROM quote_items qi 
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
+                              WHERE qi.quote_id = ? AND qi.inventory_item_id IS NOT NULL");
+        $stmt->execute([$quote_id]);
+        $quote_items = $stmt->fetchAll();
+        
+        $insufficient_stock_items = [];
+        $sufficient_stock_items = [];
+        
+        foreach ($quote_items as $item) {
+            $quantity_needed = $item['quantity'];
+            $current_stock = $item['stock_quantity'];
+            
+            $item_info = [
+                'item' => $item['brand'] . ' ' . $item['model'],
+                'available' => $current_stock,
+                'needed' => $quantity_needed,
+                'shortage' => max(0, $quantity_needed - $current_stock)
+            ];
+            
+            if ($current_stock < $quantity_needed) {
+                $insufficient_stock_items[] = $item_info;
+            } else {
+                $sufficient_stock_items[] = $item_info;
+            }
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'has_insufficient_stock' => !empty($insufficient_stock_items),
+            'insufficient_items' => $insufficient_stock_items,
+            'sufficient_items' => $sufficient_stock_items,
+            'total_items' => count($quote_items)
+        ]);
+        
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error checking stock: ' . $e->getMessage()
         ]);
     }
     exit();
@@ -489,13 +549,20 @@ if ($_POST) {
             
         case 'update_inventory_item':
             if (isset($_POST['inventory_item_id'])) {
+                // Debug: Log the POST data (remove in production)
+                error_log("Updating inventory item ID: " . $_POST['inventory_item_id']);
+                error_log("POST data: " . print_r($_POST, true));
+                
                 $result = updateInventoryItem($_POST['inventory_item_id'], $_POST);
                 if ($result['success']) {
                     header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Inventory item updated successfully!'));
                     exit();
                 } else {
                     $error = $result['message'];
+                    error_log("Update failed: " . $result['message']);
                 }
+            } else {
+                $error = 'No inventory item ID provided';
             }
             break;
     }
@@ -1557,6 +1624,30 @@ document.addEventListener('DOMContentLoaded', function() {
                        oninput="filterQuoteItems()">
             </div>
             
+            <!-- Category Filter -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Quick Filter by Category</label>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="filterByQuoteCategory('')" 
+                            class="quote-category-filter-btn px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition active">
+                        All Items
+                    </button>
+                    <?php 
+                    $quote_categories = [];
+                    foreach ($inventory_items as $item) {
+                        if (!empty($item['category_name']) && !in_array($item['category_name'], $quote_categories)) {
+                            $quote_categories[] = $item['category_name'];
+                        }
+                    }
+                    foreach ($quote_categories as $category): ?>
+                    <button type="button" onclick="filterByQuoteCategory('<?php echo strtolower($category); ?>')" 
+                            class="quote-category-filter-btn px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition">
+                        <?php echo htmlspecialchars($category); ?>
+                    </button>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            
             <!-- Items Grid -->
             <div class="mb-4 max-h-96 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
                 <?php if (!empty($inventory_items)): ?>
@@ -1708,9 +1799,14 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="mt-3">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-gray-900">Profit Breakdown - <?php echo htmlspecialchars($quote['quote_number']); ?></h3>
-                <button type="button" onclick="closeProfitModal()" class="text-gray-400 hover:text-gray-600 dark:text-gray-400">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="printProfitBreakdown()" class="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 transition text-sm">
+                        <i class="fas fa-print mr-1"></i>Print
+                    </button>
+                    <button type="button" onclick="closeProfitModal()" class="text-gray-400 hover:text-gray-600 dark:text-gray-400">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
             </div>
             
             <div id="profit-content" class="mb-4">
@@ -1734,6 +1830,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <script>
 let selectedQuoteItemData = null;
+let currentQuoteCategoryFilter = '';
 
 function filterQuoteItems() {
     const searchTerm = document.getElementById('quote-item-search').value.toLowerCase();
@@ -1749,7 +1846,9 @@ function filterQuoteItems() {
                              model.includes(searchTerm) || 
                              category.includes(searchTerm);
         
-        if (matchesSearch) {
+        const matchesCategory = currentQuoteCategoryFilter === '' || category === currentQuoteCategoryFilter;
+        
+        if (matchesSearch && matchesCategory) {
             card.style.display = 'block';
             visibleCount++;
         } else {
@@ -1764,6 +1863,35 @@ function filterQuoteItems() {
     } else {
         noItemsMessage.classList.add('hidden');
     }
+}
+
+function filterByQuoteCategory(category) {
+    currentQuoteCategoryFilter = category;
+    
+    // Update button states
+    document.querySelectorAll('.quote-category-filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-green-600', 'text-white');
+        btn.classList.add('bg-gray-100', 'text-gray-700');
+        
+        // Restore original colors for category buttons
+        if (btn.textContent.trim() !== 'All Items') {
+            btn.classList.remove('bg-gray-100', 'text-gray-700');
+            btn.classList.add('bg-green-100', 'text-green-700');
+        }
+    });
+    
+    // Highlight active button
+    if (category === '') {
+        // All Items button
+        event.target.classList.remove('bg-gray-100', 'text-gray-700');
+        event.target.classList.add('active', 'bg-green-600', 'text-white');
+    } else {
+        // Category button
+        event.target.classList.remove('bg-green-100', 'text-green-700');
+        event.target.classList.add('active', 'bg-green-600', 'text-white');
+    }
+    
+    filterQuoteItems();
 }
 
 function selectQuoteItem(cardElement) {
@@ -1798,9 +1926,17 @@ function selectQuoteItem(cardElement) {
     // Show form and update preview
     document.getElementById('add-quote-item-form').classList.remove('hidden');
     
-    // Load serial numbers if item generates them
+    // Load serial numbers if item generates them and has stock
     if (selectedQuoteItemData.generatesSerials) {
-        loadQuoteAvailableSerials();
+        if (selectedQuoteItemData.stock > 0) {
+            loadQuoteAvailableSerials();
+        } else {
+            // Show no stock available message
+            const container = document.getElementById('quote-available-serials');
+            const section = document.getElementById('quote-serial-selection-section');
+            container.innerHTML = '<p class="text-red-500 text-sm font-medium">No stock available</p>';
+            section.classList.remove('hidden');
+        }
     } else {
         document.getElementById('quote-serial-selection-section').classList.add('hidden');
     }
@@ -1844,8 +1980,8 @@ function displayQuoteSerialSelection(serials, quantity) {
     const section = document.getElementById('quote-serial-selection-section');
     
     if (serials.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-sm">No serial numbers available</p>';
-        section.classList.add('hidden');
+        container.innerHTML = '<p class="text-red-500 text-sm font-medium">No stock available</p>';
+        section.classList.remove('hidden');
         return;
     }
     
@@ -1891,6 +2027,19 @@ function updateQuoteSubmitButtonState() {
     const submitButton = document.querySelector('#add-quote-item-form button[type="submit"]');
     const serialSection = document.getElementById('quote-serial-selection-section');
     const statusElement = document.getElementById('quote-serial-selection-status');
+    
+    // Check if there's no stock available
+    if (selectedQuoteItemData && selectedQuoteItemData.generatesSerials && selectedQuoteItemData.stock === 0) {
+        if (statusElement) {
+            statusElement.textContent = 'No stock available';
+            statusElement.className = 'text-sm text-red-600 mt-2 font-medium';
+        }
+        submitButton.disabled = true;
+        submitButton.textContent = 'No Stock Available';
+        submitButton.classList.add('bg-gray-400', 'cursor-not-allowed');
+        submitButton.classList.remove('bg-solar-blue', 'hover:bg-blue-800');
+        return;
+    }
     
     if (selectedQuoteItemData && selectedQuoteItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
         const selectedCount = checkboxes.length;
@@ -1969,6 +2118,12 @@ function validateQuoteFormSubmission() {
     const checkboxes = document.querySelectorAll('.quote-serial-checkbox:checked');
     const serialSection = document.getElementById('quote-serial-selection-section');
     
+    // Check if there's no stock available
+    if (selectedQuoteItemData && selectedQuoteItemData.generatesSerials && selectedQuoteItemData.stock === 0) {
+        alert('No stock available for this item. Please select a different item or update inventory.');
+        return false;
+    }
+    
     if (selectedQuoteItemData && selectedQuoteItemData.generatesSerials && !serialSection.classList.contains('hidden')) {
         if (checkboxes.length !== quantity) {
             alert(`Please select exactly ${quantity} serial number(s). Currently selected: ${checkboxes.length}`);
@@ -2036,7 +2191,9 @@ function displayProfitData(profitData) {
     let itemsHtml = '';
     
     profitData.items.forEach(item => {
-        const baseCost = item.base_price * item.quantity;
+        // Set base cost to 0 for Labor Fee items
+        const isLaborItem = item.brand && item.brand.toLowerCase().includes('labor');
+        const baseCost = isLaborItem ? 0 : (item.base_price * item.quantity);
         const sellingPrice = item.unit_price * item.quantity;
         const profit = sellingPrice - baseCost;
         const profitAfterDiscount = item.total_amount - baseCost;
@@ -2063,7 +2220,7 @@ function displayProfitData(profitData) {
                     <div class="text-xs text-gray-500">${item.size_specification || ''}</div>
                 </td>
                 <td class="px-3 py-3 border-b text-center text-sm">${item.quantity}</td>
-                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(item.base_price)}</td>
+                <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(isLaborItem ? 0 : item.base_price)}</td>
                 <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(item.unit_price)}</td>
                 <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(roundedBaseCost)}</td>
                 <td class="px-3 py-3 border-b text-sm text-right">${formatCurrency(roundedSellingPrice)}</td>
@@ -2179,6 +2336,241 @@ function showProfitError(message) {
                 <span class="text-red-800">${message}</span>
             </div>
         </div>
+    `;
+}
+
+function printProfitBreakdown() {
+    const profitContent = document.getElementById('profit-content');
+    const quoteNumber = '<?php echo htmlspecialchars($quote['quote_number']); ?>';
+    const currentDate = new Date().toLocaleDateString();
+    
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    // Get the current profit data by making an AJAX call
+    const quote_id = <?php echo $quote['id']; ?>;
+    
+    fetch(`quotations.php?action=get_profit_data&quote_id=${quote_id}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Generate the print content
+                const printContent = generatePrintContent(data.profit_data, quoteNumber, currentDate);
+                printWindow.document.write(printContent);
+                printWindow.document.close();
+                
+                // Wait for content to load, then print
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                }, 500);
+            } else {
+                alert('Failed to load profit data for printing');
+                printWindow.close();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error loading profit data for printing');
+            printWindow.close();
+        });
+}
+
+function generatePrintContent(profitData, quoteNumber, currentDate) {
+    let totalBaseCost = 0;
+    let totalSellingPrice = 0;
+    let totalProfit = 0;
+    let totalProfitAfterDiscount = 0;
+    
+    let itemsHtml = '';
+    
+    profitData.items.forEach(item => {
+        const isLaborItem = item.brand && item.brand.toLowerCase().includes('labor');
+        const baseCost = isLaborItem ? 0 : (item.base_price * item.quantity);
+        const sellingPrice = item.unit_price * item.quantity;
+        const profit = sellingPrice - baseCost;
+        const profitAfterDiscount = item.total_amount - baseCost;
+        const profitMargin = baseCost > 0 ? ((profit / baseCost) * 100) : 0;
+        const profitMarginAfterDiscount = baseCost > 0 ? ((profitAfterDiscount / baseCost) * 100) : 0;
+        
+        const roundedBaseCost = Math.round(baseCost * 100) / 100;
+        const roundedSellingPrice = Math.round(sellingPrice * 100) / 100;
+        const roundedProfit = Math.round(profit * 100) / 100;
+        const roundedProfitAfterDiscount = Math.round(profitAfterDiscount * 100) / 100;
+        const roundedProfitMargin = Math.round(profitMargin * 10) / 10;
+        const roundedProfitMarginAfterDiscount = Math.round(profitMarginAfterDiscount * 10) / 10;
+        
+        totalBaseCost += roundedBaseCost;
+        totalSellingPrice += roundedSellingPrice;
+        totalProfit += roundedProfit;
+        totalProfitAfterDiscount += roundedProfitAfterDiscount;
+        
+        itemsHtml += `
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">
+                    <div style="font-weight: 500; color: #111;">${item.brand} ${item.model}</div>
+                    <div style="font-size: 12px; color: #666;">${item.size_specification || ''}</div>
+                </td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(isLaborItem ? 0 : item.base_price)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(item.unit_price)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(roundedBaseCost)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(roundedSellingPrice)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; font-weight: 500; color: ${roundedProfit >= 0 ? '#059669' : '#dc2626'};">
+                    ${formatCurrency(roundedProfit)}
+                    <div style="font-size: 11px; color: ${roundedProfitMargin >= 0 ? '#10b981' : '#ef4444'};">(${roundedProfitMargin.toFixed(1)}%)</div>
+                </td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">
+                    <span style="font-size: 11px; color: ${item.discount_percentage > 0 ? '#ea580c' : '#9ca3af'};">${item.discount_percentage}%</span>
+                </td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; font-weight: 500; color: ${roundedProfitAfterDiscount >= 0 ? '#059669' : '#dc2626'};">
+                    ${formatCurrency(roundedProfitAfterDiscount)}
+                    <div style="font-size: 11px; color: ${roundedProfitMarginAfterDiscount >= 0 ? '#10b981' : '#ef4444'};">(${roundedProfitMarginAfterDiscount.toFixed(1)}%)</div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    const overallProfitMargin = totalBaseCost > 0 ? ((totalProfit / totalBaseCost) * 100) : 0;
+    const overallProfitMarginAfterDiscount = totalBaseCost > 0 ? ((totalProfitAfterDiscount / totalBaseCost) * 100) : 0;
+    
+    const roundedTotalBaseCost = Math.round(totalBaseCost * 100) / 100;
+    const roundedTotalSellingPrice = Math.round(totalSellingPrice * 100) / 100;
+    const roundedTotalProfit = Math.round(totalProfit * 100) / 100;
+    const roundedTotalProfitAfterDiscount = Math.round(totalProfitAfterDiscount * 100) / 100;
+    const roundedOverallProfitMargin = Math.round(overallProfitMargin * 10) / 10;
+    const roundedOverallProfitMarginAfterDiscount = Math.round(overallProfitMarginAfterDiscount * 10) / 10;
+    
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Profit Breakdown - ${quoteNumber}</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+                .header { text-align: center; margin-bottom: 30px; }
+                .header h1 { color: #1f2937; margin: 0; font-size: 24px; }
+                .header p { color: #6b7280; margin: 5px 0; }
+                .summary-cards { display: flex; justify-content: space-between; margin-bottom: 30px; flex-wrap: wrap; }
+                .summary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; flex: 1; margin: 0 5px; text-align: center; }
+                .summary-card h3 { margin: 0 0 8px 0; font-size: 14px; color: #4b5563; }
+                .summary-card .amount { font-size: 18px; font-weight: bold; color: #1f2937; }
+                .summary-card .margin { font-size: 12px; color: #6b7280; margin-top: 4px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                th { background: #f3f4f6; padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #374151; border-bottom: 1px solid #d1d5db; }
+                td { padding: 8px; border-bottom: 1px solid #e5e7eb; }
+                .text-right { text-align: right; }
+                .text-center { text-align: center; }
+                .font-bold { font-weight: bold; }
+                .note { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin-top: 20px; }
+                .note strong { color: #92400e; }
+                .note-text { color: #92400e; font-size: 14px; }
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    .print\:shadow-none, .print\:shadow-none * {
+                        visibility: visible;
+                    }
+                    .print\:shadow-none {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                    }
+                    
+                    /* Remove browser print headers and footers */
+                    @page {
+                        margin: 0.5in;
+                        size: A4;
+                    }
+                    
+                    /* Hide URL and other browser print info */
+                    body {
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    
+                    /* Ensure clean print layout */
+                    .print\:shadow-none {
+                        width: 100%;
+                        margin: 0;
+                        padding: 0;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Profit Breakdown Report</h1>
+                <p><strong>Quote Number:</strong> ${quoteNumber}</p>
+                <p><strong>Generated:</strong> ${currentDate}</p>
+            </div>
+            
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <h3>Total Base Cost</h3>
+                    <div class="amount">${formatCurrency(roundedTotalBaseCost)}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Total Selling Price</h3>
+                    <div class="amount">${formatCurrency(roundedTotalSellingPrice)}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Gross Profit</h3>
+                    <div class="amount" style="color: ${roundedTotalProfit >= 0 ? '#059669' : '#dc2626'};">
+                        ${formatCurrency(roundedTotalProfit)}
+                    </div>
+                    <div class="margin">(${roundedOverallProfitMargin.toFixed(1)}% margin)</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Net Profit (After Discounts)</h3>
+                    <div class="amount" style="color: ${roundedTotalProfitAfterDiscount >= 0 ? '#ea580c' : '#dc2626'};">
+                        ${formatCurrency(roundedTotalProfitAfterDiscount)}
+                    </div>
+                    <div class="margin">(${roundedOverallProfitMarginAfterDiscount.toFixed(1)}% margin)</div>
+                </div>
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th class="text-center">Qty</th>
+                        <th class="text-right">Base Price</th>
+                        <th class="text-right">Selling Price</th>
+                        <th class="text-right">Total Base Cost</th>
+                        <th class="text-right">Total Selling</th>
+                        <th class="text-right">Gross Profit</th>
+                        <th class="text-center">Discount</th>
+                        <th class="text-right">Net Profit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemsHtml}
+                </tbody>
+                <tfoot style="background: #f3f4f6; border-top: 2px solid #d1d5db;">
+                    <tr class="font-bold">
+                        <td colspan="4">TOTAL</td>
+                        <td class="text-right">${formatCurrency(roundedTotalBaseCost)}</td>
+                        <td class="text-right">${formatCurrency(roundedTotalSellingPrice)}</td>
+                        <td class="text-right" style="color: ${roundedTotalProfit >= 0 ? '#059669' : '#dc2626'};">
+                            ${formatCurrency(roundedTotalProfit)}
+                            <div style="font-size: 11px; color: ${roundedOverallProfitMargin >= 0 ? '#10b981' : '#ef4444'};">(${roundedOverallProfitMargin.toFixed(1)}%)</div>
+                        </td>
+                        <td class="text-center">-</td>
+                        <td class="text-right" style="color: ${roundedTotalProfitAfterDiscount >= 0 ? '#ea580c' : '#dc2626'};">
+                            ${formatCurrency(roundedTotalProfitAfterDiscount)}
+                            <div style="font-size: 11px; color: ${roundedOverallProfitMarginAfterDiscount >= 0 ? '#f59e0b' : '#ef4444'};">(${roundedOverallProfitMarginAfterDiscount.toFixed(1)}%)</div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            
+            <div class="note">
+                <strong>Note:</strong> <span class="note-text">Gross Profit = Selling Price - Base Price. Net Profit accounts for discounts applied to individual items.</span>
+            </div>
+        </body>
+        </html>
     `;
 }
 </script>
@@ -2304,6 +2696,223 @@ function showProfitError(message) {
                         </tr>
                         <?php endforeach; ?>
                         
+                        <!-- Static Extra Items for Fulfillment Checklist -->
+                        <tr class="bg-yellow-50 border-t-2 border-yellow-300">
+                            <td colspan="6" class="px-4 py-2 text-center text-sm font-semibold text-yellow-800">
+                                <strong>EXTRA ITEMS FOR FULFILLMENT</strong>
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Grinder Disc 2pcs</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="grinder_disc_2" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Rivets</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="rivets" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Reviter</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="reviter" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Anchor bolt 3/8 10pcs</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="anchor_bolt_3_8_10pcs" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Barena bala</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="barena_bala" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Screw 2 inches 20pcs</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="screw_2inches_20" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Stuckers</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="stuckers" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Solar Out</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="solar_out" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Deye AC IN</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="deye_ac_in" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        <tr class="bg-yellow-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium">Battery Inverter</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="static_item_checked[]" value="battery_inverter" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                -
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                -
+                            </td>
+                        </tr>
+                        
                         <!-- Total Row -->
                         <tr class="bg-gray-50 font-semibold border-t-2 border-gray-400">
                             <td colspan="5" class="px-4 py-4 text-right text-sm text-gray-900 border-r border-gray-300">
@@ -2385,9 +2994,11 @@ function showProfitError(message) {
 <script>
 function checkAllItems() {
     const checkboxes = document.querySelectorAll('input[name="item_checked[]"]');
-    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    const staticCheckboxes = document.querySelectorAll('input[name="static_item_checked[]"]');
+    const allCheckboxes = [...checkboxes, ...staticCheckboxes];
+    const allChecked = allCheckboxes.every(cb => cb.checked);
     
-    checkboxes.forEach(checkbox => {
+    allCheckboxes.forEach(checkbox => {
         checkbox.checked = !allChecked;
     });
 }
@@ -2401,73 +3012,35 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
 
 <style>
 @media print {
-    /* Hide everything on the page first */
-    * {
+    body * {
         visibility: hidden;
     }
-    
-    /* Show only the order fulfillment form container and its children */
-    #order-fulfillment-form-container,
-    #order-fulfillment-form-container * {
+    .print\:shadow-none, .print\:shadow-none * {
         visibility: visible;
     }
-    
-    /* Position the form container at the top-left */
-    #order-fulfillment-form-container {
+    .print\:shadow-none {
         position: absolute;
         left: 0;
         top: 0;
-        width: 100%;
-        height: auto;
-        margin: 0;
-        padding: 20px;
-        box-shadow: none !important;
-        border-radius: 0 !important;
-        background: white;
     }
     
-    /* Hide print-specific elements */
-    .print\:hidden {
-        display: none !important;
-    }
-    .print\:inline-block {
-        display: inline-block !important;
+    /* Remove browser print headers and footers */
+    @page {
+        margin: 0.5in;
+        size: A4;
     }
     
-    /* Reset body styles for printing */
+    /* Hide URL and other browser print info */
     body {
-        font-size: 12px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    /* Ensure clean print layout */
+    .print\:shadow-none {
+        width: 100%;
         margin: 0;
         padding: 0;
-        background: white;
-        color: black;
-    }
-    
-    /* Optimize table printing */
-    table {
-        page-break-inside: auto;
-        width: 100%;
-        border-collapse: collapse;
-    }
-    
-    tr {
-        page-break-inside: avoid;
-        page-break-after: auto;
-    }
-    
-    th, td {
-        border: 1px solid #000 !important;
-        padding: 8px !important;
-    }
-    
-    /* Ensure text is black for printing */
-    h1, h2, h3, h4, h5, h6, p, span, div, td, th {
-        color: black !important;
-    }
-    
-    /* Hide action buttons and interactive elements */
-    button, .print\:hidden {
-        display: none !important;
     }
 }
 </style>
@@ -3722,6 +4295,89 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
+<!-- Stock Notification Modal -->
+<div id="stock-notification-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+    <div class="relative p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white mx-4">
+        <div class="mt-3">
+            <div class="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+                <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+            </div>
+            
+            <h3 class="text-lg font-medium text-gray-900 text-center mb-4">Insufficient Stock Alert</h3>
+            
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-red-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-medium text-red-800">Stock Shortage Detected</h4>
+                        <div class="mt-2 text-sm text-red-700">
+                            <p>The following items have insufficient stock to fulfill this quotation:</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stock Details Table -->
+            <div class="mb-6">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Available</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Needed</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Shortage</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stock-items-list" class="bg-white divide-y divide-gray-200">
+                            <!-- Stock items will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Action Options -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-lightbulb text-yellow-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-medium text-yellow-800">Recommended Actions</h4>
+                        <div class="mt-2 text-sm text-yellow-700">
+                            <ul class="list-disc list-inside space-y-1">
+                                <li>Update inventory stock levels for the items listed above</li>
+                                <li>Contact suppliers to restock these items</li>
+                                <li>Modify the quotation quantities if appropriate</li>
+                                <li>Consider alternative products with sufficient stock</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeStockNotificationModal()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Cancel
+                </button>
+                <button type="button" onclick="proceedWithApproval()"
+                        class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Proceed Anyway
+                </button>
+                <button type="button" onclick="goToInventory()"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
+                    <i class="fas fa-warehouse mr-2"></i>Update Inventory
+                </button>
+            </div>
+            
+            <input type="hidden" id="stock_notification_quote_id" value="">
+        </div>
+    </div>
+</div>
+
 <script>
 // Customer Details Modal Functions
 function viewCustomerDetails(quoteId) {
@@ -4085,7 +4741,13 @@ function toggleEditBatteryCapacityInput() {
 
 // Quote approval modal functions
 function showQuoteApprovalModal(quoteId, quoteNumber, customerName, totalAmount) {
-    const modal = document.getElementById('quote-approval-modal');
+    // First check stock availability
+    checkQuoteStock(quoteId, quoteNumber, customerName, totalAmount);
+}
+
+function checkQuoteStock(quoteId, quoteNumber, customerName, totalAmount) {
+    // Show loading state
+    const loadingModal = document.getElementById('quote-approval-modal');
     const quoteIdInput = document.getElementById('approval_quote_id');
     const quoteNumberSpan = document.getElementById('approval_quote_number');
     const customerNameSpan = document.getElementById('approval_customer_name');
@@ -4097,8 +4759,43 @@ function showQuoteApprovalModal(quoteId, quoteNumber, customerName, totalAmount)
     customerNameSpan.textContent = customerName;
     totalAmountSpan.textContent = formatCurrency(totalAmount);
     
-    // Show modal
-    modal.classList.remove('hidden');
+    // Show loading state in modal
+    const modalContent = loadingModal.querySelector('.mt-3');
+    const originalContent = modalContent.innerHTML;
+    
+    modalContent.innerHTML = `
+        <div class="flex items-center justify-center">
+            <i class="fas fa-spinner fa-spin text-blue-600 mr-2"></i>
+            <span class="text-blue-800">Checking stock availability...</span>
+        </div>
+    `;
+    
+    loadingModal.classList.remove('hidden');
+    
+    // Check stock via AJAX
+    fetch(`?action=check_quote_stock&quote_id=${quoteId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.has_insufficient_stock) {
+                    // Show stock notification modal
+                    loadingModal.classList.add('hidden');
+                    showStockNotificationModal(quoteId, quoteNumber, customerName, totalAmount, data.insufficient_items);
+                } else {
+                    // Show normal approval modal
+                    modalContent.innerHTML = originalContent;
+                }
+            } else {
+                // Show error and proceed with normal approval
+                console.error('Stock check failed:', data.message);
+                modalContent.innerHTML = originalContent;
+            }
+        })
+        .catch(error => {
+            console.error('Error checking stock:', error);
+            // Show normal approval modal on error
+            modalContent.innerHTML = originalContent;
+        });
 }
 
 function closeQuoteApprovalModal() {
@@ -4120,6 +4817,66 @@ function confirmQuoteApproval() {
     form.appendChild(statusInput);
     document.body.appendChild(form);
     form.submit();
+}
+
+// Stock notification modal functions
+function showStockNotificationModal(quoteId, quoteNumber, customerName, totalAmount, insufficientItems) {
+    const modal = document.getElementById('stock-notification-modal');
+    const quoteIdInput = document.getElementById('stock_notification_quote_id');
+    const stockItemsList = document.getElementById('stock-items-list');
+    
+    // Set quote ID
+    quoteIdInput.value = quoteId;
+    
+    // Populate stock items table
+    stockItemsList.innerHTML = '';
+    insufficientItems.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="px-4 py-3 text-sm text-gray-900">${item.item}</td>
+            <td class="px-4 py-3 text-center text-sm text-gray-900">${item.available}</td>
+            <td class="px-4 py-3 text-center text-sm text-gray-900">${item.needed}</td>
+            <td class="px-4 py-3 text-center text-sm font-medium text-red-600">${item.shortage}</td>
+        `;
+        stockItemsList.appendChild(row);
+    });
+    
+    // Show modal
+    modal.classList.remove('hidden');
+}
+
+function closeStockNotificationModal() {
+    const modal = document.getElementById('stock-notification-modal');
+    modal.classList.add('hidden');
+}
+
+function proceedWithApproval() {
+    const quoteId = document.getElementById('stock_notification_quote_id').value;
+    
+    // Close stock notification modal
+    closeStockNotificationModal();
+    
+    // Proceed with normal approval process
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `?action=update_quote_status&quote_id=${quoteId}`;
+    
+    const statusInput = document.createElement('input');
+    statusInput.type = 'hidden';
+    statusInput.name = 'new_status';
+    statusInput.value = 'accepted';
+    
+    form.appendChild(statusInput);
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function goToInventory() {
+    // Close stock notification modal
+    closeStockNotificationModal();
+    
+    // Redirect to inventory page
+    window.location.href = 'inventory.php';
 }
 
 // Quotations Filtering Functions
@@ -4349,23 +5106,27 @@ function editInventoryItem(itemId, itemName) {
 }
 
 function displayEditForm(item) {
+    // Debug: Log the item data to console
+    console.log('Item data:', item);
+    console.log('Suppliers available:', item.suppliers);
+    
     const content = `
         <div class="mb-4">
             <h3 class="text-lg font-medium text-gray-900 mb-2">Edit Inventory Item</h3>
             <p class="text-sm text-gray-600">${item.brand} ${item.model}</p>
         </div>
         
-        <form id="edit-inventory-form" method="POST" action="?action=update_inventory_item&quote_id=<?php echo $quote_id; ?>" class="space-y-4">
+        <form id="edit-inventory-form" method="POST" action="?action=update_inventory_item&quote_id=<?php echo $quote_id; ?>" class="space-y-4" onsubmit="return validateInventoryForm(this)">
             <input type="hidden" name="inventory_item_id" value="${item.id}">
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
                     <input type="text" name="brand" value="${item.brand}" required
                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Model</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Brand/Model</label>
                     <input type="text" name="model" value="${item.model}" required
                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                 </div>
@@ -4408,6 +5169,44 @@ function displayEditForm(item) {
                 </div>
             </div>
             
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Discount %</label>
+                    <input type="number" name="discount_percentage" value="${item.discount_percentage || 0}" 
+                           min="0" max="100" step="0.01"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock</label>
+                    <input type="number" name="minimum_stock" value="${item.minimum_stock || 0}" 
+                           min="0"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Supplier</label>
+                    <select name="supplier_id"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">No Supplier</option>
+                        ${item.suppliers && item.suppliers.length > 0 ? 
+                            item.suppliers.map(supplier => 
+                                `<option value="${supplier.id}" ${supplier.id == item.supplier_id ? 'selected' : ''}>${supplier.name}</option>`
+                            ).join('') : 
+                            '<option value="" disabled>No active suppliers available</option>'
+                        }
+                    </select>
+                    ${item.suppliers && item.suppliers.length === 0 ? 
+                        '<p class="text-sm text-amber-600 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>No active suppliers found. You can still save without a supplier.</p>' : 
+                        ''
+                    }
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea name="description" rows="3"
+                          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">${item.description || ''}</textarea>
+            </div>
+            
             <div class="flex items-center space-x-4">
                 <label class="flex items-center">
                     <input type="checkbox" name="generate_serials" value="1" ${item.generate_serials ? 'checked' : ''}
@@ -4438,6 +5237,61 @@ function displayEditForm(item) {
 
 function closeEditModal() {
     document.getElementById('edit-item-modal').classList.add('hidden');
+}
+
+function validateInventoryForm(form) {
+    // Get form data
+    const formData = new FormData(form);
+    const supplierIdValue = formData.get('supplier_id');
+    
+    // Debug: Log form submission data
+    console.log('Form submission data:');
+    for (let [key, value] of formData.entries()) {
+        console.log(`${key}: ${value}`);
+    }
+    
+    // Validate supplier_id if provided
+    if (supplierIdValue && supplierIdValue !== '') {
+        const supplierId = parseInt(supplierIdValue);
+        if (isNaN(supplierId) || supplierId <= 0) {
+            alert('Please select a valid supplier or choose "No Supplier"');
+            return false;
+        }
+    }
+    
+    // Validate required numeric fields
+    const basePrice = parseFloat(formData.get('base_price'));
+    const sellingPrice = parseFloat(formData.get('selling_price'));
+    const stockQuantity = parseInt(formData.get('stock_quantity'));
+    
+    if (isNaN(basePrice) || basePrice < 0) {
+        alert('Please enter a valid base price');
+        return false;
+    }
+    
+    if (isNaN(sellingPrice) || sellingPrice < 0) {
+        alert('Please enter a valid selling price');
+        return false;
+    }
+    
+    if (isNaN(stockQuantity) || stockQuantity < 0) {
+        alert('Please enter a valid stock quantity');
+        return false;
+    }
+    
+    // Show loading state
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalText = submitButton.textContent;
+    submitButton.textContent = 'Updating...';
+    submitButton.disabled = true;
+    
+    // Re-enable button after a delay in case of error
+    setTimeout(() => {
+        submitButton.textContent = originalText;
+        submitButton.disabled = false;
+    }, 5000);
+    
+    return true;
 }
 </script>
 

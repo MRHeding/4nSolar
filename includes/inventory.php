@@ -95,15 +95,25 @@ function updateInventoryItem($id, $data, $image_file = null) {
     
     // Validate stock quantity is not negative
     if (isset($data['stock_quantity']) && $data['stock_quantity'] < 0) {
-        return false;
+        return ['success' => false, 'message' => 'Stock quantity cannot be negative'];
     }
     
     // Validate prices are not negative
     if (isset($data['base_price']) && $data['base_price'] < 0) {
-        return false;
+        return ['success' => false, 'message' => 'Base price cannot be negative'];
     }
     if (isset($data['selling_price']) && $data['selling_price'] < 0) {
-        return false;
+        return ['success' => false, 'message' => 'Selling price cannot be negative'];
+    }
+    
+    // Validate supplier_id if provided
+    if (!empty($data['supplier_id'])) {
+        global $pdo;
+        $stmt = $pdo->prepare("SELECT id FROM suppliers WHERE id = ? AND is_active = 1");
+        $stmt->execute([$data['supplier_id']]);
+        if (!$stmt->fetch()) {
+            return ['success' => false, 'message' => 'Invalid supplier ID provided'];
+        }
     }
     
     try {
@@ -126,14 +136,23 @@ function updateInventoryItem($id, $data, $image_file = null) {
                               supplier_id = ?, stock_quantity = ?, minimum_stock = ?, description = ?, image_path = ?
                               WHERE id = ?");
         
-        return $stmt->execute([
+        // Handle supplier_id - set to null if empty
+        $supplier_id = (!empty($data['supplier_id']) && $data['supplier_id'] !== '') ? $data['supplier_id'] : null;
+        
+        $result = $stmt->execute([
             $data['brand'], $data['model'], $data['category_id'], $data['size_specification'],
-            $data['base_price'], $data['selling_price'], $data['discount_percentage'],
-            $data['supplier_id'], $data['stock_quantity'], $data['minimum_stock'],
-            $data['description'], $image_path, $id
+            $data['base_price'], $data['selling_price'], $data['discount_percentage'] ?? 0,
+            $supplier_id, $data['stock_quantity'], $data['minimum_stock'] ?? 0,
+            $data['description'] ?? '', $image_path, $id
         ]);
+        
+        if ($result) {
+            return ['success' => true, 'message' => 'Inventory item updated successfully'];
+        } else {
+            return ['success' => false, 'message' => 'Failed to update inventory item'];
+        }
     } catch(PDOException $e) {
-        return false;
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
     }
 }
 
@@ -421,13 +440,22 @@ function getQuote($id) {
     $quote = $stmt->fetch();
     
     if ($quote) {
-        // Get quote items
+        // Get quote items with priority ordering
         $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.size_specification, 
-                              c.name as category_name, i.stock_quantity, i.selling_price as current_price
+                              c.name as category_name, i.stock_quantity, i.selling_price as current_price,
+                              CASE 
+                                WHEN c.name = 'Hybrid Inverter' THEN 1
+                                WHEN c.name = 'Inverters' THEN 2
+                                WHEN c.name = 'Solar Panels' THEN 3
+                                WHEN c.name = 'Batteries' THEN 4
+                                WHEN i.brand = 'LABOR' THEN 5
+                                ELSE 6
+                              END as priority_order
                               FROM quote_items qi 
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
                               LEFT JOIN categories c ON i.category_id = c.id 
-                              WHERE qi.quote_id = ?");
+                              WHERE qi.quote_id = ?
+                              ORDER BY priority_order ASC, qi.id ASC");
         $stmt->execute([$id]);
         $quote['items'] = $stmt->fetchAll();
     }
@@ -894,6 +922,9 @@ function deleteQuote($quote_id) {
     try {
         $pdo->beginTransaction();
         
+        // Release all reserved serials for this quote first
+        releaseAllReservedSerialsForQuote($quote_id);
+        
         // Delete quote items first
         $stmt = $pdo->prepare("DELETE FROM quote_items WHERE quote_id = ?");
         $stmt->execute([$quote_id]);
@@ -1036,14 +1067,23 @@ function getQuoteWithProfitData($id) {
     $quote = $stmt->fetch();
     
     if ($quote) {
-        // Get quote items with base price for profit calculation
+        // Get quote items with base price for profit calculation and priority ordering
         $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.size_specification, 
                               i.base_price, i.selling_price as current_price,
-                              c.name as category_name, i.stock_quantity
+                              c.name as category_name, i.stock_quantity,
+                              CASE 
+                                WHEN c.name = 'Hybrid Inverter' THEN 1
+                                WHEN c.name = 'Inverters' THEN 2
+                                WHEN c.name = 'Solar Panels' THEN 3
+                                WHEN c.name = 'Batteries' THEN 4
+                                WHEN i.brand = 'LABOR' THEN 5
+                                ELSE 6
+                              END as priority_order
                               FROM quote_items qi 
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
                               LEFT JOIN categories c ON i.category_id = c.id 
-                              WHERE qi.quote_id = ?");
+                              WHERE qi.quote_id = ?
+                              ORDER BY priority_order ASC, qi.id ASC");
         $stmt->execute([$id]);
         $quote['items'] = $stmt->fetchAll();
     }

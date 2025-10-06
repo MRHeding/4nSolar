@@ -1,11 +1,11 @@
-# 4nSolar Management System
+# 4NSOLAR ELECTRICZ Business Management System
 
 [![System Status](https://img.shields.io/badge/status-active-brightgreen.svg)]()
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D7.4-blue.svg)]()
 [![Database](https://img.shields.io/badge/database-mysql-orange.svg)]()
 [![License](https://img.shields.io/badge/license-proprietary-red.svg)]()
 
-A comprehensive solar equipment inventory and project management system designed for 4nSolar ELECTRICZ. This system provides complete business management capabilities including inventory tracking with serial number management, project quotations, point-of-sale functionality with quotation import, payroll management, installment payment tracking, employee attendance, and comprehensive reporting with advanced analytics.
+A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This system provides complete business management capabilities including inventory tracking with serial number management, project quotations, point-of-sale functionality with quotation import, payroll management, installment payment tracking, employee attendance, and comprehensive reporting with advanced analytics.
 
 ## 🚀 Quick Start
 
@@ -470,7 +470,7 @@ For custom development, modification requests, or technical support:
 All rights reserved. This software is licensed for use by 4nSolar ELECTRICZ and authorized personnel only.
 
 ### Contact Information
-- **System**: 4nSolar Management System
+- **System**: 4NSOLAR ELECTRICZ Business Management System
 - **Version**: 3.3
 - **Last Updated**: December 2024
 - **Latest Features**: Serialized Item Filter, Streamlined Stock Management, Enhanced Quick Stock Adjustment, Advanced Inventory Filtering

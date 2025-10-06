@@ -34,7 +34,7 @@ $page_title = 'Login';
             <div class="text-center mb-8">
                 <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-16 w-auto mx-auto mb-4">
                 <h1 class="text-3xl font-bold text-solar-blue">4NSOLAR ELECTRICZ</h1>
-                <p class="text-gray-600 dark:text-gray-400 mt-2">Inventory Management System</p>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">Business Management System</p>
             </div>
 
             <?php if ($error): ?>
