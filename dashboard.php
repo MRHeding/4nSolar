@@ -199,7 +199,7 @@ include 'includes/header.php';
             <i class="fas fa-bolt text-solar-blue mr-2"></i>
             Quick Actions
         </h2>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <a href="pos.php" class="flex items-center p-4 bg-green-50 rounded-lg hover:bg-green-100 transition">
                 <i class="fas fa-cash-register text-green-600 text-xl mr-3"></i>
                 <span class="font-medium text-gray-900">Start New Sale</span>
@@ -207,10 +207,6 @@ include 'includes/header.php';
             <a href="inventory.php?action=add" class="flex items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition">
                 <i class="fas fa-plus text-blue-600 text-xl mr-3"></i>
                 <span class="font-medium text-gray-900">Add Inventory</span>
-            </a>
-            <a href="projects.php?action=create" class="flex items-center p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition">
-                <i class="fas fa-project-diagram text-purple-600 text-xl mr-3"></i>
-                <span class="font-medium text-gray-900">New Project</span>
             </a>
             <a href="reports.php" class="flex items-center p-4 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition">
                 <i class="fas fa-chart-bar text-yellow-600 text-xl mr-3"></i>

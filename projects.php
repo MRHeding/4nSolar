@@ -101,6 +101,57 @@ $content_start = true;
 include 'includes/header.php';
 ?>
 
+<style>
+/* Compact table styling for better fit */
+.compact-table {
+    table-layout: fixed;
+}
+
+.compact-table th:last-child,
+.compact-table td:last-child {
+    width: 140px;
+}
+
+/* Ensure table columns have proper widths */
+.compact-table th:nth-child(1), .compact-table td:nth-child(1) { width: 200px; } /* Project */
+.compact-table th:nth-child(2), .compact-table td:nth-child(2) { width: 200px; } /* Customer */
+.compact-table th:nth-child(3), .compact-table td:nth-child(3) { width: 100px; } /* System Size */
+.compact-table th:nth-child(4), .compact-table td:nth-child(4) { width: 100px; } /* Status */
+.compact-table th:nth-child(5), .compact-table td:nth-child(5) { width: 120px; } /* Total Amount */
+.compact-table th:nth-child(6), .compact-table td:nth-child(6) { width: 150px; } /* Remarks */
+.compact-table th:nth-child(7), .compact-table td:nth-child(7) { width: 100px; } /* Created */
+.compact-table th:nth-child(8), .compact-table td:nth-child(8) { width: 140px; } /* Actions */
+
+/* Make table more compact */
+.compact-table td {
+    padding: 8px 12px;
+}
+
+.compact-table th {
+    padding: 8px 12px;
+}
+
+/* Truncate long text */
+.compact-table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Project items table specific styling */
+.project-items-table {
+    table-layout: fixed;
+}
+
+.project-items-table th:nth-child(1), .project-items-table td:nth-child(1) { width: 300px; } /* Item */
+.project-items-table th:nth-child(2), .project-items-table td:nth-child(2) { width: 60px; }  /* Qty */
+.project-items-table th:nth-child(3), .project-items-table td:nth-child(3) { width: 60px; }  /* Stock */
+.project-items-table th:nth-child(4), .project-items-table td:nth-child(4) { width: 100px; } /* Unit Price */
+.project-items-table th:nth-child(5), .project-items-table td:nth-child(5) { width: 100px; } /* Discount */
+.project-items-table th:nth-child(6), .project-items-table td:nth-child(6) { width: 100px; } /* Total */
+.project-items-table th:nth-child(7), .project-items-table td:nth-child(7) { width: 80px; }  /* Actions */
+</style>
+
 <?php if ($message): ?>
 <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4 alert-auto-hide">
     <?php echo htmlspecialchars($message); ?>
@@ -143,9 +194,9 @@ include 'includes/header.php';
 </div>
 
 <!-- Projects Table -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-    <div class="overflow-x-auto">
-        <table id="projects-table" class="min-w-full divide-y divide-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+    <div>
+        <table id="projects-table" class="min-w-full divide-y divide-gray-200 compact-table">
         <thead class="bg-gray-50">
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
@@ -264,8 +315,8 @@ include 'includes/header.php';
             </div>
             
             <?php if (!empty($project['items'])): ?>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
+            <div>
+                <table class="min-w-full divide-y divide-gray-200 compact-table project-items-table">
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-0">Item</th>
@@ -385,7 +436,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Add Item Modal -->
-<div id="add-item-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+<div id="add-item-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 h-full w-full z-50">
     <div class="relative top-20 mx-auto p-5 border w-full max-w-5xl shadow-lg rounded-md bg-white">
         <div class="mt-3">
             <h3 class="text-lg font-medium text-gray-900 mb-4">Add Item to Project</h3>
@@ -423,7 +474,7 @@ include 'includes/header.php';
             </div>
             
             <!-- Items Grid -->
-            <div class="mb-4 max-h-80 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
+            <div class="mb-4 border border-gray-200 dark:border-gray-600 rounded-lg">
                 <div id="project-items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-4">
                     <?php foreach ($inventory_items as $inv_item): ?>
                     <div class="project-item-card border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" 

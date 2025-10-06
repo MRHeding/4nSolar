@@ -27,14 +27,29 @@ $page_title = 'Login';
     <title><?php echo $page_title; ?> - 4NSOLAR ELECTRICZ</title>
     <link href="assets/css/output.css" rel="stylesheet">
     <link href="assets/fontawesome/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #1e3a8a;
+            background-image: url('images/login-bg.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
+        .login-overlay {
+            background: linear-gradient(135deg, rgba(30, 58, 138, 0.85), rgba(59, 130, 246, 0.7));
+        }
+    </style>
 </head>
-<body class="bg-gradient-to-br from-solar-blue to-blue-800 dark:from-gray-900 dark:to-gray-800 min-h-screen flex items-center justify-center">
-    <div class="max-w-md w-full mx-4">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-8">
+<body class="min-h-screen flex items-center justify-center relative">
+    <!-- Overlay for better text readability -->
+    <div class="absolute inset-0 login-overlay"></div>
+    <div class="max-w-md w-full mx-4 relative z-10">
+        <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg shadow-2xl p-8 border border-blue-200">
             <div class="text-center mb-8">
                 <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-16 w-auto mx-auto mb-4">
-                <h1 class="text-3xl font-bold text-solar-blue">4NSOLAR ELECTRICZ</h1>
-                <p class="text-gray-600 dark:text-gray-400 mt-2">Business Management System</p>
+                <h1 class="text-3xl font-bold" style="color: #1e3a8a;">4NSOLAR ELECTRICZ</h1>
+                <p class="text-blue-800 mt-2 font-medium">Business Management System</p>
             </div>
 
             <?php if ($error): ?>
@@ -45,31 +60,34 @@ $page_title = 'Login';
 
             <form method="POST" class="space-y-6">
                 <div>
-                    <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        <i class="fas fa-user mr-2"></i>Username
+                    <label for="username" class="block text-sm font-medium text-blue-800 mb-2">
+                        <i class="fas fa-user mr-2" style="color: #1e3a8a;"></i>Username
                     </label>
                     <input type="text" id="username" name="username" required
-                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white bg-opacity-90"
                            placeholder="Enter your username">
                 </div>
 
                 <div>
-                    <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        <i class="fas fa-lock mr-2"></i>Password
+                    <label for="password" class="block text-sm font-medium text-blue-800 mb-2">
+                        <i class="fas fa-lock mr-2" style="color: #1e3a8a;"></i>Password
                     </label>
                     <input type="password" id="password" name="password" required
-                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white bg-opacity-90"
                            placeholder="Enter your password">
                 </div>
 
                 <button type="submit" 
-                        class="w-full bg-solar-blue text-white py-3 px-4 rounded-lg hover:bg-blue-800 transition duration-200 font-medium">
+                        class="w-full text-white py-3 px-4 rounded-lg transition duration-200 font-medium"
+                        style="background-color: #1e3a8a;"
+                        onmouseover="this.style.backgroundColor='#3b82f6'"
+                        onmouseout="this.style.backgroundColor='#1e3a8a'">
                     <i class="fas fa-sign-in-alt mr-2"></i>Sign In
                 </button>
             </form>
 
-            <div class="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
-                <p class="mt-2 text-xs">© 2025 4NSOLAR ELECTRICZ. All rights reserved.</p>
+            <div class="mt-8 text-center text-sm text-blue-800">
+                <p class="mt-2 text-xs font-medium">© 2025 4NSOLAR ELECTRICZ. All rights reserved.</p>
             </div>
         </div>
     </div>

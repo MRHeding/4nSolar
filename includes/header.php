@@ -292,8 +292,14 @@
                     
                     <div class="flex items-center space-x-6">
                         <div class="text-white">
-                            <span class="text-sm">Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?></span>
-                            <span class="ml-2 px-2 py-1 bg-blue-600 rounded text-xs uppercase"><?php echo $_SESSION['role']; ?></span>
+                            <div class="flex items-center space-x-4">
+                                <div class="text-sm">Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?></div>
+                                <span class="px-2 py-1 bg-blue-600 rounded text-xs uppercase"><?php echo $_SESSION['role']; ?></span>
+                            </div>
+                            <div class="text-xs text-blue-200 mt-1 flex items-center space-x-2">
+                                <div id="header-current-time" class="font-mono"></div>
+                                <div id="header-current-date" class="text-xs"></div>
+                            </div>
                         </div>
                         
                         <!-- Theme Toggle -->
@@ -588,4 +594,38 @@
 
         // Initialize theme on page load
         document.addEventListener('DOMContentLoaded', initTheme);
+        
+        // Real-time clock functionality for header
+        function updateHeaderClock() {
+            const now = new Date();
+            
+            // Format time (12-hour format with AM/PM)
+            const timeOptions = {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            };
+            const timeString = now.toLocaleTimeString('en-US', timeOptions);
+            
+            // Format date (shorter format for header)
+            const dateOptions = {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            };
+            const dateString = now.toLocaleDateString('en-US', dateOptions);
+            
+            // Update the DOM elements
+            const timeElement = document.getElementById('header-current-time');
+            const dateElement = document.getElementById('header-current-date');
+            
+            if (timeElement) timeElement.textContent = timeString;
+            if (dateElement) dateElement.textContent = dateString;
+        }
+
+        // Update header clock immediately and then every second
+        updateHeaderClock();
+        setInterval(updateHeaderClock, 1000);
     </script>
