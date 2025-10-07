@@ -2,6 +2,12 @@
 require_once 'includes/config.php';
 require_once 'includes/auth.php';
 
+// Redirect to dashboard if user is already logged in
+if (isLoggedIn()) {
+    header("Location: dashboard.php");
+    exit();
+}
+
 $error = '';
 
 if ($_POST) {

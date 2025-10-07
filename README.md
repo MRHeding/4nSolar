@@ -4,14 +4,26 @@
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D7.4-blue.svg)]()
 [![Database](https://img.shields.io/badge/database-mysql-orange.svg)]()
 [![License](https://img.shields.io/badge/license-proprietary-red.svg)]()
+[![Offline Capable](https://img.shields.io/badge/offline-capable-green.svg)]()
+[![Tailwind CSS](https://img.shields.io/badge/tailwind-css-38B2AC.svg)]()
 
 A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This system provides complete business management capabilities including inventory tracking with serial number management, project quotations, point-of-sale functionality with quotation import, payroll management, installment payment tracking, employee attendance, and comprehensive reporting with advanced analytics.
+
+## 🌟 Key Highlights
+
+- **🔄 Complete Offline Capability** - Works without internet connection
+- **📱 Modern Responsive Design** - Tailwind CSS with custom theme
+- **🔒 Enterprise Security** - Role-based access control and data protection
+- **📊 Advanced Analytics** - Real-time business intelligence and reporting
+- **🏗️ Modular Architecture** - Scalable and maintainable codebase
+- **⚡ High Performance** - Optimized database queries and caching
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - **XAMPP** (Apache + MySQL + PHP 7.4+)
 - **Web Browser** (Chrome, Firefox, Safari, Edge)
+- **Node.js** (v14+ for Tailwind CSS compilation)
 - **Minimum 512MB RAM** for PHP
 - **100MB+ disk space**
 
@@ -24,31 +36,40 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 
 2. **Database Setup**
    - Open phpMyAdmin: `http://localhost/phpmyadmin`
-   - Import `database.sql` to create tables and default data
+   - Import `database/4nsolar_inventory.sql` to create tables and default data
    - Alternative: Run SQL commands directly in phpMyAdmin
 
-3. **POS System Setup (Optional)**
+3. **CSS Compilation (Required)**
+   ```bash
+   # Install Node.js dependencies
+   npm install
+   
+   # Build Tailwind CSS for production
+   npm run build-css-prod
+   ```
+
+4. **POS System Setup (Optional)**
    - Run: `http://localhost/4nsolarSystem/setup_pos.php`
    - Or execute SQL from `pos_tables.sql` in phpMyAdmin
    - Enables complete retail sales functionality
 
-4. **Payroll System Setup (Optional)**
+5. **Payroll System Setup (Optional)**
    - Run: `http://localhost/4nsolarSystem/setup_payroll_tables.php`
    - Or execute SQL from `database/payroll_system.sql` in phpMyAdmin
    - Enables employee management and payroll processing
 
-5. **Installment System Setup (Optional)**
+6. **Installment System Setup (Optional)**
    - Run: `http://localhost/4nsolarSystem/setup_installment_system.php`
    - Or execute SQL from `database/installment_system.sql` in phpMyAdmin
    - Enables payment plan management for projects
 
-6. **System Access**
+7. **System Access**
    - URL: `http://localhost/4nsolarSystem`
    - **Default Admin Login:**
      - Username: `admin`
      - Password: `admin123`
    
-7. **System Testing**
+8. **System Testing**
    - Run comprehensive tests: `http://localhost/4nsolarSystem/system_comprehensive_test.php`
    - Validates all system components and integrations
 
@@ -136,14 +157,16 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 
 ### 📱 User Experience
 - **Responsive Design**: Works on desktop, tablet, and mobile
-- **Modern UI**: Clean interface with Tailwind CSS
+- **Modern UI**: Clean interface with Tailwind CSS and custom theme
+- **Offline Capability**: Complete functionality without internet connection
 - **Streamlined Interface**: Simplified inventory view with focused action buttons
 - **Quick Stock Adjustment**: Rapid + and - buttons for efficient stock management
 - **Professional Print Support**: Enhanced document generation with clean layouts
 - **Visual Discount Indicators**: Clear discount display across all print formats
 - **Advanced Filtering**: Intuitive filter system with visual indicators
-- **Fast Performance**: Optimized database queries
+- **Fast Performance**: Optimized database queries and local asset loading
 - **Intuitive Navigation**: User-friendly menu system
+- **Custom Theme**: Solar-themed color scheme with professional styling
 
 ## 🏗️ System Architecture
 
@@ -151,8 +174,13 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 ```
 4nsolarSystem/
 ├── assets/                    # Static resources
-│   ├── css/                  # Stylesheets
-│   └── js/                   # JavaScript files
+│   ├── css/                  # Stylesheets (Tailwind CSS)
+│   │   ├── input.css         # Tailwind source file
+│   │   └── output.css        # Compiled CSS
+│   ├── fontawesome/          # Font Awesome icons (offline)
+│   │   ├── all.min.css       # Font Awesome CSS
+│   │   └── webfonts/         # Font files
+│   └── js/                  # JavaScript files
 ├── images/                   # System images
 │   ├── products/            # Product images
 │   ├── logo.png             # Company logo
@@ -179,9 +207,15 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 ├── revenue_analysis.php     # Financial analytics
 ├── setup_payroll_tables.php # Payroll system installer
 ├── setup_installment_system.php # Installment system installer
+├── package.json             # Node.js dependencies
+├── tailwind.config.js       # Tailwind CSS configuration
+├── build-css.bat            # Windows build script
+├── build-css.sh             # Linux/Mac build script
 ├── QUOTATION_TO_PROJECT_GUIDE.md # Feature documentation
 ├── UNDER_REVIEW_STATUS_SETUP.md # Status workflow guide
 ├── WIRE_MANAGEMENT_GUIDE.md     # Wire inventory guide
+├── TAILWIND_SETUP.md           # Tailwind CSS documentation
+├── OFFLINE_SETUP.md            # Offline setup guide
 └── README.md               # This file
 ```
 
@@ -345,7 +379,15 @@ The test suite automatically:
 
 ## 🔄 Recent Updates & Changelog
 
-### Version 3.3 (Latest - December 2024)
+### Version 3.4 (Latest - January 2025)
+- ✅ **Complete Offline Capability**: All external dependencies eliminated
+- ✅ **Tailwind CSS Integration**: Local installation with custom theme
+- ✅ **Font Awesome Offline**: Local icon fonts for complete offline functionality
+- ✅ **Enhanced Build System**: Node.js build scripts for CSS compilation
+- ✅ **Improved Documentation**: Comprehensive setup and troubleshooting guides
+- ✅ **Production Optimization**: Minified CSS and optimized asset loading
+
+### Version 3.3 (December 2024)
 - ✅ **Serialized Item Filter**: Quick filter to view only items with serial number tracking
 - ✅ **Streamlined Stock Management**: Removed Update Stock button from view page for cleaner interface
 - ✅ **Enhanced Quick Stock Adjustment**: Improved + and - buttons for rapid stock changes
@@ -430,6 +472,9 @@ The test suite automatically:
 - 🔮 **API Integration**: Third-party system connections
 - 🔮 **Mobile App**: Dedicated mobile application
 - 🔮 **Automated Backups**: Database backup scheduling
+- 🔮 **Dark Mode Toggle**: User preference for dark/light themes
+- 🔮 **Advanced Analytics**: Machine learning insights
+- 🔮 **Multi-language Support**: Internationalization features
 
 ## 🆘 Support & Troubleshooting
 
@@ -439,11 +484,21 @@ The test suite automatically:
    - Check database credentials in `includes/config.php`
    - Ensure database `4nsolar` exists
 
-2. **Permission Denied Errors**
+2. **CSS Not Loading**
+   - Run `npm run build-css-prod` to compile Tailwind CSS
+   - Verify `assets/css/output.css` exists and is not empty
+   - Check file permissions for CSS files
+
+3. **Icons Not Displaying**
+   - Verify `assets/fontawesome/all.min.css` exists
+   - Check that `assets/fontawesome/webfonts/` contains font files
+   - Clear browser cache and hard refresh
+
+4. **Permission Denied Errors**
    - Check file permissions for `images/products/` folder
    - Ensure PHP has write access to required directories
 
-3. **Login Issues**
+5. **Login Issues**
    - Verify user exists in database
    - Reset password using admin account
    - Check session configuration
@@ -452,8 +507,10 @@ The test suite automatically:
 - **PHP**: 7.4 or higher
 - **MySQL**: 5.7 or higher
 - **Apache**: 2.4 or higher
+- **Node.js**: 14.0 or higher (for Tailwind CSS compilation)
 - **Memory**: Minimum 512MB PHP memory limit
 - **Storage**: 100MB+ available disk space
+- **Internet**: Not required (fully offline-capable)
 
 ### Development & Customization
 For custom development, modification requests, or technical support:
@@ -471,11 +528,12 @@ All rights reserved. This software is licensed for use by 4nSolar ELECTRICZ and 
 
 ### Contact Information
 - **System**: 4NSOLAR ELECTRICZ Business Management System
-- **Version**: 3.3
-- **Last Updated**: December 2024
-- **Latest Features**: Serialized Item Filter, Streamlined Stock Management, Enhanced Quick Stock Adjustment, Advanced Inventory Filtering
+- **Version**: 3.4
+- **Last Updated**: January 2025
+- **Latest Features**: Complete Offline Capability, Tailwind CSS Integration, Font Awesome Offline, Enhanced Build System
 - **Previous Features**: Serial Number Management, Quotation Import to POS, Customer Information Transfer, Custom Payroll Deductions
 - **Test Suite**: Comprehensive validation included with 94.44% success rate
+- **Offline Status**: ✅ Fully offline-capable with no external dependencies
 
 ---
 
