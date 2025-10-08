@@ -455,35 +455,51 @@ if ($_POST) {
                     $proposal_updated = updateQuoteProposalName($quote_id, $_POST['proposal_name']);
                 }
                 
-                // Check if KW and Labor Fee are provided and add to Quote Items
+                // Check if KW and Labor Fee are provided and update/create Labor Fee item
                 $kw = floatval($_POST['kw'] ?? 0);
                 $labor_fee = floatval($_POST['labor_fee'] ?? 0);
-                $labor_added = true;
+                $labor_updated = true;
                 
                 if ($kw > 0 && $labor_fee > 0) {
-                    $total_labor_cost = $kw * $labor_fee;
-                    $labor_item_name = "Labor Fee Calculation";
-                    
-                    // Add labor fee as a custom quote item
-                    $labor_result = addCustomQuoteItem($quote_id, $labor_item_name, $kw, $labor_fee);
+                    // Update existing labor fee item or create new one
+                    $labor_result = updateOrCreateLaborFeeItem($quote_id, $kw, $labor_fee);
                     if (!$labor_result['success']) {
-                        $labor_added = false;
+                        $labor_updated = false;
+                    }
+                } else if ($kw == 0 && $labor_fee == 0) {
+                    // Remove existing labor fee item if both are 0
+                    $existing_labor_item = findLaborFeeItem($quote_id);
+                    if ($existing_labor_item) {
+                        removeQuoteItem($existing_labor_item['id']);
                     }
                 }
                 
                 if ($customer_updated && $solar_updated && $proposal_updated) {
                     $message = 'Customer and solar project details updated successfully!';
                     if ($kw > 0 && $labor_fee > 0) {
-                        if ($labor_added) {
-                            $message .= ' Labor fee has been added to quote items.';
+                        if ($labor_updated) {
+                            $message .= ' Labor fee has been updated in quote items.';
                         } else {
-                            $message .= ' Note: Failed to add labor fee to quote items.';
+                            $message .= ' Note: Failed to update labor fee in quote items.';
                         }
+                    } else if ($kw == 0 && $labor_fee == 0) {
+                        $message .= ' Labor fee has been removed from quote items.';
                     }
-                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($message));
+                    
+                    // Return JSON response for AJAX handling
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => true,
+                        'message' => $message
+                    ]);
                     exit();
                 } else {
-                    $error = 'Failed to update customer or solar project details.';
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Failed to update customer or solar project details.'
+                    ]);
+                    exit();
                 }
             }
             break;
@@ -548,21 +564,56 @@ if ($_POST) {
             break;
             
         case 'update_inventory_item':
+            // Debug: Log that we hit this action
+            error_log("Hit update_inventory_item action");
+            
+            // Start output buffering to catch any unwanted output
+            ob_start();
+            
             if (isset($_POST['inventory_item_id'])) {
                 // Debug: Log the POST data (remove in production)
                 error_log("Updating inventory item ID: " . $_POST['inventory_item_id']);
                 error_log("POST data: " . print_r($_POST, true));
                 
-                $result = updateInventoryItem($_POST['inventory_item_id'], $_POST);
-                if ($result['success']) {
-                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode('Inventory item updated successfully!'));
-                    exit();
-                } else {
-                    $error = $result['message'];
-                    error_log("Update failed: " . $result['message']);
+                try {
+                    $result = updateInventoryItem($_POST['inventory_item_id'], $_POST);
+                    
+                    // Clear any buffered output
+                    ob_clean();
+                    
+                    // Set JSON header
+                    header('Content-Type: application/json');
+                    
+                    if ($result && isset($result['success'])) {
+                        echo json_encode([
+                            'success' => $result['success'],
+                            'message' => $result['message']
+                        ]);
+                    } else {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => 'Unknown error occurred during update'
+                        ]);
+                    }
+                } catch (Exception $e) {
+                    // Clear any buffered output
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Error: ' . $e->getMessage()
+                    ]);
                 }
+                exit();
             } else {
-                $error = 'No inventory item ID provided';
+                // Clear any buffered output
+                ob_clean();
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No inventory item ID provided'
+                ]);
+                exit();
             }
             break;
     }
@@ -4607,6 +4658,12 @@ function loadCustomerDetailsForEdit(quoteId) {
     const form = document.getElementById('edit-customer-form');
     form.action = `?action=update_customer_details&quote_id=${quoteId}`;
     
+    // Add form submission handler
+    form.onsubmit = function(e) {
+        e.preventDefault();
+        submitEditCustomerForm(quoteId);
+    };
+    
     // Load existing data
     fetch(`quotations.php?action=get_customer_details&quote_id=${quoteId}`)
         .then(response => response.json())
@@ -4621,6 +4678,53 @@ function loadCustomerDetailsForEdit(quoteId) {
             console.error('Error:', error);
             alert('Network error occurred while loading customer details');
         });
+}
+
+function submitEditCustomerForm(quoteId) {
+    const form = document.getElementById('edit-customer-form');
+    const formData = new FormData(form);
+    
+    // Show loading state
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalText = submitButton ? submitButton.textContent : '';
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Updating...';
+    }
+    
+    fetch(`quotations.php?action=update_customer_details&quote_id=${quoteId}`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success popup
+            showNotification(data.message, 'success');
+            
+            // Close modal
+            closeEditCustomerModal();
+            
+            // Reload the page to show updated data
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            // Show error popup
+            showNotification(data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred while updating details', 'error');
+    })
+    .finally(() => {
+        // Reset button state
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
+        }
+    });
 }
 
 function populateEditForm(customerInfo, solarDetails, quoteItems, quoteInfo) {
@@ -4699,7 +4803,7 @@ function populateEditForm(customerInfo, solarDetails, quoteItems, quoteInfo) {
     // Try to populate KW and Labor Fee from existing labor fee quote items
     if (quoteItems && Array.isArray(quoteItems)) {
         const laborFeeItem = quoteItems.find(item => 
-            item.brand && item.brand.toLowerCase().includes('labor fee calculation')
+            item.brand && item.brand.toLowerCase() === 'labor'
         );
         
         if (laborFeeItem) {
@@ -5018,8 +5122,15 @@ function updateTableDisplay() {
 }
 
 function updateResultsCount() {
-    document.getElementById('filtered-count').textContent = filteredQuotes.length;
-    document.getElementById('total-count').textContent = allQuotes.length;
+    const filteredCountEl = document.getElementById('filtered-count');
+    const totalCountEl = document.getElementById('total-count');
+    
+    if (filteredCountEl) {
+        filteredCountEl.textContent = filteredQuotes.length;
+    }
+    if (totalCountEl) {
+        totalCountEl.textContent = allQuotes.length;
+    }
 }
 
 function clearFilters() {
@@ -5112,11 +5223,11 @@ function displayEditForm(item) {
     
     const content = `
         <div class="mb-4">
-            <h3 class="text-lg font-medium text-gray-900 mb-2">Edit Inventory Item</h3>
+            <h3 class="text-lg font-medium text-gray-900 mb-2"></h3>
             <p class="text-sm text-gray-600">${item.brand} ${item.model}</p>
         </div>
         
-        <form id="edit-inventory-form" method="POST" action="?action=update_inventory_item&quote_id=<?php echo $quote_id; ?>" class="space-y-4" onsubmit="return validateInventoryForm(this)">
+        <form id="edit-inventory-form" class="space-y-4" onsubmit="return handleInventoryUpdate(this, event)">
             <input type="hidden" name="inventory_item_id" value="${item.id}">
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -5279,19 +5390,112 @@ function validateInventoryForm(form) {
         return false;
     }
     
+    return true;
+}
+
+function handleInventoryUpdate(form, event) {
+    event.preventDefault();
+    
+    // Validate form first
+    if (!validateInventoryForm(form)) {
+        return false;
+    }
+    
     // Show loading state
     const submitButton = form.querySelector('button[type="submit"]');
     const originalText = submitButton.textContent;
     submitButton.textContent = 'Updating...';
     submitButton.disabled = true;
     
-    // Re-enable button after a delay in case of error
-    setTimeout(() => {
+    // Get form data
+    const formData = new FormData(form);
+    
+    // Make AJAX request with action as URL parameter
+    fetch(`quotations.php?action=update_inventory_item&quote_id=<?php echo $quote_id; ?>`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return response.json();
+        } else {
+            // If not JSON, get text to see what we received
+            return response.text().then(text => {
+                console.error('Non-JSON response received:', text);
+                throw new Error('Server returned non-JSON response. This might be an error page.');
+            });
+        }
+    })
+    .then(data => {
+        if (data.success) {
+            // Close the modal
+            closeEditModal();
+            
+            // Show success message briefly
+            showNotification(data.message, 'success');
+            
+            // Refresh the page after a short delay to show the notification
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            // Handle error response
+            showNotification(data.message || 'Failed to update inventory item. Please try again.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating inventory item:', error);
+        showNotification('An error occurred while updating the item. Please try again.', 'error');
+    })
+    .finally(() => {
+        // Re-enable button
         submitButton.textContent = originalText;
         submitButton.disabled = false;
-    }, 5000);
+    });
     
-    return true;
+    return false;
+}
+
+// Note: Real-time update functions removed since we're using page refresh instead
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg transition-all duration-300 transform translate-x-full ${
+        type === 'success' ? 'bg-green-500 text-white' : 
+        type === 'error' ? 'bg-red-500 text-white' : 
+        'bg-blue-500 text-white'
+    }`;
+    
+    // Add icon based on type
+    const icon = type === 'success' ? 'fas fa-check-circle' : 
+                 type === 'error' ? 'fas fa-exclamation-circle' : 
+                 'fas fa-info-circle';
+    
+    notification.innerHTML = `
+        <div class="flex items-center">
+            <i class="${icon} mr-3 text-lg"></i>
+            <span class="font-medium">${message}</span>
+        </div>
+    `;
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.classList.remove('translate-x-full');
+    }, 100);
+    
+    // Remove after 2 seconds
+    setTimeout(() => {
+        notification.classList.add('translate-x-full');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 2000);
 }
 </script>
 

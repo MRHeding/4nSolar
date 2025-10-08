@@ -31,6 +31,7 @@ $page_title = 'Login';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $page_title; ?> - 4NSOLAR ELECTRICZ</title>
+    <link href="assets/css/racing-sans-one.css" rel="stylesheet">
     <link href="assets/css/output.css" rel="stylesheet">
     <link href="assets/fontawesome/all.min.css" rel="stylesheet">
     <style>
@@ -43,7 +44,7 @@ $page_title = 'Login';
             background-attachment: fixed;
         }
         .login-overlay {
-            background: linear-gradient(135deg, rgba(30, 58, 138, 0.85), rgba(59, 130, 246, 0.7));
+            background: linear-gradient(135deg, rgba(177, 193, 238, 0.85), rgba(59, 130, 246, 0.7));
         }
     </style>
 </head>
@@ -54,8 +55,8 @@ $page_title = 'Login';
         <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg shadow-2xl p-8 border border-blue-200">
             <div class="text-center mb-8">
                 <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-16 w-auto mx-auto mb-4">
-                <h1 class="text-3xl font-bold" style="color: #1e3a8a;">4NSOLAR ELECTRICZ</h1>
-                <p class="text-blue-800 mt-2 font-medium">Business Management System</p>
+                <h1 class="text-3xl font-bold" style="color: #0000ff; font-family: 'Racing Sans One', cursive;">4NSOLAR ELECTRICZ</h1>
+                <p class="mt-2 font-medium" style="color: #0000ff;">Business Management System</p>
             </div>
 
             <?php if ($error): ?>
@@ -66,8 +67,8 @@ $page_title = 'Login';
 
             <form method="POST" class="space-y-6">
                 <div>
-                    <label for="username" class="block text-sm font-medium text-blue-800 mb-2">
-                        <i class="fas fa-user mr-2" style="color: #1e3a8a;"></i>Username
+                    <label for="username" class="block text-sm font-medium mb-2" style="color: #0000ff;">
+                        <i class="fas fa-user mr-2" style="color: #0000ff;"></i>Username
                     </label>
                     <input type="text" id="username" name="username" required
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white bg-opacity-90"
@@ -75,8 +76,8 @@ $page_title = 'Login';
                 </div>
 
                 <div>
-                    <label for="password" class="block text-sm font-medium text-blue-800 mb-2">
-                        <i class="fas fa-lock mr-2" style="color: #1e3a8a;"></i>Password
+                    <label for="password" class="block text-sm font-medium mb-2" style="color: #0000ff;">
+                        <i class="fas fa-lock mr-2" style="color: #0000ff;"></i>Password
                     </label>
                     <input type="password" id="password" name="password" required
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white bg-opacity-90"
@@ -85,14 +86,14 @@ $page_title = 'Login';
 
                 <button type="submit" 
                         class="w-full text-white py-3 px-4 rounded-lg transition duration-200 font-medium"
-                        style="background-color: #1e3a8a;"
-                        onmouseover="this.style.backgroundColor='#3b82f6'"
-                        onmouseout="this.style.backgroundColor='#1e3a8a'">
+                        style="background-color: #0000ff;"
+                        onmouseover="this.style.backgroundColor='#000080'"
+                        onmouseout="this.style.backgroundColor='#0000ff'">
                     <i class="fas fa-sign-in-alt mr-2"></i>Sign In
                 </button>
             </form>
 
-            <div class="mt-8 text-center text-sm text-blue-800">
+            <div class="mt-8 text-center text-sm" style="color: #0000ff;">
                 <p class="mt-2 text-xs font-medium">© 2025 4NSOLAR ELECTRICZ. All rights reserved.</p>
             </div>
         </div>

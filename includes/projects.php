@@ -336,8 +336,8 @@ function addProjectItem($project_id, $inventory_item_id, $quantity) {
     global $pdo;
     
     try {
-        // Check stock availability first - only for active items
-        $stmt = $pdo->prepare("SELECT stock_quantity, base_price, selling_price, discount_percentage FROM inventory_items WHERE id = ? AND is_active = 1");
+        // Check stock availability first - only for active items (Labor Fee items are always available)
+        $stmt = $pdo->prepare("SELECT stock_quantity, base_price, selling_price, discount_percentage, brand FROM inventory_items WHERE id = ? AND (is_active = 1 OR brand = 'LABOR')");
         $stmt->execute([$inventory_item_id]);
         $item = $stmt->fetch();
         

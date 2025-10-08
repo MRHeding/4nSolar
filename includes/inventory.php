@@ -338,7 +338,7 @@ function getProductImageUrl($image_path) {
     if ($image_path && file_exists($image_path)) {
         return $image_path;
     }
-    return 'images/no-image.png'; // Default placeholder image
+    return 'images/no-image.svg'; // Default placeholder image
 }
 
 // ================== QUOTATION FUNCTIONS ==================
@@ -587,6 +587,60 @@ function addCustomQuoteItem($quote_id, $item_name, $quantity, $unit_price, $disc
     }
 }
 
+// Find existing labor fee item in a quote
+function findLaborFeeItem($quote_id) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("SELECT qi.id, qi.quantity, qi.unit_price, qi.discount_percentage
+                              FROM quote_items qi
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id
+                              WHERE qi.quote_id = ? AND i.brand = 'LABOR'");
+        $stmt->execute([$quote_id]);
+        return $stmt->fetch();
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Update or create labor fee item
+function updateOrCreateLaborFeeItem($quote_id, $quantity, $unit_price, $discount_percentage = 0) {
+    global $pdo;
+    
+    try {
+        // Check if labor fee item already exists
+        $existing_item = findLaborFeeItem($quote_id);
+        
+        if ($existing_item) {
+            // Update existing labor fee item
+            $discount_amount = ($unit_price * $discount_percentage / 100) * $quantity;
+            $total_amount = ($unit_price * $quantity) - $discount_amount;
+            
+            $stmt = $pdo->prepare("UPDATE quote_items SET 
+                                  quantity = ?, unit_price = ?, discount_percentage = ?, 
+                                  discount_amount = ?, total_amount = ?
+                                  WHERE id = ?");
+            
+            $result = $stmt->execute([
+                $quantity, $unit_price, $discount_percentage, 
+                $discount_amount, $total_amount, $existing_item['id']
+            ]);
+            
+            if ($result) {
+                updateQuoteTotals($quote_id);
+                return ['success' => true, 'message' => 'Labor fee updated successfully'];
+            } else {
+                return ['success' => false, 'message' => 'Failed to update labor fee'];
+            }
+        } else {
+            // Create new labor fee item
+            return addCustomQuoteItem($quote_id, "Labor Fee Calculation", $quantity, $unit_price, $discount_percentage);
+        }
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
+}
+
 // Remove item from quotation
 function removeQuoteItem($quote_item_id) {
     global $pdo;
@@ -661,7 +715,8 @@ function updateQuoteItemQuantity($quote_item_id, $new_quantity) {
             return ['success' => false, 'message' => 'Item not found'];
         }
         
-        if (!$item['is_active']) {
+        // Skip inventory status check for Labor Fee items (they are independent)
+        if (!$item['is_active'] && $item['brand'] !== 'LABOR') {
             $pdo->rollback();
             return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
         }
@@ -957,7 +1012,8 @@ function updateQuoteItemDiscount($quote_item_id, $new_discount_percentage) {
         
         if (!$item) return ['success' => false, 'message' => 'Item not found'];
         
-        if (!$item['is_active']) {
+        // Skip inventory status check for Labor Fee items (they are independent)
+        if (!$item['is_active'] && $item['brand'] !== 'LABOR') {
             return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
         }
         
@@ -1004,7 +1060,8 @@ function updateQuoteItemUnitPrice($quote_item_id, $new_unit_price) {
         
         if (!$item) return ['success' => false, 'message' => 'Item not found'];
         
-        if (!$item['is_active']) {
+        // Skip inventory status check for Labor Fee items (they are independent)
+        if (!$item['is_active'] && $item['brand'] !== 'LABOR') {
             return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
         }
         
