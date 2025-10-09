@@ -1007,11 +1007,11 @@ include 'includes/header.php';
             <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Item Details</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-500">Brand</label>
+                    <label class="block text-sm font-medium text-gray-500">Description</label>
                     <p class="text-gray-900"><?php echo htmlspecialchars($item['brand']); ?></p>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-500">Model</label>
+                    <label class="block text-sm font-medium text-gray-500">Brand/Model</label>
                     <p class="text-gray-900"><?php echo htmlspecialchars($item['model']); ?></p>
                 </div>
                 <div>
@@ -1129,7 +1129,7 @@ include 'includes/header.php';
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Recent Stock Movements</h2>
             <?php if (!empty($stock_movements)): ?>
-            <div class="overflow-x-auto">
+            <div>
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
@@ -1137,6 +1137,7 @@ include 'includes/header.php';
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock Change</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
                         </tr>
                     </thead>
@@ -1157,6 +1158,9 @@ include 'includes/header.php';
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 <?php echo $movement['previous_stock']; ?> → <?php echo $movement['new_stock']; ?>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <?php echo htmlspecialchars($movement['created_by_name'] ?? 'System'); ?>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 <?php echo htmlspecialchars($movement['notes']); ?>

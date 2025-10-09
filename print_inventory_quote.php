@@ -26,7 +26,7 @@ if (!$quote) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quotation <?php echo htmlspecialchars($quote['quote_number']); ?> - 4nSolar</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="assets/css/output.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         @media print {
@@ -192,9 +192,10 @@ if (!$quote) {
                 margin-right: 2% !important;
             }
             
-            /* Keep totals section flowing with content */
+            /* Smart page break for totals section - only break if needed */
             .totals-section {
-                page-break-before: avoid !important;
+                page-break-before: auto !important;
+                page-break-inside: avoid !important;
                 margin-top: 15px !important;
                 clear: both !important;
             }
@@ -495,7 +496,7 @@ if (!$quote) {
             </div>
 
             <!-- Totals -->
-            <div class="totals-section flex justify-end mb-4 print-break-before">
+            <div class="totals-section flex justify-end mb-4">
                 <div class="w-64">
                     <div class="total-section bg-gray-50 rounded-lg p-4 border-2">
                         <h4 class="text-sm font-bold text-gray-800 mb-2 text-center">QUOTATION SUMMARY</h4>

@@ -836,8 +836,7 @@ include 'includes/header.php';
                 <option value="draft">Draft</option>
                 <option value="sent">Sent</option>
                 <option value="under_review">Under Review</option>
-                <option value="accepted">Accepted</option>
-                <option value="approved">Approved</option>
+                <option value="accepted">Complete</option>
                 <option value="rejected">Rejected</option>
                 <option value="expired">Expired</option>
             </select>
@@ -874,8 +873,8 @@ include 'includes/header.php';
             <button onclick="setQuickFilter('under_review')" class="quick-filter-btn px-3 py-1 text-sm bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-md hover:bg-purple-200 dark:hover:bg-purple-800 transition">
                 Under Review
             </button>
-            <button onclick="setQuickFilter('approved')" class="quick-filter-btn px-3 py-1 text-sm bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-800 transition">
-                Approved
+            <button onclick="setQuickFilter('accepted')" class="quick-filter-btn px-3 py-1 text-sm bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-800 transition">
+                Complete
             </button>
             <button onclick="setQuickFilter('rejected')" class="quick-filter-btn px-3 py-1 text-sm bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-md hover:bg-red-200 dark:hover:bg-red-800 transition">
                 Rejected
@@ -965,7 +964,7 @@ include 'includes/header.php';
                                     case 'expired': echo 'bg-yellow-100 text-yellow-800'; break;
                                 }
                                 ?>">
-                                <?php echo ucfirst(str_replace('_', ' ', $quote['status'])); ?>
+                                <?php echo $quote['status'] == 'accepted' ? 'Complete' : ucfirst(str_replace('_', ' ', $quote['status'])); ?>
                             </span>
                             <?php if ($quote['has_installment_plan'] > 0): ?>
                             <span class="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 flex items-center">
@@ -1540,7 +1539,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 case 'expired': echo 'bg-yellow-100 text-yellow-800'; break;
                             }
                             ?>">
-                            <?php echo ucfirst(str_replace('_', ' ', $quote['status'])); ?>
+                            <?php echo $quote['status'] == 'accepted' ? 'Complete' : ucfirst(str_replace('_', ' ', $quote['status'])); ?>
                         </span>
                         <?php if ($installment_plan): ?>
                         <span class="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 ml-2 flex items-center inline-flex">
@@ -1610,9 +1609,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="bg-green-50 border border-green-200 rounded-lg p-3">
                         <div class="flex items-center">
                             <i class="fas fa-check-circle text-green-500 mr-2"></i>
-                            <span class="text-green-800 font-medium">Quote <?php echo ucfirst($quote['status']); ?></span>
+                            <span class="text-green-800 font-medium">Quote <?php echo $quote['status'] == 'accepted' ? 'Complete' : ucfirst($quote['status']); ?></span>
                         </div>
-                        <p class="text-green-700 text-sm mt-1">This quote has been <?php echo $quote['status']; ?> and is ready for processing.</p>
+                        <p class="text-green-700 text-sm mt-1">This quote has been <?php echo $quote['status'] == 'accepted' ? 'completed' : $quote['status']; ?> and is ready for processing.</p>
                     </div>
                     <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="inline-block w-full">
                         <input type="hidden" name="new_status" value="draft">
@@ -1645,8 +1644,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <option value="draft" <?php echo $quote['status'] == 'draft' ? 'selected' : ''; ?>>Draft</option>
                                 <option value="sent" <?php echo $quote['status'] == 'sent' ? 'selected' : ''; ?>>Sent</option>
                                 <option value="under_review" <?php echo $quote['status'] == 'under_review' ? 'selected' : ''; ?>>Under Review</option>
-                                <option value="accepted" <?php echo $quote['status'] == 'accepted' ? 'selected' : ''; ?>>Accepted</option>
-                                <option value="approved" <?php echo $quote['status'] == 'approved' ? 'selected' : ''; ?>>Approved</option>
+                                <option value="accepted" <?php echo $quote['status'] == 'accepted' ? 'selected' : ''; ?>>Complete</option>
                                 <option value="rejected" <?php echo $quote['status'] == 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                                 <option value="expired" <?php echo $quote['status'] == 'expired' ? 'selected' : ''; ?>>Expired</option>
                             </select>
