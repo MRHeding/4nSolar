@@ -19,6 +19,12 @@ if (!$quote) {
     header("Location: inventory.php?action=quotes&error=" . urlencode('Quotation not found'));
     exit();
 }
+
+// Get customer information
+$customer_info = getCustomerInfo($quote_id);
+
+// Get solar project details
+$solar_details = getSolarProjectDetails($quote_id);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -419,6 +425,98 @@ if (!$quote) {
                     </div>
                 </div>
             </div>
+
+            <!-- Customer & Solar Project Details -->
+            <?php if ($customer_info || $solar_details): ?>
+            <div class="mb-6 print-break-after">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Customer & Solar Project Details</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Customer Details -->
+                    <?php if ($customer_info): ?>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h4 class="text-md font-semibold text-gray-800 mb-3">Customer Information</h4>
+                        <div class="space-y-2 text-sm">
+                            <?php if (isset($customer_info['address']) && $customer_info['address']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Address:</span>
+                                <p class="text-gray-900"><?php echo nl2br(htmlspecialchars($customer_info['address'])); ?></p>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($customer_info['phone_number']) && $customer_info['phone_number']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Phone:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($customer_info['phone_number']); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($customer_info['email']) && $customer_info['email']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Email:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($customer_info['email']); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($customer_info['notes']) && $customer_info['notes']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Notes:</span>
+                                <p class="text-gray-900"><?php echo nl2br(htmlspecialchars($customer_info['notes'])); ?></p>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <!-- Solar Project Details -->
+                    <?php if ($solar_details): ?>
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <h4 class="text-md font-semibold text-gray-800 mb-3">Solar Project Details</h4>
+                        <div class="space-y-2 text-sm">
+                            <?php if (isset($solar_details['system_size_kw']) && $solar_details['system_size_kw']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">System Size:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($solar_details['system_size_kw']); ?> kW</span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($solar_details['roof_type']) && $solar_details['roof_type']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Roof Type:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($solar_details['roof_type']); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($solar_details['roof_condition']) && $solar_details['roof_condition']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Roof Condition:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($solar_details['roof_condition']); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($solar_details['shading_issues']) && $solar_details['shading_issues']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Shading Issues:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($solar_details['shading_issues']); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($solar_details['electrical_panel']) && $solar_details['electrical_panel']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Electrical Panel:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($solar_details['electrical_panel']); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($solar_details['installation_notes']) && $solar_details['installation_notes']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Installation Notes:</span>
+                                <p class="text-gray-900"><?php echo nl2br(htmlspecialchars($solar_details['installation_notes'])); ?></p>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (isset($solar_details['warranty_info']) && $solar_details['warranty_info']): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Warranty Info:</span>
+                                <p class="text-gray-900"><?php echo nl2br(htmlspecialchars($solar_details['warranty_info'])); ?></p>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Items Table -->
             <div class="items-section mb-4 print-break-after">

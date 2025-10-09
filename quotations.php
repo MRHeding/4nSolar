@@ -768,14 +768,27 @@ include 'includes/header.php';
 }
 
 /* Ensure table columns have proper widths */
-.compact-table th:nth-child(1), .compact-table td:nth-child(1) { width: 100px; } /* Quote # */
-.compact-table th:nth-child(2), .compact-table td:nth-child(2) { width: 200px; } /* Customer */
-.compact-table th:nth-child(3), .compact-table td:nth-child(3) { width: 150px; } /* Proposal */
-.compact-table th:nth-child(4), .compact-table td:nth-child(4) { width: 80px; }  /* Items */
-.compact-table th:nth-child(5), .compact-table td:nth-child(5) { width: 100px; } /* Total */
-.compact-table th:nth-child(6), .compact-table td:nth-child(6) { width: 100px; } /* Status */
-.compact-table th:nth-child(7), .compact-table td:nth-child(7) { width: 100px; } /* Date */
-.compact-table th:nth-child(8), .compact-table td:nth-child(8) { width: 140px; } /* Actions */
+.compact-table th:nth-child(1), .compact-table td:nth-child(1) { width: 100px; min-width: 100px; max-width: 100px; } /* Quote # */
+.compact-table th:nth-child(2), .compact-table td:nth-child(2) { width: 200px; min-width: 200px; max-width: 200px; } /* Customer */
+.compact-table th:nth-child(3), .compact-table td:nth-child(3) { width: 150px; min-width: 150px; max-width: 150px; } /* Proposal */
+.compact-table th:nth-child(4), .compact-table td:nth-child(4) { width: 80px; min-width: 80px; max-width: 80px; }  /* Items */
+.compact-table th:nth-child(5), .compact-table td:nth-child(5) { width: 100px; min-width: 100px; max-width: 100px; } /* Total */
+.compact-table th:nth-child(6), .compact-table td:nth-child(6) { width: 100px; min-width: 100px; max-width: 100px; } /* Status */
+.compact-table th:nth-child(7), .compact-table td:nth-child(7) { width: 100px; min-width: 100px; max-width: 100px; } /* Date */
+.compact-table th:nth-child(8), .compact-table td:nth-child(8) { width: 140px; min-width: 140px; max-width: 140px; } /* Actions */
+
+/* Force table layout to respect column widths */
+.compact-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+/* Truncate long text in proposal column */
+.compact-table td:nth-child(3) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 
 /* Make table more compact */
