@@ -73,6 +73,13 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
    - Run comprehensive tests: `http://localhost/4nsolarSystem/system_comprehensive_test.php`
    - Validates all system components and integrations
 
+9. **Inventory Reset System (Optional)**
+   - **Web Interface**: `http://localhost/4nsolarSystem/reset_inventory_system.php`
+   - **Command Line**: `php reset_inventory_cli.php` (from project root)
+   - **Admin Only**: Requires administrator privileges for security
+   - **Complete Reset**: Resets all stock quantities, serial numbers, and movement history
+   - **Fresh Start**: Use when setting up new inventory or clearing test data
+
 ## 🎯 Core Features
 
 ### 🔐 Authentication & Security
@@ -102,6 +109,9 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 - **Automatic Serial Generation**: Auto-generate serials when stock increases
 - **Serial Number Validation**: Prevent duplicate serial numbers
 - **Serialized Item Filter**: Quick filter to view only items with serial number tracking
+- **Inventory Reset System**: Complete inventory system reset with web and CLI interfaces
+- **User Tracking**: Enhanced stock movements with user tracking for better audit trails
+- **Admin Reset Tools**: Secure inventory reset with confirmation prompts and detailed operation summaries
 
 ### 🏗️ Solar Project Management
 - **Project Lifecycle**: From quote to completion tracking
@@ -114,6 +124,9 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 - **Battery Backup Planning**: Capacity planning and specifications
 - **Installation Status**: Track various installation phases
 - **Inventory Allocation**: Automatic stock deduction on approval
+- **Enhanced Print Layout**: Customer information, address, phone, email, and notes in quotes
+- **Solar Project Details**: System size, roof type, condition, shading, electrical panel, installation notes, and warranty in printouts
+- **Professional Quote Formatting**: Fixed column widths and text truncation for better readability
 
 ### 🛒 Point of Sale (POS) System
 - **Retail Sales Processing**: Complete transaction management
@@ -207,6 +220,8 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 ├── revenue_analysis.php     # Financial analytics
 ├── setup_payroll_tables.php # Payroll system installer
 ├── setup_installment_system.php # Installment system installer
+├── reset_inventory_system.php # Web-based inventory reset interface
+├── reset_inventory_cli.php  # Command-line inventory reset script
 ├── package.json             # Node.js dependencies
 ├── tailwind.config.js       # Tailwind CSS configuration
 ├── build-css.bat            # Windows build script
@@ -264,13 +279,14 @@ A comprehensive business management system designed for 4NSOLAR ELECTRICZ. This 
 - `getInventoryItems()` - Retrieve inventory with filters
 - `addInventoryItem()` - Create new inventory items
 - `updateStock()` - Stock level management with automatic serial generation
-- `getStockMovements()` - Movement history
+- `getStockMovements()` - Movement history with user tracking
 - `getLowStockItems()` - Alert system
 - `getSerializedItems()` - Filter items with serial number tracking
 - `generateSerialNumbers()` - Create unique serial numbers for items
 - `getAvailableSerials()` - Retrieve available serial numbers
 - `reserveSpecificSerialsForQuote()` - Reserve serials for quotations
 - `releaseSpecificSerials()` - Release reserved serial numbers
+- `resetInventorySystem()` - Complete inventory system reset functionality
 
 #### Project Management (`includes/projects.php`)
 - `createSolarProject()` - New project creation
@@ -379,7 +395,16 @@ The test suite automatically:
 
 ## 🔄 Recent Updates & Changelog
 
-### Version 3.4 (Latest - January 2025)
+### Version 3.5 (Latest - October 2025)
+- ✅ **Enhanced Print Features**: Customer and solar project details in inventory quote printouts
+- ✅ **Inventory Reset System**: Web-based and CLI inventory reset functionality for fresh starts
+- ✅ **User Tracking Enhancement**: User tracking in stock movements for better audit trails
+- ✅ **Improved Table Layout**: Fixed column widths and text truncation in quotations table
+- ✅ **Enhanced Print Layout**: Customer information, address, phone, email, and notes in quotes
+- ✅ **Solar Project Details**: System size, roof type, condition, shading, electrical panel, installation notes, and warranty in printouts
+- ✅ **Admin Reset Tools**: Secure inventory reset with confirmation prompts and detailed summaries
+
+### Version 3.4 (January 2025)
 - ✅ **Complete Offline Capability**: All external dependencies eliminated
 - ✅ **Tailwind CSS Integration**: Local installation with custom theme
 - ✅ **Font Awesome Offline**: Local icon fonts for complete offline functionality
@@ -528,10 +553,10 @@ All rights reserved. This software is licensed for use by 4nSolar ELECTRICZ and 
 
 ### Contact Information
 - **System**: 4NSOLAR ELECTRICZ Business Management System
-- **Version**: 3.4
-- **Last Updated**: January 2025
-- **Latest Features**: Complete Offline Capability, Tailwind CSS Integration, Font Awesome Offline, Enhanced Build System
-- **Previous Features**: Serial Number Management, Quotation Import to POS, Customer Information Transfer, Custom Payroll Deductions
+- **Version**: 3.5
+- **Last Updated**: October 2025
+- **Latest Features**: Enhanced Print Features, Inventory Reset System, User Tracking Enhancement, Improved Table Layout
+- **Previous Features**: Complete Offline Capability, Tailwind CSS Integration, Serial Number Management, Quotation Import to POS
 - **Test Suite**: Comprehensive validation included with 94.44% success rate
 - **Offline Status**: ✅ Fully offline-capable with no external dependencies
 

@@ -469,6 +469,36 @@ $solar_details = getSolarProjectDetails($quote_id);
                     <div class="bg-blue-50 p-4 rounded-lg">
                         <h4 class="text-md font-semibold text-gray-800 mb-3">Solar Project Details</h4>
                         <div class="space-y-2 text-sm">
+                            <?php 
+                            $system_type = '';
+                            if (isset($solar_details['system_type_grid_tie']) && $solar_details['system_type_grid_tie']) {
+                                $system_type = 'Grid Tie';
+                            } elseif (isset($solar_details['system_type_off_grid']) && $solar_details['system_type_off_grid']) {
+                                $system_type = 'Off Grid';
+                            } elseif (isset($solar_details['system_type_hybrid']) && $solar_details['system_type_hybrid']) {
+                                $system_type = 'Hybrid';
+                            }
+                            if ($system_type): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">System Type:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($system_type); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php 
+                            $installation_type = '';
+                            if (isset($solar_details['installation_type_rooftop']) && $solar_details['installation_type_rooftop']) {
+                                $installation_type = 'Rooftop';
+                            } elseif (isset($solar_details['installation_type_ground_mounted']) && $solar_details['installation_type_ground_mounted']) {
+                                $installation_type = 'Ground Mounted';
+                            } elseif (isset($solar_details['installation_type_carport']) && $solar_details['installation_type_carport']) {
+                                $installation_type = 'Carport';
+                            }
+                            if ($installation_type): ?>
+                            <div>
+                                <span class="text-gray-600 font-medium">Installation Type:</span>
+                                <span class="text-gray-900"><?php echo htmlspecialchars($installation_type); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <?php if (isset($solar_details['system_size_kw']) && $solar_details['system_size_kw']): ?>
                             <div>
                                 <span class="text-gray-600 font-medium">System Size:</span>

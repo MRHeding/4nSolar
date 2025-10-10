@@ -1442,7 +1442,19 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="text-xs text-blue-600">Stock: <?php echo $item['stock_quantity']; ?></div>
                                 <?php if (!empty($item['serial_numbers'])): ?>
                                 <div class="text-xs text-green-600 mt-1">
-                                    <strong>Reserved Serials:</strong> <?php echo htmlspecialchars($item['serial_numbers']); ?>
+                                    <button type="button" onclick="toggleSerials('serials-<?php echo $item['id']; ?>')" 
+                                            class="text-green-600 hover:text-green-800 font-medium underline">
+                                        <i class="fas fa-chevron-down" id="serials-icon-<?php echo $item['id']; ?>"></i>
+                                        Reserved Serials (<?php echo substr_count($item['serial_numbers'], ',') + 1; ?>)
+                                    </button>
+                                    <div id="serials-<?php echo $item['id']; ?>" class="hidden mt-1 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded border">
+                                        <?php 
+                                        $serials = explode(',', $item['serial_numbers']);
+                                        foreach ($serials as $serial): 
+                                        ?>
+                                        <div class="mb-1"><?php echo htmlspecialchars(trim($serial)); ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
                                 </div>
                                 <?php endif; ?>
                             </td>
@@ -1782,7 +1794,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <label for="quote_quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
                         <input type="number" min="1" id="quote_quantity" name="quantity" required value="1"
                                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
-                               oninput="updateQuoteTotalPreview()">
+                               oninput="updateQuoteTotalPreview(); if(selectedQuoteItemData && selectedQuoteItemData.generatesSerials) { loadQuoteAvailableSerials(); }">
                     </div>
                     <div>
                         <label for="quote_discount_percentage" class="block text-sm font-medium text-gray-700 mb-2">Discount %</label>
@@ -2054,6 +2066,23 @@ function displayQuoteSerialSelection(serials, quantity) {
     }
     
     let html = '<div class="space-y-2">';
+    
+    // Add Select All button if quantity is less than or equal to available serials
+    if (quantity <= serials.length) {
+        html += `
+            <div class="mb-3 pb-2 border-b border-gray-200">
+                <button type="button" onclick="selectAllQuoteSerials(${quantity})" 
+                        class="px-3 py-1 bg-solar-blue text-white text-sm rounded hover:bg-blue-700 transition-colors">
+                    Select All (${quantity})
+                </button>
+                <button type="button" onclick="clearAllQuoteSerials()" 
+                        class="ml-2 px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors">
+                    Clear All
+                </button>
+            </div>
+        `;
+    }
+    
     serials.forEach(serial => {
         html += `
             <label class="flex items-center">
@@ -2081,6 +2110,53 @@ function validateQuoteSerialSelection() {
     }
     
     updateQuoteSubmitButtonState();
+}
+
+function selectAllQuoteSerials(maxQuantity) {
+    const checkboxes = document.querySelectorAll('.quote-serial-checkbox');
+    const quantity = parseInt(document.getElementById('quote_quantity').value) || 1;
+    const targetQuantity = Math.min(quantity, maxQuantity);
+    
+    // Clear all first
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    // Select up to the required quantity
+    let selectedCount = 0;
+    checkboxes.forEach(checkbox => {
+        if (selectedCount < targetQuantity) {
+            checkbox.checked = true;
+            selectedCount++;
+        }
+    });
+    
+    updateQuoteSubmitButtonState();
+}
+
+function clearAllQuoteSerials() {
+    const checkboxes = document.querySelectorAll('.quote-serial-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    updateQuoteSubmitButtonState();
+}
+
+function toggleSerials(serialId) {
+    const serialDiv = document.getElementById(serialId);
+    const iconId = serialId.replace('serials-', 'serials-icon-').replace('print-serials-', 'print-serials-icon-');
+    const icon = document.getElementById(iconId);
+    
+    if (serialDiv.classList.contains('hidden')) {
+        serialDiv.classList.remove('hidden');
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+    } else {
+        serialDiv.classList.add('hidden');
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
+    }
 }
 
 function updateQuoteSubmitButtonState() {
@@ -2738,7 +2814,19 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <?php endif; ?>
                                 <?php if (!empty($item['serial_numbers'])): ?>
                                 <div class="text-xs text-green-600 mt-1">
-                                    <strong>Serials:</strong> <?php echo htmlspecialchars($item['serial_numbers']); ?>
+                                    <button type="button" onclick="toggleSerials('print-serials-<?php echo $item['id']; ?>')" 
+                                            class="text-green-600 hover:text-green-800 font-medium underline">
+                                        <i class="fas fa-chevron-down" id="print-serials-icon-<?php echo $item['id']; ?>"></i>
+                                        Serials (<?php echo substr_count($item['serial_numbers'], ',') + 1; ?>)
+                                    </button>
+                                    <div id="print-serials-<?php echo $item['id']; ?>" class="hidden mt-1 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded border">
+                                        <?php 
+                                        $serials = explode(',', $item['serial_numbers']);
+                                        foreach ($serials as $serial): 
+                                        ?>
+                                        <div class="mb-1"><?php echo htmlspecialchars(trim($serial)); ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
                                 </div>
                                 <?php endif; ?>
                             </td>
