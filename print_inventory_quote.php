@@ -1,6 +1,7 @@
 <?php
 require_once 'includes/config.php';
 require_once 'includes/auth.php';
+require_once 'includes/settings.php';
 require_once 'includes/inventory.php';
 
 if (!isLoggedIn()) {
@@ -31,10 +32,22 @@ $solar_details = getSolarProjectDetails($quote_id);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quotation <?php echo htmlspecialchars($quote['quote_number']); ?> - 4nSolar</title>
-    <link rel="stylesheet" href="assets/css/output.css">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Quotation <?php echo htmlspecialchars($quote['quote_number']); ?> - <?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></title>
+    <link rel="stylesheet" href="assets/css/output.css?v=<?php echo time(); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        /* Dynamic CSS Variables - Generated at <?php echo date('Y-m-d H:i:s'); ?> */
+        :root {
+            --header-bg-color: <?php echo getSystemSetting('header_background_color', '#1e40af'); ?>;
+            --header-text-color: <?php echo getSystemSetting('header_text_color', '#ffffff'); ?>;
+            --primary-color: <?php echo getSystemSetting('primary_color', '#1e40af'); ?>;
+            --secondary-color: <?php echo getSystemSetting('secondary_color', '#3b82f6'); ?>;
+            --accent-color: <?php echo getSystemSetting('accent_color', '#fbbf24'); ?>;
+        }
+        
         @media print {
             body { 
                 font-size: 12px;
@@ -68,12 +81,12 @@ $solar_details = getSolarProjectDetails($quote_id);
                 box-shadow: none !important; 
             }
             .company-header {
-                background: #1e40af !important;
+                background: var(--primary-color) !important;
                 -webkit-print-color-adjust: exact !important;
                 color-adjust: exact !important;
             }
             .bg-blue-600 {
-                background: #2563eb !important;
+                background: var(--secondary-color) !important;
                 -webkit-print-color-adjust: exact !important;
                 color-adjust: exact !important;
             }
@@ -198,6 +211,19 @@ $solar_details = getSolarProjectDetails($quote_id);
                 margin-right: 2% !important;
             }
             
+            /* Force two-column layout for Customer & Solar Project Details */
+            .customer-solar-grid {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr !important;
+                gap: 1rem !important;
+            }
+            
+            .customer-solar-grid > div {
+                display: block !important;
+                width: auto !important;
+                margin-right: 0 !important;
+            }
+            
             /* Smart page break for totals section - only break if needed */
             .totals-section {
                 page-break-before: auto !important;
@@ -224,7 +250,7 @@ $solar_details = getSolarProjectDetails($quote_id);
         }
         
         .company-header {
-            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
         }
         
         .invoice-table {
@@ -246,7 +272,7 @@ $solar_details = getSolarProjectDetails($quote_id);
         }
         
         .total-section {
-            border: 2px solid #1e40af;
+            border: 2px solid var(--primary-color);
             background-color: #f8f9fa;
         }
         
@@ -256,7 +282,7 @@ $solar_details = getSolarProjectDetails($quote_id);
         }
         
         .print-header {
-            border-bottom: 2px solid #1e40af;
+            border-bottom: 2px solid var(--primary-color);
             margin-bottom: 8px;
         }
         
@@ -353,8 +379,8 @@ $solar_details = getSolarProjectDetails($quote_id);
         <div class="header-section print-header company-header text-white p-8 print:bg-blue-600">
             <div class="flex justify-between items-start">
                 <div>
-                    <h1 class="text-3xl font-bold mb-2">4NSOLAR ELECTRICZ</h1>
-                    <p class="text-blue-100 text-lg">Solar Power Installation Services</p>
+                    <h1 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></h1>
+                    <p class="text-blue-100 text-lg"><?php echo htmlspecialchars(getSystemSetting('company_subtitle', 'Solar Power Installation Services')); ?></p>
                     <p class="text-blue-100 text-lg">Your Trusted Partner in Solar Solutions</p>
                     <p class="text-blue-100 text-lg">NON VAT Reg TIN: 247-334-690-00001</p>
                     <p class="text-blue-100 text-lg"></p>
@@ -430,7 +456,7 @@ $solar_details = getSolarProjectDetails($quote_id);
             <?php if ($customer_info || $solar_details): ?>
             <div class="mb-6 print-break-after">
                 <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Customer & Solar Project Details</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="customer-solar-grid grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Customer Details -->
                     <?php if ($customer_info): ?>
                     <div class="bg-gray-50 p-4 rounded-lg">

@@ -1,6 +1,7 @@
 <?php
 require_once 'includes/config.php';
 require_once 'includes/auth.php';
+require_once 'includes/settings.php';
 
 // Redirect to dashboard if user is already logged in
 if (isLoggedIn()) {
@@ -30,7 +31,7 @@ $page_title = 'Login';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title; ?> - 4NSOLAR ELECTRICZ</title>
+    <title><?php echo $page_title; ?> - <?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></title>
     <link href="assets/css/racing-sans-one.css" rel="stylesheet">
     <link href="assets/css/output.css" rel="stylesheet">
     <link href="assets/fontawesome/all.min.css" rel="stylesheet">
@@ -54,9 +55,9 @@ $page_title = 'Login';
     <div class="max-w-md w-full mx-4 relative z-10">
         <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg shadow-2xl p-8 border border-blue-200">
             <div class="text-center mb-8">
-                <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-16 w-auto mx-auto mb-4">
-                <h1 class="text-3xl font-bold" style="color: #0000ff; font-family: 'Racing Sans One', cursive;">4NSOLAR ELECTRICZ</h1>
-                <p class="mt-2 font-medium" style="color: #0000ff;">Business Management System</p>
+                <img src="<?php echo htmlspecialchars(getSystemSetting('logo_url', 'images/logo.png')); ?>" alt="<?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?> Logo" class="h-16 w-auto mx-auto mb-4">
+                <h1 class="text-3xl font-bold" style="color: #0000ff; font-family: 'Racing Sans One', cursive;"><?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></h1>
+                <p class="mt-2 font-medium" style="color: #0000ff;"><?php echo htmlspecialchars(getSystemSetting('company_subtitle', 'Business Management System')); ?></p>
             </div>
 
             <?php if ($error): ?>
@@ -94,7 +95,7 @@ $page_title = 'Login';
             </form>
 
             <div class="mt-8 text-center text-sm" style="color: #0000ff;">
-                <p class="mt-2 text-xs font-medium">© 2025 4NSOLAR ELECTRICZ. All rights reserved.</p>
+                <p class="mt-2 text-xs font-medium">© 2025 <?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?>. All rights reserved.</p>
             </div>
         </div>
     </div>

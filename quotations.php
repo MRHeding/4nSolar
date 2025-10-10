@@ -160,12 +160,13 @@ if ($action === 'check_quote_stock' && isset($_GET['quote_id'])) {
     try {
         $quote_id = intval($_GET['quote_id']);
         
-        // Get all items in this quote with stock information
+        // Get all items in this quote with stock information (excluding Labor Fee items)
         $stmt = $pdo->prepare("SELECT qi.inventory_item_id, qi.quantity, 
                                      i.brand, i.model, i.stock_quantity, i.generate_serials
                               FROM quote_items qi 
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
-                              WHERE qi.quote_id = ? AND qi.inventory_item_id IS NOT NULL");
+                              WHERE qi.quote_id = ? AND qi.inventory_item_id IS NOT NULL 
+                              AND NOT (i.brand = 'LABOR' AND i.model = 'Labor Fee')");
         $stmt->execute([$quote_id]);
         $quote_items = $stmt->fetchAll();
         
@@ -1041,7 +1042,7 @@ include 'includes/header.php';
                             </form>
                             <?php endif; ?>
                             
-                            <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>" target="_blank"
+                            <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>"
                                class="text-orange-600 hover:text-orange-900 p-0.5 inline-block" title="Print Quote">
                                 <i class="fas fa-print text-xs"></i>
                             </a>
@@ -1386,7 +1387,7 @@ document.addEventListener('DOMContentLoaded', function() {
                class="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition text-sm whitespace-nowrap">
                 <i class="fas fa-clipboard-check mr-1"></i>Order Fulfillment
             </a>
-            <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>" target="_blank"
+            <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>"
                class="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition text-sm whitespace-nowrap">
                 <i class="fas fa-print mr-1"></i>Print Quote
             </a>
@@ -1663,8 +1664,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <!-- Custom Status Selector -->
                     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                         <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Change to Custom Status:</label>
-                        <form method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="flex space-x-2">
-                            <select name="new_status" class="flex-1 text-sm border border-gray-300 rounded-md px-2 py-1 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                        <form id="custom-status-form" method="POST" action="?action=update_quote_status&quote_id=<?php echo $quote['id']; ?>" class="flex space-x-2" onsubmit="return handleCustomStatusChange(event, <?php echo $quote['id']; ?>, '<?php echo htmlspecialchars($quote['quote_number']); ?>', '<?php echo htmlspecialchars($quote['customer_name']); ?>', <?php echo $quote['total_amount']; ?>)">
+                            <select name="new_status" id="custom-status-select" class="flex-1 text-sm border border-gray-300 rounded-md px-2 py-1 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                                 <option value="">Select Status</option>
                                 <option value="draft" <?php echo $quote['status'] == 'draft' ? 'selected' : ''; ?>>Draft</option>
                                 <option value="sent" <?php echo $quote['status'] == 'sent' ? 'selected' : ''; ?>>Sent</option>
@@ -3207,7 +3208,7 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
             </p>
         </div>
         <div class="space-x-2">
-            <a href="print_installments.php?quote_id=<?php echo $quote_id; ?>" target="_blank" 
+            <a href="print_installments.php?quote_id=<?php echo $quote_id; ?>" 
                class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
                 <i class="fas fa-print mr-2"></i>Print Plan
             </a>
@@ -5080,6 +5081,24 @@ function goToInventory() {
     
     // Redirect to inventory page
     window.location.href = 'inventory.php';
+}
+
+// Handle custom status change with stock checking for Complete status
+function handleCustomStatusChange(event, quoteId, quoteNumber, customerName, totalAmount) {
+    event.preventDefault();
+    
+    const statusSelect = document.getElementById('custom-status-select');
+    const selectedStatus = statusSelect.value;
+    
+    if (selectedStatus === 'accepted') {
+        // For Complete status, use the same stock checking as Approve Quote
+        showQuoteApprovalModal(quoteId, quoteNumber, customerName, totalAmount);
+    } else {
+        // For other statuses, proceed with normal form submission
+        event.target.submit();
+    }
+    
+    return false;
 }
 
 // Quotations Filtering Functions

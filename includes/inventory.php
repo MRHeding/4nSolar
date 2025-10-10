@@ -1178,12 +1178,13 @@ function deductQuoteInventory($quote_id) {
     try {
         $pdo->beginTransaction();
         
-        // Get all items in this quote with serial information
+        // Get all items in this quote with serial information (excluding Labor Fee items)
         $stmt = $pdo->prepare("SELECT qi.inventory_item_id, qi.quantity, qi.serial_numbers, qi.serial_count,
                                      i.brand, i.model, i.stock_quantity, i.generate_serials
                               FROM quote_items qi 
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
-                              WHERE qi.quote_id = ? AND qi.inventory_item_id IS NOT NULL");
+                              WHERE qi.quote_id = ? AND qi.inventory_item_id IS NOT NULL 
+                              AND NOT (i.brand = 'LABOR' AND i.model = 'Labor Fee')");
         $stmt->execute([$quote_id]);
         $quote_items = $stmt->fetchAll();
         

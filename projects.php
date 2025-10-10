@@ -149,7 +149,6 @@ include 'includes/header.php';
             <a href="?" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition">All Projects</a>
             <a href="?status=draft" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition">Draft</a>
             <a href="?status=quoted" class="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 transition">Quoted</a>
-            <a href="?status=approved" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition">Approved</a>
             <a href="?status=completed" class="px-4 py-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition">Completed</a>
         </div>
         <div class="ml-auto">
@@ -195,7 +194,7 @@ include 'includes/header.php';
                             <?php 
                             switch($project['project_status']) {
                                 case 'completed': echo 'bg-green-100 text-green-800'; break;
-                                case 'approved': echo 'bg-blue-100 text-blue-800'; break;
+                                case 'completed': echo 'bg-green-100 text-green-800'; break;
                                 case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
                                 case 'in_progress': echo 'bg-purple-100 text-purple-800'; break;
                                 case 'cancelled': echo 'bg-red-100 text-red-800'; break;
@@ -322,7 +321,7 @@ include 'includes/header.php';
                         <?php 
                         switch($project['project_status']) {
                             case 'completed': echo 'bg-green-100 text-green-800'; break;
-                            case 'approved': echo 'bg-blue-100 text-blue-800'; break;
+                            case 'completed': echo 'bg-green-100 text-green-800'; break;
                             case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
                             case 'in_progress': echo 'bg-purple-100 text-purple-800'; break;
                             case 'cancelled': echo 'bg-red-100 text-red-800'; break;

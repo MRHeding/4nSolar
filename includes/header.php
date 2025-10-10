@@ -1,25 +1,45 @@
+<?php
+// Include config and settings functions first
+require_once 'includes/config.php';
+require_once 'includes/settings.php';
+
+// Get dynamic settings
+$company_title = getCompanyTitle();
+$company_subtitle = getCompanySubtitle();
+$logo_url = getLogoUrl();
+$favicon_url = getFaviconUrl();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo isset($page_title) ? $page_title . ' - ' : ''; ?>4NSOLAR ELECTRICZ</title>
+    <title><?php echo isset($page_title) ? htmlspecialchars($page_title) . ' - ' : ''; ?><?php echo htmlspecialchars($company_title); ?></title>
     
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="images/logo.png">
-    <link rel="shortcut icon" type="image/png" href="images/logo.png">
-    <link rel="apple-touch-icon" href="images/logo.png">
-    <?php 
-    // Determine if we're in the payroll section
-    $payroll_pages = ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php'];
-    $current_page = basename($_SERVER['PHP_SELF']);
-    $use_bootstrap = in_array($current_page, $payroll_pages);
-    ?>
+    <link rel="icon" type="image/png" href="<?php echo $favicon_url; ?>">
+    <link rel="shortcut icon" type="image/png" href="<?php echo $favicon_url; ?>">
+    <link rel="apple-touch-icon" href="<?php echo $favicon_url; ?>">
+<?php 
+// Settings functions already included at the top
+
+// Determine if we're in the payroll section
+$payroll_pages = ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php'];
+$current_page = basename($_SERVER['PHP_SELF']);
+$use_bootstrap = in_array($current_page, $payroll_pages);
+
+// Dynamic settings are already loaded at the top of the file
+?>
     
     <?php if ($use_bootstrap): ?>
         <!-- Bootstrap CSS -->
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
         <link href="assets/fontawesome/all.min.css" rel="stylesheet">
+        
+        <!-- Dynamic CSS -->
+        <style>
+            <?php echo generateDynamicCSS(); ?>
+        </style>
         <style>
             .sidebar {
                 background-color: #1e40af;
@@ -66,9 +86,13 @@
                 max-width: 0;
                 display: none;
             }
-            .sidebar .nav-link:hover,
+            .sidebar .nav-link:hover {
+                background-color: var(--sidebar-hover-color, #3b82f6);
+                color: white;
+            }
+            
             .sidebar .nav-link.active {
-                background-color: #3b82f6;
+                background-color: var(--sidebar-active-color, #1e40af);
                 color: white;
             }
             .navbar-brand {
@@ -140,6 +164,11 @@
         <link href="assets/css/output.css" rel="stylesheet">
         <link href="assets/css/dark-mode.css" rel="stylesheet">
         <link href="assets/fontawesome/all.min.css" rel="stylesheet">
+        
+        <!-- Dynamic CSS -->
+        <style>
+            <?php echo generateDynamicCSS(); ?>
+        </style>
         <style>
             /* Additional styles for Tailwind sidebar */
             #sidebar.collapsed .nav-link span {
@@ -166,7 +195,7 @@
                 justify-content: center !important;
             }
             #sidebar.collapsed .nav-link:hover {
-                background-color: #3b82f6 !important;
+                background-color: var(--sidebar-hover-color, #3b82f6) !important;
                 color: white !important;
             }
         </style>
@@ -177,20 +206,20 @@
     
     <?php if ($use_bootstrap): ?>
         <!-- Bootstrap Navigation -->
-        <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: #1e40af;">
+        <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: var(--header-bg-color, #1e40af); color: var(--header-text-color, #ffffff);">
             <div class="container-fluid">
                 <button class="sidebar-toggle me-3" onclick="toggleSidebar()">
                     <i class="fas fa-bars"></i>
                 </button>
                 <a class="navbar-brand d-flex align-items-center" href="dashboard.php">
-                    <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" height="40" class="me-3">
+                    <img src="<?php echo $logo_url; ?>" alt="<?php echo htmlspecialchars($company_title); ?> Logo" height="40" class="me-3">
                     <div>
-                        <div class="fw-bold">4NSOLAR ELECTRICZ</div>
-                        <small class="text-light">Business Management System</small>
+                        <div class="fw-bold"><?php echo htmlspecialchars($company_title); ?></div>
+                        <small class="text-light"><?php echo htmlspecialchars($company_subtitle); ?></small>
                     </div>
                 </a>
                 
-                <div class="d-flex align-items-center text-white">
+                <div class="d-flex align-items-center" style="color: var(--header-text-color, #ffffff);">
                     <span class="me-3">Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?></span>
                     <span class="badge bg-primary me-3"><?php echo strtoupper($_SESSION['role']); ?></span>
                     
@@ -268,6 +297,14 @@
                                     <span class="ms-2">Reports</span>
                                 </a>
                             </li>
+                            <?php if (hasRole(ROLE_ADMIN)): ?>
+                            <li class="nav-item">
+                                <a class="nav-link sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'settings.php' ? 'active' : ''; ?>" href="settings.php">
+                                    <i class="fas fa-cog"></i>
+                                    <span class="ms-2">Settings</span>
+                                </a>
+                            </li>
+                            <?php endif; ?>
                         </ul>
                     </div>
                 </nav>
@@ -276,38 +313,38 @@
                 <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content" id="main-content">
     <?php else: ?>
         <!-- Tailwind Navigation -->
-        <nav class="bg-solar-blue dark:bg-gray-800 shadow-lg">
+        <nav class="bg-solar-blue dark:bg-gray-800 shadow-lg" style="background-color: var(--header-bg-color, #1e40af); color: var(--header-text-color, #ffffff);">
             <div class="px-4">
                 <div class="flex justify-between items-center py-4">
                     <div class="flex items-center space-x-3">
-                        <button class="sidebar-toggle text-white hover:bg-blue-600 p-2 rounded-lg transition-colors" onclick="toggleSidebar()">
+                        <button class="sidebar-toggle hover:bg-blue-600 p-2 rounded-lg transition-colors" style="color: var(--header-text-color, #ffffff);" onclick="toggleSidebar()">
                             <i class="fas fa-bars text-xl"></i>
                         </button>
-                        <img src="images/logo.png" alt="4NSOLAR ELECTRICZ Logo" class="h-12 w-auto">
+                        <img src="<?php echo $logo_url; ?>" alt="<?php echo htmlspecialchars($company_title); ?> Logo" class="h-12 w-auto">
                         <div class="flex flex-col justify-start">
-                            <h1 class="text-white text-2xl font-bold leading-tight text-left">4NSOLAR ELECTRICZ</h1>
-                            <p class="text-blue-200 text-sm font-medium text-left">Business Management System</p>
+                            <h1 class="text-2xl font-bold leading-tight text-left" style="color: var(--header-text-color, #ffffff);"><?php echo htmlspecialchars($company_title); ?></h1>
+                            <p class="text-sm font-medium text-left" style="color: var(--header-text-color, #ffffff); opacity: 0.8;"><?php echo htmlspecialchars($company_subtitle); ?></p>
                         </div>
                     </div>
                     
                     <div class="flex items-center space-x-6">
-                        <div class="text-white">
+                        <div style="color: var(--header-text-color, #ffffff);">
                             <div class="flex items-center space-x-4">
                                 <div class="text-sm">Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?></div>
                                 <span class="px-2 py-1 bg-blue-600 rounded text-xs uppercase"><?php echo $_SESSION['role']; ?></span>
                             </div>
-                            <div class="text-xs text-blue-200 mt-1 flex items-center space-x-2">
+                            <div class="text-xs mt-1 flex items-center space-x-2" style="color: var(--header-text-color, #ffffff); opacity: 0.7;">
                                 <div id="header-current-time" class="font-mono"></div>
                                 <div id="header-current-date" class="text-xs"></div>
                             </div>
                         </div>
                         
                         <!-- Theme Toggle -->
-                        <button id="theme-toggle" class="text-white hover:text-solar-yellow transition-colors duration-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10" title="Toggle Theme">
+                        <button id="theme-toggle" class="hover:text-solar-yellow transition-colors duration-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10" style="color: var(--header-text-color, #ffffff);" title="Toggle Theme">
                             <i id="theme-icon" class="fas fa-moon"></i>
                         </button>
                         
-                        <a href="logout.php" class="text-white hover:text-solar-yellow">
+                        <a href="logout.php" class="hover:text-solar-yellow" style="color: var(--header-text-color, #ffffff);">
                             <i class="fas fa-sign-out-alt"></i> Logout
                         </a>
                     </div>
@@ -380,6 +417,14 @@
                                 <span class="transition-all duration-300">Reports</span>
                             </a>
                         </li>
+                        <?php if (hasRole(ROLE_ADMIN)): ?>
+                        <li>
+                            <a href="settings.php" class="sidebar-link flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white transition-all duration-200 <?php echo basename($_SERVER['PHP_SELF']) == 'settings.php' ? 'bg-solar-blue text-white' : ''; ?>">
+                                <i class="fas fa-cog w-5 text-center"></i>
+                                <span class="transition-all duration-300">Settings</span>
+                            </a>
+                        </li>
+                        <?php endif; ?>
                     </ul>
                 </div>
             </div>
