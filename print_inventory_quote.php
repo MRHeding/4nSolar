@@ -597,11 +597,28 @@ $solar_details = getSolarProjectDetails($quote_id);
                                 <td class="border border-gray-300 px-4 py-3">
                                     <div class="text-sm text-gray-900">
                                         <?php 
-                                        // Show only the main item name, remove extra descriptions
-                                        $item_name = $item['brand'] . ' ' . $item['model'];
-                                        // Remove common extra descriptions
-                                        $item_name = preg_replace('/\s+(Labor|Fee|Per KW|FEE|A DC breaker|DC.*A|remove).*$/i', '', $item_name);
-                                        echo htmlspecialchars(trim($item_name)); 
+                                        // Display full product information
+                                        $item_name = trim($item['brand']);
+                                        
+                                        // Add model if it exists and is not just a placeholder
+                                        if (!empty($item['model']) && $item['model'] !== 'N/A') {
+                                            $model = trim($item['model']);
+                                            // Only add model if it's not already contained in the brand
+                                            if (stripos($item_name, $model) === false) {
+                                                $item_name .= ' ' . $model;
+                                            }
+                                        }
+                                        
+                                        // Add size specification if it exists and provides additional info
+                                        if (!empty($item['size_specification']) && $item['size_specification'] !== 'N/A') {
+                                            $size_spec = trim($item['size_specification']);
+                                            // Only add if it's not already in the name
+                                            if (stripos($item_name, $size_spec) === false) {
+                                                $item_name .= ' ' . $size_spec;
+                                            }
+                                        }
+                                        
+                                        echo htmlspecialchars($item_name); 
                                         ?>
                                     </div>
                                     <?php if ($item['discount_percentage'] > 0): ?>

@@ -100,6 +100,81 @@ function createSolarProject($data) {
     }
 }
 
+// Update project status only
+function updateProjectStatus($id, $new_status) {
+    global $pdo;
+    
+    try {
+        error_log("updateProjectStatus called with ID: $id, Status: $new_status");
+        
+        // First, get the current project status to check if we need to deduct inventory
+        $stmt = $pdo->prepare("SELECT project_status FROM solar_projects WHERE id = ?");
+        $stmt->execute([$id]);
+        $current_project = $stmt->fetch();
+        
+        if (!$current_project) {
+            error_log("Project not found with ID: $id");
+            return false;
+        }
+        
+        $current_status = $current_project['project_status'];
+        
+        // Check if status is changing to approved or completed
+        $should_deduct_inventory = false;
+        $should_restore_inventory = false;
+        
+        if (($current_status !== 'approved' && $current_status !== 'completed') && 
+            ($new_status === 'approved' || $new_status === 'completed')) {
+            $should_deduct_inventory = true;
+        } elseif (($current_status === 'approved' || $current_status === 'completed') && 
+                  ($new_status !== 'approved' && $new_status !== 'completed')) {
+            $should_restore_inventory = true;
+        }
+        
+        // Start transaction
+        $pdo->beginTransaction();
+        
+        // Update only the project status
+        $stmt = $pdo->prepare("UPDATE solar_projects SET project_status = ? WHERE id = ?");
+        $update_result = $stmt->execute([$new_status, $id]);
+        
+        error_log("Update query executed. Rows affected: " . $stmt->rowCount());
+        
+        if (!$update_result) {
+            error_log("Update query failed");
+            $pdo->rollback();
+            return false;
+        }
+        
+        // If status changed to approved/completed, deduct inventory
+        if ($should_deduct_inventory) {
+            $deduction_result = deductProjectInventory($id);
+            if (!$deduction_result) {
+                $pdo->rollback();
+                return false;
+            }
+        }
+        
+        // If status changed back from approved/completed, restore inventory
+        if ($should_restore_inventory) {
+            $restore_result = restoreProjectInventory($id);
+            if (!$restore_result) {
+                $pdo->rollback();
+                return false;
+            }
+        }
+        
+        $pdo->commit();
+        return true;
+        
+    } catch(PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollback();
+        }
+        return false;
+    }
+}
+
 // Update solar project
 function updateSolarProject($id, $data) {
     global $pdo;

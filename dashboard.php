@@ -51,6 +51,17 @@ function getMonthProjectRevenue() {
     return $stmt->fetchColumn() ?: 0;
 }
 
+// Get today's revenue from approved quotations (for verification)
+function getTodayApprovedQuotationsRevenue() {
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT SUM(q.total_amount) as revenue 
+                          FROM quotations q 
+                          WHERE q.status = 'accepted' 
+                          AND DATE(q.updated_at) = CURDATE()");
+    $stmt->execute();
+    return $stmt->fetchColumn() ?: 0;
+}
+
 include 'includes/header.php';
 ?>
 
@@ -149,6 +160,7 @@ include 'includes/header.php';
                 </h2>
                 <?php 
                 $today_project_revenue = getTodayProjectRevenue();
+                $today_quotation_revenue = getTodayApprovedQuotationsRevenue();
                 $today_total_revenue = $today_project_revenue + $pos_stats['today_revenue'];
                 ?>
                 <p class="text-3xl font-bold"><?php echo formatCurrency($today_total_revenue); ?></p>
@@ -156,6 +168,12 @@ include 'includes/header.php';
                     Projects: <?php echo formatCurrency($today_project_revenue); ?> | 
                     POS: <?php echo formatCurrency($pos_stats['today_revenue']); ?>
                 </p>
+                <?php if ($today_quotation_revenue > 0): ?>
+                <p class="text-blue-200 text-sm">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Approved Quotations: <?php echo formatCurrency($today_quotation_revenue); ?>
+                </p>
+                <?php endif; ?>
             </div>
             <div class="text-right">
                 <p class="text-blue-100">Sales Today</p>

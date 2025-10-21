@@ -23,23 +23,67 @@ if (isset($_GET['success'])) {
         case 'item_removed':
             $message = 'Item removed from project successfully!';
             break;
+        case 'status_updated':
+            $message = 'Project status updated successfully!';
+            break;
     }
 }
 
 // Handle form submissions
 if ($_POST) {
-    switch ($action) {
-            
-            
-        case 'update_quantity':
-            if (isset($_POST['project_item_id']) && isset($_POST['new_quantity'])) {
-                if (updateProjectItemQuantity($_POST['project_item_id'], $_POST['new_quantity'])) {
-                    $message = 'Quantity updated successfully!';
-                } else {
-                    $error = 'Failed to update quantity.';
+    // Check for specific form actions first
+    if (isset($_POST['action'])) {
+        switch ($_POST['action']) {
+            case 'delete_project':
+                if (isset($_POST['project_id'])) {
+                    $project_id = $_POST['project_id'];
+                    if (deleteSolarProject($project_id)) {
+                        $message = 'Project deleted successfully!';
+                        // Redirect to avoid form resubmission
+                        header("Location: ?success=project_deleted");
+                        exit();
+                    } else {
+                        $error = 'Failed to delete project.';
+                    }
                 }
-            }
-            break;
+                break;
+                
+            case 'update_status':
+                if (isset($_POST['project_id']) && isset($_POST['new_status'])) {
+                    $project_id = $_POST['project_id'];
+                    $new_status = $_POST['new_status'];
+                    
+                    // Validate status
+                    $valid_statuses = ['draft', 'quoted', 'approved', 'in_progress', 'completed', 'cancelled'];
+                    if (in_array($new_status, $valid_statuses)) {
+                        error_log("Attempting to update project $project_id status to $new_status");
+                        if (updateProjectStatus($project_id, $new_status)) {
+                            $message = 'Project status updated successfully!';
+                            error_log("Project status updated successfully for project $project_id");
+                            // Redirect to avoid form resubmission
+                            header("Location: ?action=view&id=$project_id&success=status_updated");
+                            exit();
+                        } else {
+                            $error = 'Failed to update project status.';
+                            error_log("Failed to update project status for project $project_id");
+                        }
+                    } else {
+                        $error = 'Invalid project status.';
+                        error_log("Invalid project status: $new_status");
+                    }
+                }
+                break;
+                
+            case 'update_quantity':
+                if (isset($_POST['project_item_id']) && isset($_POST['new_quantity'])) {
+                    if (updateProjectItemQuantity($_POST['project_item_id'], $_POST['new_quantity'])) {
+                        $message = 'Quantity updated successfully!';
+                    } else {
+                        $error = 'Failed to update quantity.';
+                    }
+                }
+                break;
+        }
     }
 }
 
@@ -131,6 +175,43 @@ include 'includes/header.php';
 </div>
 <?php endif; ?>
 
+<!-- Delete Project Modal -->
+<div id="deleteProjectModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+        <div class="mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Confirm Deletion</h3>
+            <p class="text-sm text-gray-500 mt-2">Are you sure you want to delete the project: <span id="projectNameToDelete" class="font-medium"></span>?</p>
+            <p class="text-sm text-red-500 mt-2">This action cannot be undone.</p>
+        </div>
+        <form id="deleteProjectForm" method="POST" action="">
+            <input type="hidden" name="action" value="delete_project">
+            <input type="hidden" name="project_id" id="projectIdToDelete">
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="closeDeleteModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">
+                    Cancel
+                </button>
+                <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition">
+                    Delete Project
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function confirmDeleteProject(projectId, projectName) {
+        document.getElementById('projectIdToDelete').value = projectId;
+        document.getElementById('projectNameToDelete').textContent = projectName;
+        document.getElementById('deleteProjectModal').classList.remove('hidden');
+        document.getElementById('deleteProjectModal').classList.add('flex');
+    }
+    
+    function closeDeleteModal() {
+        document.getElementById('deleteProjectModal').classList.remove('flex');
+        document.getElementById('deleteProjectModal').classList.add('hidden');
+    }
+</script>
+
 <?php if ($action == 'list'): ?>
 <!-- Projects List -->
 <div class="mb-6">
@@ -149,7 +230,10 @@ include 'includes/header.php';
             <a href="?" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition">All Projects</a>
             <a href="?status=draft" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition">Draft</a>
             <a href="?status=quoted" class="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 transition">Quoted</a>
+            <a href="?status=approved" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition">Approved</a>
+            <a href="?status=in_progress" class="px-4 py-2 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition">Ongoing</a>
             <a href="?status=completed" class="px-4 py-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition">Completed</a>
+            <a href="?status=cancelled" class="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition">Cancelled</a>
         </div>
         <div class="ml-auto">
             <button onclick="exportToCSV('projects-table', 'projects')" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
@@ -194,14 +278,22 @@ include 'includes/header.php';
                             <?php 
                             switch($project['project_status']) {
                                 case 'completed': echo 'bg-green-100 text-green-800'; break;
-                                case 'completed': echo 'bg-green-100 text-green-800'; break;
                                 case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
+                                case 'approved': echo 'bg-blue-100 text-blue-800'; break;
                                 case 'in_progress': echo 'bg-purple-100 text-purple-800'; break;
                                 case 'cancelled': echo 'bg-red-100 text-red-800'; break;
                                 default: echo 'bg-gray-100 text-gray-800 dark:text-gray-200';
                             }
                             ?>">
-                            <?php echo ucfirst(str_replace('_', ' ', $project['project_status'])); ?>
+                            <?php 
+                            $status_display = $project['project_status'];
+                            if ($status_display === 'in_progress') {
+                                $status_display = 'Ongoing';
+                            } else {
+                                $status_display = ucfirst(str_replace('_', ' ', $status_display));
+                            }
+                            echo $status_display;
+                            ?>
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -225,6 +317,12 @@ include 'includes/header.php';
                                class="text-blue-600 hover:text-blue-900 p-1.5 rounded hover:bg-blue-50 transition" title="View">
                                 <i class="fas fa-eye text-sm"></i>
                             </a>
+                            <button type="button" 
+                               class="text-red-600 hover:text-red-900 p-1.5 rounded hover:bg-red-50 transition" 
+                               title="Delete" 
+                               onclick="confirmDeleteProject(<?php echo $project['id']; ?>, '<?php echo htmlspecialchars($project['project_name'], ENT_QUOTES); ?>')">
+                                <i class="fas fa-trash-alt text-sm"></i>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -315,21 +413,51 @@ include 'includes/header.php';
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Project Summary</h2>
             <div class="space-y-4">
-                <div class="flex justify-between">
+                <div class="flex justify-between items-center">
                     <span class="text-gray-600 dark:text-gray-400">Status:</span>
-                    <span class="px-2 py-1 text-xs font-medium rounded-full 
-                        <?php 
-                        switch($project['project_status']) {
-                            case 'completed': echo 'bg-green-100 text-green-800'; break;
-                            case 'completed': echo 'bg-green-100 text-green-800'; break;
-                            case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
-                            case 'in_progress': echo 'bg-purple-100 text-purple-800'; break;
-                            case 'cancelled': echo 'bg-red-100 text-red-800'; break;
-                            default: echo 'bg-gray-100 text-gray-800 dark:text-gray-200';
-                        }
-                        ?>">
-                        <?php echo ucfirst(str_replace('_', ' ', $project['project_status'])); ?>
-                    </span>
+                    <div class="flex items-center space-x-2">
+                        <span class="px-2 py-1 text-xs font-medium rounded-full 
+                            <?php 
+                            switch($project['project_status']) {
+                                case 'completed': echo 'bg-green-100 text-green-800'; break;
+                                case 'quoted': echo 'bg-yellow-100 text-yellow-800'; break;
+                                case 'in_progress': echo 'bg-purple-100 text-purple-800'; break;
+                                case 'approved': echo 'bg-blue-100 text-blue-800'; break;
+                                case 'cancelled': echo 'bg-red-100 text-red-800'; break;
+                                default: echo 'bg-gray-100 text-gray-800 dark:text-gray-200';
+                            }
+                            ?>">
+                            <?php echo ucfirst(str_replace('_', ' ', $project['project_status'])); ?>
+                        </span>
+                        <button type="button" class="text-blue-600 hover:text-blue-800 text-sm" onclick="toggleStatusForm()" title="Change Status">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Status Update Form (Hidden by default) -->
+                <div id="statusUpdateForm" class="hidden mt-3 p-3 bg-gray-50 rounded-lg">
+                    <form method="POST" action="">
+                        <input type="hidden" name="action" value="update_status">
+                        <input type="hidden" name="project_id" value="<?php echo $project['id']; ?>">
+                        <div class="flex items-center space-x-2">
+                            <label for="new_status" class="text-sm font-medium text-gray-700">New Status:</label>
+                            <select name="new_status" id="new_status" class="text-sm border border-gray-300 rounded px-2 py-1" required>
+                                <option value="draft" <?php echo $project['project_status'] === 'draft' ? 'selected' : ''; ?>>Draft</option>
+                                <option value="quoted" <?php echo $project['project_status'] === 'quoted' ? 'selected' : ''; ?>>Quoted</option>
+                                <option value="approved" <?php echo $project['project_status'] === 'approved' ? 'selected' : ''; ?>>Approved</option>
+                                <option value="in_progress" <?php echo $project['project_status'] === 'in_progress' ? 'selected' : ''; ?>>Ongoing</option>
+                                <option value="completed" <?php echo $project['project_status'] === 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                <option value="cancelled" <?php echo $project['project_status'] === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                            </select>
+                            <button type="submit" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                                <i class="fas fa-save mr-1"></i>Update
+                            </button>
+                            <button type="button" onclick="toggleStatusForm()" class="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600">
+                                <i class="fas fa-times mr-1"></i>Cancel
+                            </button>
+                        </div>
+                    </form>
                 </div>
                 
                 <div class="border-t pt-4">
@@ -369,5 +497,16 @@ include 'includes/header.php';
 
 
 <?php endif; ?>
+
+<script>
+function toggleStatusForm() {
+    const form = document.getElementById('statusUpdateForm');
+    if (form.classList.contains('hidden')) {
+        form.classList.remove('hidden');
+    } else {
+        form.classList.add('hidden');
+    }
+}
+</script>
 
 <?php include 'includes/footer.php'; ?>

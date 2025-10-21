@@ -202,7 +202,7 @@ function getAvailableBrands() {
 }
 
 // Update stock quantity
-function updateStock($item_id, $new_quantity, $movement_type, $reference_type, $reference_id = null, $notes = '', $selected_serials = '') {
+function updateStock($item_id, $new_quantity, $movement_type, $reference_type, $reference_id = null, $notes = '', $selected_serials = '', $supplier_receipt = '', $serial_code = '') {
     global $pdo;
     
     // Validate quantity is not negative
@@ -226,10 +226,10 @@ function updateStock($item_id, $new_quantity, $movement_type, $reference_type, $
         $quantity_change = $new_quantity - $current_stock;
         $stmt = $pdo->prepare("INSERT INTO stock_movements 
                               (inventory_item_id, movement_type, quantity, previous_stock, new_stock, 
-                               reference_type, reference_id, notes, created_by) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                               reference_type, reference_id, notes, supplier_receipt, serial_code, created_by) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$item_id, $movement_type, abs($quantity_change), $current_stock, $new_quantity, 
-                       $reference_type, $reference_id, $notes, $_SESSION['user_id'] ?? 1]);
+                       $reference_type, $reference_id, $notes, $supplier_receipt, $serial_code, $_SESSION['user_id'] ?? 1]);
         
         // Handle serial numbers based on stock change
         $stmt = $pdo->prepare("SELECT generate_serials FROM inventory_items WHERE id = ?");
@@ -296,6 +296,26 @@ function getStockMovements($item_id) {
                           WHERE sm.inventory_item_id = ? 
                           ORDER BY sm.created_at DESC");
     $stmt->execute([$item_id]);
+    return $stmt->fetchAll();
+}
+
+// Get recent stock movements for all items
+function getRecentStockMovements($limit = 20) {
+    global $pdo;
+    
+    // Validate limit to prevent SQL injection
+    $limit = (int)$limit;
+    if ($limit <= 0) $limit = 20;
+    if ($limit > 1000) $limit = 1000; // Prevent excessive queries
+    
+    $stmt = $pdo->prepare("SELECT sm.*, u.full_name as created_by_name, 
+                          ii.brand, ii.model, ii.description as item_description
+                          FROM stock_movements sm 
+                          LEFT JOIN users u ON sm.created_by = u.id 
+                          LEFT JOIN inventory_items ii ON sm.inventory_item_id = ii.id
+                          ORDER BY sm.created_at DESC 
+                          LIMIT " . $limit);
+    $stmt->execute();
     return $stmt->fetchAll();
 }
 
@@ -442,7 +462,8 @@ function getQuote($id) {
     if ($quote) {
         // Get quote items with priority ordering
         $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.size_specification, 
-                              c.name as category_name, i.stock_quantity, i.selling_price as current_price,
+                              c.name as category_name, i.stock_quantity, i.selling_price as current_price, i.generate_serials,
+                              qi.is_direct_quote,
                               CASE 
                                 WHEN c.name = 'Hybrid Inverter' THEN 1
                                 WHEN c.name = 'Inverters' THEN 2
@@ -516,6 +537,70 @@ function addQuoteItem($quote_id, $inventory_item_id, $quantity, $discount_percen
         }
         
         return ['success' => false, 'message' => 'Failed to add item'];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
+}
+
+// Duplicate inventory item (without serial numbers and receipt info)
+function duplicateInventoryItem($source_id, $image_file = null) {
+    global $pdo;
+    
+    try {
+        // Get the source item details
+        $stmt = $pdo->prepare("SELECT * FROM inventory_items WHERE id = ?");
+        $stmt->execute([$source_id]);
+        $source_item = $stmt->fetch();
+        
+        if (!$source_item) {
+            return ['success' => false, 'message' => 'Source item not found'];
+        }
+        
+        // Handle image upload if provided
+        $image_path = null;
+        if ($image_file && $image_file['error'] === UPLOAD_ERR_OK) {
+            $image_path = uploadProductImage($image_file);
+            if (!$image_path) {
+                return ['success' => false, 'message' => 'Failed to upload image'];
+            }
+        } else {
+            // Copy the existing image path if no new image provided
+            $image_path = $source_item['image_path'];
+        }
+        
+        // Insert the duplicated item with reset stock and serial settings
+        $stmt = $pdo->prepare("INSERT INTO inventory_items 
+                              (brand, model, category_id, size_specification, base_price, selling_price, 
+                               discount_percentage, supplier_id, stock_quantity, minimum_stock, description, 
+                               image_path, created_by, generate_serials, serial_prefix, serial_format) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        
+        $result = $stmt->execute([
+            $source_item['brand'], 
+            $source_item['model'], 
+            $source_item['category_id'], 
+            $source_item['size_specification'],
+            $source_item['base_price'], 
+            $source_item['selling_price'], 
+            $source_item['discount_percentage'],
+            $source_item['supplier_id'], 
+            0, // Reset stock quantity to 0
+            $source_item['minimum_stock'],
+            $source_item['description'], 
+            $image_path, 
+            $_SESSION['user_id'],
+            0, // Reset generate_serials to 0
+            null, // Reset serial_prefix
+            'YYYY-NNNNNN' // Reset serial_format to default
+        ]);
+        
+        if ($result) {
+            $new_item_id = $pdo->lastInsertId();
+            return ['success' => true, 'message' => 'Item duplicated successfully', 'new_item_id' => $new_item_id];
+        } else {
+            return ['success' => false, 'message' => 'Failed to duplicate item'];
+        }
         
     } catch(PDOException $e) {
         return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
@@ -810,7 +895,7 @@ function updateQuoteTotals($quote_id) {
 }
 
 // Update quotation status
-function updateQuoteStatus($quote_id, $new_status) {
+function updateQuoteStatus($quote_id, $new_status, $ignore_stock = false) {
     global $pdo;
     
     try {
@@ -835,13 +920,18 @@ function updateQuoteStatus($quote_id, $new_status) {
         
         // If status is being set to 'accepted', deduct inventory and convert to solar project
         if ($new_status === 'accepted') {
-            // First deduct inventory
-            $inventory_result = deductQuoteInventory($quote_id);
-            if (!$inventory_result['success']) {
-                // If inventory deduction fails, revert the status update
-                $stmt = $pdo->prepare("UPDATE quotations SET status = ?, updated_at = NOW() WHERE id = ?");
-                $stmt->execute([$current_status, $quote_id]);
-                return ['success' => false, 'message' => $inventory_result['message'], 'inventory_error' => true];
+            // First deduct inventory (only if not ignoring stock)
+            if (!$ignore_stock) {
+                $inventory_result = deductQuoteInventory($quote_id);
+                if (!$inventory_result['success']) {
+                    // If inventory deduction fails, revert the status update
+                    $stmt = $pdo->prepare("UPDATE quotations SET status = ?, updated_at = NOW() WHERE id = ?");
+                    $stmt->execute([$current_status, $quote_id]);
+                    return ['success' => false, 'message' => $inventory_result['message'], 'inventory_error' => true];
+                }
+            } else {
+                // When ignoring stock, create a mock successful inventory result
+                $inventory_result = ['success' => true, 'deducted_items' => [], 'message' => 'Inventory deduction skipped (ignored stock levels)'];
             }
             
             // Then convert to solar project
@@ -849,9 +939,12 @@ function updateQuoteStatus($quote_id, $new_status) {
             if (!$conversion_result['success']) {
                 // Log error but don't fail the status update since inventory was already deducted
                 error_log("Failed to convert quotation $quote_id to project: " . $conversion_result['message']);
+            } else {
+                // Log successful conversion for revenue tracking
+                error_log("Quotation $quote_id successfully converted to project and will be counted in today's revenue");
             }
             
-            return ['success' => true, 'inventory_result' => $inventory_result];
+            return ['success' => true, 'inventory_result' => $inventory_result, 'project_created' => $conversion_result['success'] ?? false];
         }
         
         // If reverting from 'accepted' to 'draft', restore inventory
@@ -1127,7 +1220,7 @@ function getQuoteWithProfitData($id) {
         // Get quote items with base price for profit calculation and priority ordering
         $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.size_specification, 
                               i.base_price, i.selling_price as current_price,
-                              c.name as category_name, i.stock_quantity,
+                              c.name as category_name, i.stock_quantity, qi.is_direct_quote,
                               CASE 
                                 WHEN c.name = 'Hybrid Inverter' THEN 1
                                 WHEN c.name = 'Inverters' THEN 2
@@ -2218,5 +2311,370 @@ function getSerializedItems($category_id = null, $brand_filter = null) {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll();
+}
+
+// Duplicate quotation with items but without reserved serials
+function duplicateQuotation($original_quote_id) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get original quotation details
+        $original_quote = getQuote($original_quote_id);
+        if (!$original_quote) {
+            return ['success' => false, 'message' => 'Original quotation not found'];
+        }
+        
+        // Create new quotation with same customer details but new quote number
+        $new_quote_id = createQuote(
+            $original_quote['customer_name'],
+            $original_quote['customer_phone'],
+            $original_quote['proposal_name'] . ' (Copy)'
+        );
+        
+        if (!$new_quote_id) {
+            $pdo->rollback();
+            return ['success' => false, 'message' => 'Failed to create new quotation'];
+        }
+        
+        // Copy customer and solar details
+        if (!empty($original_quote['customer_details'])) {
+            $customer_details = json_decode($original_quote['customer_details'], true);
+            if ($customer_details) {
+                saveCustomerInfo($new_quote_id, $customer_details);
+            }
+        }
+        
+        if (!empty($original_quote['solar_details'])) {
+            $solar_details = json_decode($original_quote['solar_details'], true);
+            if ($solar_details) {
+                saveSolarProjectDetails($new_quote_id, $solar_details);
+            }
+        }
+        
+        // Copy quotation items (excluding serialized items)
+        // Note: Serialized items are completely excluded from duplication
+        // User will need to manually add serialized items to the new quotation
+        $skipped_items = [];
+        $copied_items = 0;
+        
+        foreach ($original_quote['items'] as $item) {
+            // Check if the inventory item still exists and is active
+            $stmt = $pdo->prepare("SELECT id, brand, model, is_active, generate_serials FROM inventory_items WHERE id = ?");
+            $stmt->execute([$item['inventory_item_id']]);
+            $inventory_item = $stmt->fetch();
+            
+            if (!$inventory_item) {
+                $skipped_items[] = "Item ID {$item['inventory_item_id']} (not found)";
+                continue;
+            }
+            
+            // Skip serialized items entirely
+            if ($inventory_item['generate_serials']) {
+                $skipped_items[] = "{$inventory_item['brand']} {$inventory_item['model']} (serialized item - excluded)";
+                continue;
+            }
+            
+            if (!$inventory_item['is_active'] && $inventory_item['brand'] !== 'LABOR') {
+                $skipped_items[] = "{$inventory_item['brand']} {$inventory_item['model']} (deactivated)";
+                continue;
+            }
+            
+            $result = addQuoteItem(
+                $new_quote_id,
+                $item['inventory_item_id'],
+                $item['quantity'],
+                $item['discount_percentage']
+            );
+            
+            if (!$result['success']) {
+                $skipped_items[] = "{$inventory_item['brand']} {$inventory_item['model']} - {$result['message']}";
+                continue;
+            }
+            
+            $copied_items++;
+            
+            // Update unit price if different from original
+            if ($item['unit_price'] != $item['original_unit_price']) {
+                // Get the new quote item ID that was just created
+                $stmt = $pdo->prepare("SELECT id FROM quote_items WHERE quote_id = ? AND inventory_item_id = ? ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$new_quote_id, $item['inventory_item_id']]);
+                $new_quote_item = $stmt->fetch();
+                
+                if ($new_quote_item) {
+                    updateQuoteItemUnitPrice($new_quote_item['id'], $item['unit_price']);
+                }
+            }
+        }
+        
+        // Copy labor fee if exists
+        if (!empty($original_quote['labor_details'])) {
+            $labor_details = json_decode($original_quote['labor_details'], true);
+            if ($labor_details && isset($labor_details['labor_fee'])) {
+                $labor_result = addLaborFeeToQuote($new_quote_id, $labor_details['labor_fee']);
+                if (!$labor_result['success']) {
+                    // Log error but don't fail the duplication
+                    error_log("Failed to add labor fee to duplicated quotation: " . $labor_result['message']);
+                }
+            }
+        }
+        
+        $pdo->commit();
+        
+        // Prepare success message with details about copied and skipped items
+        $message = "Quotation duplicated successfully. Copied {$copied_items} items.";
+        if (!empty($skipped_items)) {
+            $message .= " Skipped " . count($skipped_items) . " items: " . implode(', ', $skipped_items);
+        }
+        
+        return [
+            'success' => true,
+            'message' => $message,
+            'new_quote_id' => $new_quote_id,
+            'copied_items' => $copied_items,
+            'skipped_items' => $skipped_items
+        ];
+        
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return ['success' => false, 'message' => 'Failed to duplicate quotation: ' . $e->getMessage()];
+    }
+}
+
+// Add direct quote item with custom quantity and price
+function addDirectQuoteItem($quote_id, $inventory_item_id, $custom_quantity, $custom_price, $discount_percentage = 0) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Get item details from inventory (for brand, model, specifications)
+        $stmt = $pdo->prepare("SELECT brand, model, size_specification, generate_serials, serial_prefix, 
+                              category_id, c.name as category_name
+                              FROM inventory_items i 
+                              LEFT JOIN categories c ON i.category_id = c.id
+                              WHERE i.id = ? AND i.is_active = 1");
+        $stmt->execute([$inventory_item_id]);
+        $item = $stmt->fetch();
+        
+        if (!$item) {
+            $pdo->rollback();
+            return ['success' => false, 'message' => 'Item not found or has been removed'];
+        }
+        
+        // Calculate amounts
+        $discount_amount = ($custom_price * $discount_percentage / 100) * $custom_quantity;
+        $total_amount = ($custom_price * $custom_quantity) - $discount_amount;
+        
+        // Insert the direct quote item
+        $stmt = $pdo->prepare("INSERT INTO quote_items 
+                              (quote_id, inventory_item_id, quantity, unit_price, discount_percentage, 
+                               discount_amount, total_amount, is_direct_quote, created_at) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW())");
+        $result = $stmt->execute([
+            $quote_id, $inventory_item_id, $custom_quantity, $custom_price, 
+            $discount_percentage, $discount_amount, $total_amount
+        ]);
+        
+        if (!$result) {
+            $pdo->rollback();
+            return ['success' => false, 'message' => 'Failed to add direct quote item'];
+        }
+        
+        $quote_item_id = $pdo->lastInsertId();
+        
+        // Handle serial number generation for specific product types
+        $generated_serials = [];
+        if ($item['generate_serials'] && in_array($item['category_name'], ['Hybrid Inverter', 'Inverters', 'Solar Panels', 'Batteries'])) {
+            // Generate serial numbers for direct quote items
+            $serial_result = generateDirectQuoteSerials($inventory_item_id, $custom_quantity, $item['serial_prefix']);
+            
+            if ($serial_result['success']) {
+                $generated_serials = $serial_result['serials'];
+                
+                // Update the quote item with serial information
+                $stmt = $pdo->prepare("UPDATE quote_items 
+                                      SET serial_numbers = ?, serial_count = ? 
+                                      WHERE id = ?");
+                $stmt->execute([
+                    json_encode($generated_serials), 
+                    count($generated_serials), 
+                    $quote_item_id
+                ]);
+            }
+        }
+        
+        // Update quote totals
+        updateQuoteTotals($quote_id);
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Direct quote item added successfully',
+            'quote_item_id' => $quote_item_id,
+            'generated_serials' => $generated_serials,
+            'item_name' => $item['brand'] . ' ' . $item['model']
+        ];
+        
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return ['success' => false, 'message' => 'Failed to add direct quote item: ' . $e->getMessage()];
+    }
+}
+
+// Generate serial numbers for direct quote items
+function generateDirectQuoteSerials($inventory_item_id, $quantity, $prefix) {
+    global $pdo;
+    
+    try {
+        $generated_serials = [];
+        $year = date('Y');
+        
+        // Get next serial number
+        $stmt = $pdo->prepare("SELECT next_serial_number FROM inventory_items WHERE id = ?");
+        $stmt->execute([$inventory_item_id]);
+        $next_number = $stmt->fetchColumn();
+        
+        // Generate serial numbers
+        for ($i = 0; $i < $quantity; $i++) {
+            $serial_number = $prefix . '-' . $year . '-' . str_pad($next_number + $i, 6, '0', STR_PAD_LEFT);
+            $generated_serials[] = $serial_number;
+        }
+        
+        // Update next serial number
+        $stmt = $pdo->prepare("UPDATE inventory_items 
+                              SET next_serial_number = next_serial_number + ? 
+                              WHERE id = ?");
+        $stmt->execute([$quantity, $inventory_item_id]);
+        
+        return [
+            'success' => true,
+            'serials' => $generated_serials,
+            'quantity' => $quantity
+        ];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Failed to generate serial numbers: ' . $e->getMessage()];
+    }
+}
+
+// Create purchase order from quotation
+function createPurchaseOrder($quote_id, $po_number, $supplier_name, $contact_person, $supplier_phone, $supplier_email, $supplier_address, $special_instructions, $delivery_requirements, $items_to_order) {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Insert purchase order record
+        $stmt = $pdo->prepare("INSERT INTO purchase_orders 
+                               (quote_id, po_number, supplier_name, contact_person, supplier_phone, supplier_email, supplier_address, special_instructions, delivery_requirements, status, created_at) 
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())");
+        
+        $result = $stmt->execute([
+            $quote_id, 
+            $po_number, 
+            $supplier_name, 
+            $contact_person, 
+            $supplier_phone, 
+            $supplier_email, 
+            $supplier_address, 
+            $special_instructions, 
+            $delivery_requirements
+        ]);
+        
+        if (!$result) {
+            throw new Exception('Failed to create purchase order record');
+        }
+        
+        $po_id = $pdo->lastInsertId();
+        
+        // Get quote items for the selected items
+        $placeholders = str_repeat('?,', count($items_to_order) - 1) . '?';
+        $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.category_id, c.name as category_name 
+                              FROM quote_items qi 
+                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
+                              LEFT JOIN categories c ON i.category_id = c.id 
+                              WHERE qi.id IN ($placeholders)");
+        $stmt->execute($items_to_order);
+        $quote_items = $stmt->fetchAll();
+        
+        // Insert purchase order items
+        foreach ($quote_items as $item) {
+            $stmt = $pdo->prepare("INSERT INTO purchase_order_items 
+                                   (po_id, quote_item_id, inventory_item_id, brand, model, category_name, quantity, unit_price, total_amount, created_at) 
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+            
+            $total_amount = $item['unit_price'] * $item['quantity'];
+            
+            $stmt->execute([
+                $po_id,
+                $item['id'],
+                $item['inventory_item_id'],
+                $item['brand'],
+                $item['model'],
+                $item['category_name'],
+                $item['quantity'],
+                $item['unit_price'],
+                $total_amount
+            ]);
+        }
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true, 
+            'message' => 'Purchase order created successfully',
+            'po_id' => $po_id,
+            'po_number' => $po_number
+        ];
+        
+    } catch(Exception $e) {
+        $pdo->rollBack();
+        return ['success' => false, 'message' => 'Failed to create purchase order: ' . $e->getMessage()];
+    }
+}
+
+// Get purchase orders for a quotation
+function getPurchaseOrders($quote_id) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("SELECT po.*, 
+                           (SELECT COUNT(*) FROM purchase_order_items WHERE po_id = po.id) as items_count,
+                           (SELECT SUM(total_amount) FROM purchase_order_items WHERE po_id = po.id) as total_amount
+                           FROM purchase_orders po 
+                           WHERE po.quote_id = ? 
+                           ORDER BY po.created_at DESC");
+    $stmt->execute([$quote_id]);
+    return $stmt->fetchAll();
+}
+
+// Get purchase order details with items
+function getPurchaseOrder($po_id) {
+    global $pdo;
+    
+    // Get PO details
+    $stmt = $pdo->prepare("SELECT po.*, q.quote_number, q.customer_name 
+                           FROM purchase_orders po 
+                           LEFT JOIN quotations q ON po.quote_id = q.id 
+                           WHERE po.id = ?");
+    $stmt->execute([$po_id]);
+    $po = $stmt->fetch();
+    
+    if (!$po) {
+        return null;
+    }
+    
+    // Get PO items
+    $stmt = $pdo->prepare("SELECT poi.*, qi.serial_numbers 
+                           FROM purchase_order_items poi 
+                           LEFT JOIN quote_items qi ON poi.quote_item_id = qi.id 
+                           WHERE poi.po_id = ? 
+                           ORDER BY poi.id");
+    $stmt->execute([$po_id]);
+    $po['items'] = $stmt->fetchAll();
+    
+    return $po;
 }
 ?>

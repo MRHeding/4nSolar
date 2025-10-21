@@ -59,7 +59,7 @@ if ($_POST) {
             
         case 'edit':
             if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
-                // Get current item to preserve existing image path
+                // Get current item to preserve existing image path and track changes
                 $current_item = getInventoryItem($item_id);
                 
                 // Handle model field - use custom model if provided, otherwise use selected model
@@ -85,11 +85,53 @@ if ($_POST) {
                 
                 $image_file = isset($_FILES['product_image']) ? $_FILES['product_image'] : null;
                 
-                if (updateInventoryItem($item_id, $data, $image_file)) {
+                $result = updateInventoryItem($item_id, $data, $image_file);
+                if ($result['success']) {
+                    // Record the edit activity in stock movements for tracking purposes
+                    // Build a summary of changes made
+                    $changes = [];
+                    if ($current_item['brand'] != $data['brand']) {
+                        $changes[] = "Brand: {$current_item['brand']} → {$data['brand']}";
+                    }
+                    if ($current_item['model'] != $data['model']) {
+                        $changes[] = "Model: {$current_item['model']} → {$data['model']}";
+                    }
+                    if ($current_item['base_price'] != $data['base_price']) {
+                        $changes[] = "Base Price: {$current_item['base_price']} → {$data['base_price']}";
+                    }
+                    if ($current_item['selling_price'] != $data['selling_price']) {
+                        $changes[] = "Selling Price: {$current_item['selling_price']} → {$data['selling_price']}";
+                    }
+                    if ($current_item['stock_quantity'] != $data['stock_quantity']) {
+                        $changes[] = "Stock: {$current_item['stock_quantity']} → {$data['stock_quantity']}";
+                    }
+                    
+                    // Only record if there were actual changes
+                    if (!empty($changes)) {
+                        $notes = "Item edited - " . implode(", ", $changes);
+                        
+                        // Record the edit activity in stock movements
+                        $stmt = $pdo->prepare("INSERT INTO stock_movements 
+                                              (inventory_item_id, movement_type, quantity, previous_stock, new_stock, 
+                                               reference_type, reference_id, notes, created_by) 
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([
+                            $item_id, 
+                            'edit', 
+                            0, // No quantity change for edits
+                            $current_item['stock_quantity'], 
+                            $data['stock_quantity'], 
+                            'item_edit', 
+                            null, 
+                            $notes, 
+                            $_SESSION['user_id'] ?? 1
+                        ]);
+                    }
+                    
                     header("Location: inventory.php?message=" . urlencode('Item updated successfully!'));
                     exit();
                 } else {
-                    $error = 'Failed to update item. Please check the image format and size.';
+                    $error = $result['message'] ?? 'Failed to update item. Please check the image format and size.';
                 }
             }
             break;
@@ -104,6 +146,8 @@ if ($_POST) {
                     $current_quantity = (int)$_POST['current_quantity'];
                     $notes = trim($_POST['notes'] ?? '');
                     $selected_serials = $_POST['selected_serials'] ?? '';
+                    $supplier_receipt = trim($_POST['supplier_receipt'] ?? '');
+                    $serial_code = trim($_POST['serial_code'] ?? '');
                     
                     // Convert array to string if needed
                     if (is_array($selected_serials)) {
@@ -123,7 +167,7 @@ if ($_POST) {
                     if (empty($notes)) {
                         $error = 'Notes are required for stock adjustments. Please provide a reason for the stock change.';
                     } else {
-                        if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes, $selected_serials)) {
+                        if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes, $selected_serials, $supplier_receipt, $serial_code)) {
                             $message = 'Stock updated successfully!';
                             
                             // Add information about serial number changes if applicable
@@ -151,6 +195,8 @@ if ($_POST) {
                     $movement_type = $new_quantity > $_POST['current_quantity'] ? 'in' : 'out';
                     $notes = trim($_POST['notes'] ?? '');
                     $selected_serials = $_POST['selected_serials'] ?? '';
+                    $supplier_receipt = trim($_POST['supplier_receipt'] ?? '');
+                    $serial_code = trim($_POST['serial_code'] ?? '');
                     
                     // Convert array to string if needed
                     if (is_array($selected_serials)) {
@@ -161,7 +207,7 @@ if ($_POST) {
                     if (empty($notes)) {
                         $error = 'Notes are required for stock adjustments. Please provide a reason for the stock change.';
                     } else {
-                        if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes, $selected_serials)) {
+                        if (updateStock($item_id, $new_quantity, $movement_type, 'adjustment', null, $notes, $selected_serials, $supplier_receipt, $serial_code)) {
                             $message = 'Stock updated successfully!';
                             
                             // Add information about serial number changes if applicable
@@ -235,6 +281,22 @@ if ($_POST) {
                 }
             }
             break;
+            
+        case 'duplicate':
+            if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES]) && $item_id) {
+                $image_file = isset($_FILES['product_image']) ? $_FILES['product_image'] : null;
+                
+                $result = duplicateInventoryItem($item_id, $image_file);
+                if ($result['success']) {
+                    header("Location: inventory.php?action=view&id=" . $result['new_item_id'] . "&message=" . urlencode('Item duplicated successfully! You can now edit the details.'));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            } else {
+                $error = 'You do not have permission to duplicate items.';
+            }
+            break;
     }
 }
 
@@ -280,6 +342,7 @@ switch ($action) {
         $filter = $_GET['filter'] ?? null;
         $category_filter = $_GET['category'] ?? null;
         $brand_filter = $_GET['brand'] ?? null;
+        $recent_stock_movements = getRecentStockMovements(20);
         
         if ($filter == 'low_stock') {
             $items = getLowStockItems();
@@ -791,17 +854,23 @@ include 'includes/header.php';
                         <?php echo htmlspecialchars($item['supplier_name'] ?? 'N/A'); ?>
                     </td>
                     <td class="px-6 py-4 text-right text-sm font-medium space-x-2">
-                        <a href="?action=view&id=<?php echo $item['id']; ?>" class="text-blue-600 hover:text-blue-900">
+                        <a href="?action=view&id=<?php echo $item['id']; ?>" class="text-blue-600 hover:text-blue-900" title="View Details">
                             <i class="fas fa-eye"></i>
                         </a>
-                        <?php if (hasPermission([ROLE_ADMIN])): ?>
-                        <a href="?action=edit&id=<?php echo $item['id']; ?>" class="text-indigo-600 hover:text-indigo-900">
+                        <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
+                        <button onclick="duplicateItem(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>')" 
+                                class="text-green-600 hover:text-green-900 hover:bg-green-50 px-2 py-1 rounded transition" title="Duplicate Item">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        <?php endif; ?>
+                        <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
+                        <a href="?action=edit&id=<?php echo $item['id']; ?>" class="text-indigo-600 hover:text-indigo-900" title="Edit Item">
                             <i class="fas fa-edit"></i>
                         </a>
                         <?php endif; ?>
                         <?php if (hasRole(ROLE_ADMIN)): ?>
                         <a href="?action=delete&id=<?php echo $item['id']; ?>" class="text-red-600 hover:text-red-900" 
-                           onclick="return confirmDelete('Are you sure you want to delete this item?')">
+                           onclick="return confirmDelete('Are you sure you want to delete this item?')" title="Delete Item">
                             <i class="fas fa-trash"></i>
                         </a>
                         <?php endif; ?>
@@ -839,6 +908,8 @@ include 'includes/header.php';
         </button>
     </div>
 </div>
+
+
 
 <?php elseif ($action == 'add' || $action == 'edit'): ?>
 <!-- Add/Edit Form -->
@@ -953,10 +1024,9 @@ include 'includes/header.php';
         </div>
         
         <div>
-            <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Brand</label>
-            <input type="text" id="description" name="description"
-                   value="<?php echo isset($item) ? htmlspecialchars($item['description']) : ''; ?>"
-                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+            <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Remarks</label>
+            <textarea id="description" name="description" rows="3"
+                      class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent resize-vertical"><?php echo isset($item) ? htmlspecialchars($item['description']) : ''; ?></textarea>
         </div>
         
         <div class="flex justify-end space-x-4">
@@ -973,11 +1043,17 @@ include 'includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></h1>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200"><?php echo htmlspecialchars($item['model']); ?></h1>
             <p class="text-gray-600"><?php echo htmlspecialchars($item['description']); ?></p>
         </div>
         <div class="space-x-2">
-            <?php if (hasPermission([ROLE_ADMIN])): ?>
+            <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
+            <button onclick="duplicateItem(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>')" 
+                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                <i class="fas fa-copy mr-2"></i>Duplicate Item
+            </button>
+            <?php endif; ?>
+            <?php if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])): ?>
             <a href="?action=edit&id=<?php echo $item['id']; ?>" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
                 <i class="fas fa-edit mr-2"></i>Edit
             </a>
@@ -1042,7 +1118,7 @@ include 'includes/header.php';
             
             <?php if (!empty($item['description'])): ?>
             <div class="mt-6">
-                <label class="block text-sm font-medium text-gray-500 mb-2">Description</label>
+                <label class="block text-sm font-medium text-gray-500 mb-2">Remarks</label>
                 <p class="text-gray-900"><?php echo nl2br(htmlspecialchars($item['description'])); ?></p>
             </div>
             <?php endif; ?>
@@ -1130,14 +1206,16 @@ include 'includes/header.php';
             <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Recent Stock Movements</h2>
             <?php if (!empty($stock_movements)): ?>
             <div>
-                <table class="min-w-full divide-y divide-gray-200">
+                <table class="min-w-full divide-y divide-gray-200 table-fixed">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock Change</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32">Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-16">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-20">Quantity</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Stock Change</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32">User</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Receipt #</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Serial Code</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
                         </tr>
                     </thead>
@@ -1163,7 +1241,28 @@ include 'includes/header.php';
                                 <?php echo htmlspecialchars($movement['created_by_name'] ?? 'System'); ?>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <?php echo htmlspecialchars($movement['notes']); ?>
+                                <?php echo htmlspecialchars($movement['supplier_receipt'] ?? '-'); ?>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <?php echo htmlspecialchars($movement['serial_code'] ?? '-'); ?>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500 break-words">
+                                <?php 
+                                $notes = htmlspecialchars($movement['notes']);
+                                if (strlen($notes) > 50): ?>
+                                    <button type="button" 
+                                            onclick="showNotesModal('<?php echo addslashes($notes); ?>')"
+                                            class="text-blue-600 hover:text-blue-800 underline text-sm">
+                                        View Notes
+                                    </button>
+                                <?php else: ?>
+                                    <button type="button" 
+                                            onclick="showNotesModal('<?php echo addslashes($notes); ?>')"
+                                            class="text-blue-600 hover:text-blue-800 text-xs opacity-70 hover:opacity-100"
+                                            title="Expand note">
+                                        <i class="fas fa-expand-alt"></i>
+                                    </button>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -1368,6 +1467,22 @@ include 'includes/header.php';
                     <p class="text-xs text-gray-500 mt-1">Enter the amount to add or deduct</p>
                 </div>
                 
+                <div class="mb-4">
+                    <label for="quick-supplier-receipt" class="block text-sm font-medium text-gray-700 mb-2">Supplier Receipt #</label>
+                    <input type="text" id="quick-supplier-receipt" name="supplier_receipt" 
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter supplier receipt number">
+                    <p class="text-xs text-gray-500 mt-1">Optional: Enter the supplier receipt number</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="quick-serial-code" class="block text-sm font-medium text-gray-700 mb-2">Serial Code</label>
+                    <input type="text" id="quick-serial-code" name="serial_code" 
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent"
+                           placeholder="Enter serial code">
+                    <p class="text-xs text-gray-500 mt-1">Optional: Enter the serial code for tracking</p>
+                </div>
+                
                 <!-- Serial Number Selection for Serialized Items -->
                 <div id="quick-serial-section" class="mb-4 hidden">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Serial Numbers</label>
@@ -1401,6 +1516,63 @@ include 'includes/header.php';
     </div>
 </div>
 
+<!-- Duplicate Confirmation Modal -->
+<div id="duplicate-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Duplicate Inventory Item</h3>
+            
+            <form id="duplicate-form" method="POST" action="" enctype="multipart/form-data">
+                <input type="hidden" id="duplicate-item-id" name="item_id">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Item to Duplicate</label>
+                    <div id="duplicate-item-name" class="text-sm text-gray-900 bg-gray-50 p-2 rounded border"></div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="duplicate-product-image" class="block text-sm font-medium text-gray-700 mb-2">Product Image (Optional)</label>
+                    <input type="file" id="duplicate-product-image" name="product_image" 
+                           accept="image/jpeg,image/jpg,image/png,image/gif"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                    <p class="text-xs text-gray-500 mt-1">Leave empty to use the same image, or upload a new one</p>
+                </div>
+                
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <div class="flex">
+                        <i class="fas fa-info-circle text-blue-400 mt-0.5 mr-2"></i>
+                        <div>
+                            <p class="text-sm font-medium text-blue-800">What will be duplicated:</p>
+                            <ul class="text-sm text-blue-700 mt-1 list-disc list-inside">
+                                <li>Item details (brand, model, category, etc.)</li>
+                                <li>Pricing information</li>
+                                <li>Supplier information</li>
+                                <li>Product image (if not replaced)</li>
+                            </ul>
+                            <p class="text-sm font-medium text-blue-800 mt-2">What will be reset:</p>
+                            <ul class="text-sm text-blue-700 mt-1 list-disc list-inside">
+                                <li>Stock quantity (set to 0)</li>
+                                <li>Serial number settings (disabled)</li>
+                                <li>All serial numbers and receipt information</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeDuplicateModal()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+                        <i class="fas fa-copy mr-2"></i>Duplicate Item
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Image Modal -->
 <div id="image-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 overflow-y-auto h-full w-full z-50" onclick="closeImageModal()">
     <div class="relative min-h-screen flex items-center justify-center p-4">
@@ -1409,6 +1581,31 @@ include 'includes/header.php';
                 <i class="fas fa-times"></i>
             </button>
             <img id="modal-image" src="" alt="" class="max-w-full max-h-[90vh] rounded-lg shadow-2xl">
+        </div>
+    </div>
+</div>
+
+<!-- Notes Modal -->
+<div id="notes-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                    <i class="fas fa-sticky-note mr-2"></i>Stock Movement Notes
+                </h3>
+                <button onclick="closeNotesModal()" class="text-gray-400 hover:text-gray-600 dark:text-gray-400">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="mt-2 px-7 py-3">
+                <p id="modal-notes-content" class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words"></p>
+            </div>
+            <div class="items-center px-4 py-3">
+                <button onclick="closeNotesModal()"
+                        class="px-4 py-2 bg-blue-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300 transition">
+                    Close
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1494,6 +1691,36 @@ function closeImageModal() {
     document.body.style.overflow = 'auto'; // Restore scrolling
 }
 
+function showNotesModal(notes) {
+    document.getElementById('modal-notes-content').textContent = notes;
+    document.getElementById('notes-modal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+}
+
+function closeNotesModal() {
+    document.getElementById('notes-modal').classList.add('hidden');
+    document.body.style.overflow = 'auto'; // Restore scrolling
+}
+
+// Duplicate item functions
+function duplicateItem(itemId, itemName) {
+    // Set up the modal
+    document.getElementById('duplicate-item-id').value = itemId;
+    document.getElementById('duplicate-item-name').textContent = itemName;
+    document.getElementById('duplicate-product-image').value = '';
+    
+    // Set form action URL
+    document.getElementById('duplicate-form').action = `?action=duplicate&id=${itemId}`;
+    
+    // Show modal
+    document.getElementById('duplicate-modal').classList.remove('hidden');
+}
+
+function closeDuplicateModal() {
+    document.getElementById('duplicate-modal').classList.add('hidden');
+    document.getElementById('duplicate-product-image').value = '';
+}
+
 // Toggle export menu
 function toggleExportMenu() {
     const menu = document.getElementById('export-menu');
@@ -1549,6 +1776,8 @@ document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
         closeImageModal();
         closeQuickStockModal();
+        closeDuplicateModal();
+        closeNotesModal();
         document.getElementById('export-menu').classList.add('hidden');
     }
 });
@@ -2054,60 +2283,79 @@ function scrollInventoryToTop() {
 
 // Inventory search functionality
 function filterInventoryItems() {
-    const searchTerm = document.getElementById('inventory-search').value.toLowerCase().trim();
+    const rawInput = document.getElementById('inventory-search').value.trim();
     const itemRows = document.querySelectorAll('.inventory-item-row');
     const noItemsRow = document.getElementById('no-items-row');
     const noSearchResults = document.getElementById('no-search-results');
     const searchResultsInfo = document.getElementById('search-results-info');
     const searchResultsText = document.getElementById('search-results-text');
     const visibleItemsCount = document.getElementById('visible-items-count');
-    
+
+    // Helper: tokenize like Google basic search (supports quoted phrases)
+    // Example: "canadian panel 500w" -> ["canadian", "panel", "500w"]
+    // Example: 'canadian "panel 500w"' -> ["canadian", "panel 500w"]
+    function tokenize(input) {
+        const terms = [];
+        const regex = /"([^"]+)"|(\S+)/g;
+        let match;
+        while ((match = regex.exec(input)) !== null) {
+            const term = (match[1] || match[2] || '').toLowerCase();
+            if (term) terms.push(term);
+        }
+        return terms;
+    }
+
+    // AND-match across terms: every term must appear in at least one field of the row
+    function rowMatchesTerms(row, terms) {
+        if (terms.length === 0) return true;
+        const fields = [
+            row.getAttribute('data-full-text') || '',
+            row.getAttribute('data-brand') || '',
+            row.getAttribute('data-model') || '',
+            row.getAttribute('data-category') || '',
+            row.getAttribute('data-size') || '',
+            row.getAttribute('data-supplier') || ''
+        ];
+        // Lowercase fields once
+        const lowerFields = fields.map(f => f.toLowerCase());
+
+        return terms.every(term => lowerFields.some(f => f.includes(term)));
+    }
+
+    const terms = tokenize(rawInput);
+
     let visibleCount = 0;
-    let totalItems = itemRows.length;
-    
-    if (searchTerm === '') {
+    const totalItems = itemRows.length;
+
+    if (terms.length === 0) {
         // Show all items
         itemRows.forEach(row => {
             row.style.display = 'table-row';
             visibleCount++;
         });
-        
+
         // Hide search-specific elements
         if (noSearchResults) noSearchResults.style.display = 'none';
         if (searchResultsInfo) searchResultsInfo.classList.add('hidden');
-        
+
         // Show original no items message if no items exist
         if (noItemsRow && totalItems === 0) {
             noItemsRow.style.display = 'table-row';
         }
     } else {
-        // Filter items based on search term
+        // Filter items based on word-by-word matching
         itemRows.forEach(row => {
-            const fullText = row.getAttribute('data-full-text') || '';
-            const brand = row.getAttribute('data-brand') || '';
-            const model = row.getAttribute('data-model') || '';
-            const category = row.getAttribute('data-category') || '';
-            const size = row.getAttribute('data-size') || '';
-            const supplier = row.getAttribute('data-supplier') || '';
-            
-            const matchesSearch = fullText.includes(searchTerm) ||
-                                brand.includes(searchTerm) ||
-                                model.includes(searchTerm) ||
-                                category.includes(searchTerm) ||
-                                size.includes(searchTerm) ||
-                                supplier.includes(searchTerm);
-            
-            if (matchesSearch) {
+            if (rowMatchesTerms(row, terms)) {
                 row.style.display = 'table-row';
                 visibleCount++;
             } else {
                 row.style.display = 'none';
             }
         });
-        
+
         // Hide original no items message
         if (noItemsRow) noItemsRow.style.display = 'none';
-        
+
         // Show/hide search results info
         if (searchResultsInfo && searchResultsText) {
             if (visibleCount === 0) {
@@ -2115,17 +2363,17 @@ function filterInventoryItems() {
                 if (noSearchResults) noSearchResults.style.display = 'table-row';
             } else {
                 searchResultsInfo.classList.remove('hidden');
-                searchResultsText.textContent = `Found ${visibleCount} item${visibleCount !== 1 ? 's' : ''} matching "${searchTerm}"`;
+                searchResultsText.textContent = `Found ${visibleCount} item${visibleCount !== 1 ? 's' : ''} matching "${rawInput}"`;
                 if (noSearchResults) noSearchResults.style.display = 'none';
             }
         }
     }
-    
+
     // Update visible items count
     if (visibleItemsCount) {
         visibleItemsCount.textContent = visibleCount;
     }
-    
+
     // Scroll to top of results
     scrollInventoryToTop();
 }

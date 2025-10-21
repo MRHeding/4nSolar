@@ -7,69 +7,41 @@ require_once 'inventory.php';
 
 
 // Get all POS sales
-
-function getPOSSales($status = null, $date_from = null, $date_to = null) {
-
+function getPOSSales($status = null, $date_from = null, $date_to = null, $include_incomplete = false) {
     global $pdo;
-
     
-
     $sql = "SELECT s.*, u.full_name as cashier_name,
-
             (SELECT COUNT(*) FROM pos_sale_items WHERE sale_id = s.id) as items_count
-
             FROM pos_sales s 
-
             LEFT JOIN users u ON s.created_by = u.id 
-
             WHERE 1=1";
-
     
-
     $params = [];
-
     
-
-    if ($status) {
-
+    // By default, exclude incomplete/pending transactions from history
+    // Only show completed transactions unless specifically requested
+    if (!$include_incomplete && !$status) {
+        $sql .= " AND s.status = 'completed'";
+    } elseif ($status) {
         $sql .= " AND s.status = ?";
-
         $params[] = $status;
-
     }
-
     
-
     if ($date_from) {
-
         $sql .= " AND DATE(s.created_at) >= ?";
-
         $params[] = $date_from;
-
     }
-
     
-
     if ($date_to) {
-
         $sql .= " AND DATE(s.created_at) <= ?";
-
         $params[] = $date_to;
-
     }
-
     
-
     $sql .= " ORDER BY s.created_at DESC";
-
     
-
     $stmt = $pdo->prepare($sql);
-
     $stmt->execute($params);
-
     return $stmt->fetchAll();
-
 }
 
 
@@ -452,6 +424,55 @@ function updatePOSSaleItemQuantity($sale_item_id, $new_quantity) {
 
     }
 
+}
+
+
+
+// Update POS sale item unit price
+function updatePOSSaleItemPrice($sale_item_id, $new_unit_price) {
+    global $pdo;
+    
+    try {
+        // Get current item details - check if inventory item is still active
+        $stmt = $pdo->prepare("SELECT si.sale_id, si.quantity, si.discount_percentage, 
+                              si.inventory_item_id, i.brand, i.model, i.is_active
+                              FROM pos_sale_items si
+                              LEFT JOIN inventory_items i ON si.inventory_item_id = i.id
+                              WHERE si.id = ?");
+        $stmt->execute([$sale_item_id]);
+        $item = $stmt->fetch();
+        
+        if (!$item) return ['success' => false, 'message' => 'Item not found'];
+        
+        if (!$item['is_active']) {
+            return ['success' => false, 'message' => "Item {$item['brand']} {$item['model']} has been removed from inventory"];
+        }
+        
+        // Validate new price
+        if ($new_unit_price <= 0) {
+            return ['success' => false, 'message' => 'Unit price must be greater than zero'];
+        }
+        
+        $discount_amount = ($new_unit_price * $item['discount_percentage'] / 100) * $item['quantity'];
+        $total_amount = ($new_unit_price * $item['quantity']) - $discount_amount;
+        
+        // Update the item
+        $stmt = $pdo->prepare("UPDATE pos_sale_items SET 
+                              unit_price = ?, discount_amount = ?, total_amount = ? 
+                              WHERE id = ?");
+        
+        $result = $stmt->execute([$new_unit_price, $discount_amount, $total_amount, $sale_item_id]);
+        
+        if ($result) {
+            updatePOSSaleTotals($item['sale_id']);
+            return ['success' => true, 'message' => 'Unit price updated successfully'];
+        }
+        
+        return ['success' => false, 'message' => 'Failed to update unit price'];
+        
+    } catch(PDOException $e) {
+        return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+    }
 }
 
 

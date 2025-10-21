@@ -3,12 +3,25 @@
 // 4NSOLAR ELECTRICZ Management System
 
 // Get all employees
-function getAllEmployees($pdo, $active_only = true) {
+function getAllEmployees($pdo, $active_only = true, $sort_by = 'employee_name', $sort_order = 'ASC') {
     $sql = "SELECT * FROM employees";
     if ($active_only) {
         $sql .= " WHERE is_active = 1";
     }
-    $sql .= " ORDER BY employee_name";
+    
+    // Validate sort column to prevent SQL injection
+    $allowed_sort_columns = ['employee_code', 'employee_name', 'position', 'date_of_joining', 'basic_salary', 'allowances'];
+    if (!in_array($sort_by, $allowed_sort_columns)) {
+        $sort_by = 'employee_name';
+    }
+    
+    // Validate sort order
+    $sort_order = strtoupper($sort_order);
+    if (!in_array($sort_order, ['ASC', 'DESC'])) {
+        $sort_order = 'ASC';
+    }
+    
+    $sql .= " ORDER BY $sort_by $sort_order";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
@@ -77,8 +90,35 @@ function getEmployeeAttendance($pdo, $employee_id, $start_date = null, $end_date
     return $stmt->fetchAll();
 }
 
+// Validate and correct attendance status based on time_in
+function validateAttendanceStatus($time_in, $status) {
+    // If status is half_day, validate that time_in is between 1:00 PM and 5:30 PM
+    if ($status === 'half_day' && !empty($time_in)) {
+        $time_in_obj = DateTime::createFromFormat('H:i:s', $time_in);
+        if ($time_in_obj) {
+            $hour = (int)$time_in_obj->format('H');
+            $minute = (int)$time_in_obj->format('i');
+            $time_in_minutes = $hour * 60 + $minute;
+            
+            // Half day should only be between 1:00 PM (13:00) and 5:30 PM (17:30)
+            $half_day_start = 13 * 60; // 1:00 PM in minutes
+            $half_day_end = 17 * 60 + 30; // 5:30 PM in minutes
+            
+            if ($time_in_minutes < $half_day_start || $time_in_minutes > $half_day_end) {
+                // If time_in is not in half_day range, change status to present
+                return 'present';
+            }
+        }
+    }
+    
+    return $status;
+}
+
 // Add attendance record
 function addAttendance($pdo, $data) {
+    // Validate and correct status based on time_in
+    $corrected_status = validateAttendanceStatus($data['time_in'], $data['status']);
+    
     $sql = "INSERT INTO employee_attendance (employee_id, attendance_date, time_in, time_out, status, hours_worked, overtime_hours, notes) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
@@ -95,7 +135,7 @@ function addAttendance($pdo, $data) {
         $data['attendance_date'],
         $data['time_in'],
         $data['time_out'],
-        $data['status'],
+        $corrected_status,
         $data['hours_worked'] ?? 0,
         $data['overtime_hours'] ?? 0,
         $data['notes'] ?? null
@@ -119,6 +159,73 @@ function calculateWorkingDays($start_date, $end_date) {
     return $working_days;
 }
 
+// Check if employee was on duty on Sunday
+function wasEmployeeOnDutyOnSunday($pdo, $employee_id, $date) {
+    $day_of_week = date('w', strtotime($date));
+    
+    // Only check if it's a Sunday (0 = Sunday)
+    if ($day_of_week != 0) {
+        return false;
+    }
+    
+    // Check if employee has attendance record for this Sunday
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM employee_attendance 
+                          WHERE employee_id = ? AND attendance_date = ? 
+                          AND status IN ('present', 'late', 'half_day', 'overtime')");
+    $stmt->execute([$employee_id, $date]);
+    $count = $stmt->fetchColumn();
+    
+    return $count > 0;
+}
+
+// Get all Sundays in a date range where employee was on duty
+function getSundaysOnDuty($pdo, $employee_id, $start_date, $end_date) {
+    $sundays = [];
+    $start = new DateTime($start_date);
+    $end = new DateTime($end_date);
+    
+    while ($start <= $end) {
+        if ($start->format('w') == 0) { // Sunday
+            $date_str = $start->format('Y-m-d');
+            if (wasEmployeeOnDutyOnSunday($pdo, $employee_id, $date_str)) {
+                $sundays[] = $date_str;
+            }
+        }
+        $start->add(new DateInterval('P1D'));
+    }
+    
+    return $sundays;
+}
+
+// Calculate hours worked with lunch break deduction
+function calculateHoursWithLunchBreak($time_in, $time_out, $status = 'present') {
+    if (empty($time_in) || empty($time_out)) {
+        return 0;
+    }
+    
+    $time_in_obj = DateTime::createFromFormat('H:i:s', $time_in);
+    $time_out_obj = DateTime::createFromFormat('H:i:s', $time_out);
+    
+    if (!$time_in_obj || !$time_out_obj) {
+        return 0;
+    }
+    
+    $diff = $time_out_obj->diff($time_in_obj);
+    $total_hours = $diff->h + ($diff->i / 60) + ($diff->s / 3600);
+    
+    // Account for lunch break (1 hour) if working more than 5 hours
+    if ($total_hours > 5) {
+        $total_hours = $total_hours - 1; // Subtract 1 hour for lunch break
+    }
+    
+    // Cap regular work hours at 8.00 (unless it's overtime status)
+    if ($status !== 'overtime' && $total_hours > 8) {
+        $total_hours = 8.00;
+    }
+    
+    return max(0, $total_hours); // Ensure non-negative
+}
+
 // Get attendance summary for payroll calculation
 function getAttendanceSummary($pdo, $employee_id, $start_date, $end_date) {
     $sql = "SELECT 
@@ -136,7 +243,28 @@ function getAttendanceSummary($pdo, $employee_id, $start_date, $end_date) {
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$employee_id, $start_date, $end_date]);
-    return $stmt->fetch();
+    $result = $stmt->fetch();
+    
+    // Recalculate total hours with proper lunch break deduction
+    $sql_detailed = "SELECT time_in, time_out, hours_worked, status FROM employee_attendance 
+                     WHERE employee_id = ? AND attendance_date BETWEEN ? AND ? 
+                     AND time_in IS NOT NULL AND time_out IS NOT NULL";
+    $stmt_detailed = $pdo->prepare($sql_detailed);
+    $stmt_detailed->execute([$employee_id, $start_date, $end_date]);
+    $attendance_records = $stmt_detailed->fetchAll();
+    
+    $corrected_total_hours = 0;
+    foreach ($attendance_records as $record) {
+        $corrected_hours = calculateHoursWithLunchBreak($record['time_in'], $record['time_out'], $record['status']);
+        $corrected_total_hours += $corrected_hours;
+    }
+    
+    // Update the result with corrected hours
+    if ($result) {
+        $result['total_hours_worked'] = $corrected_total_hours;
+    }
+    
+    return $result;
 }
 
 // Create payroll record
@@ -330,7 +458,7 @@ function calculatePayroll($pdo, $employee_id, $pay_period_start, $pay_period_end
     // Calculate basic salary based on actual hours worked
     $total_hours_worked = floatval($attendance['total_hours_worked'] ?? 0);
     if ($total_hours_worked > 0) {
-        // Use actual hours worked for salary calculation
+        // Use actual hours worked for salary calculation (already accounts for lunch break)
         $basic_salary = $total_hours_worked * $hourly_rate;
     } else {
         // Fallback to daily rate calculation if no hours recorded
@@ -514,5 +642,31 @@ function getCurrentPayPeriod() {
             'end' => $last_day
         ];
     }
+}
+
+// Check if employee has attendance records for the pay period
+function hasAttendanceRecords($pdo, $employee_id, $pay_period_start, $pay_period_end) {
+    $sql = "SELECT COUNT(*) as attendance_count 
+            FROM employee_attendance 
+            WHERE employee_id = ? AND attendance_date BETWEEN ? AND ?";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$employee_id, $pay_period_start, $pay_period_end]);
+    $result = $stmt->fetch();
+    
+    return ($result['attendance_count'] > 0);
+}
+
+// Get attendance records count for validation
+function getAttendanceRecordsCount($pdo, $employee_id, $pay_period_start, $pay_period_end) {
+    $sql = "SELECT COUNT(*) as total_records,
+                   COUNT(CASE WHEN status = 'present' THEN 1 END) as present_days,
+                   COUNT(CASE WHEN status = 'absent' THEN 1 END) as absent_days
+            FROM employee_attendance 
+            WHERE employee_id = ? AND attendance_date BETWEEN ? AND ?";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$employee_id, $pay_period_start, $pay_period_end]);
+    return $stmt->fetch();
 }
 ?>

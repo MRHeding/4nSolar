@@ -361,6 +361,20 @@ if ($_POST) {
             }
             break;
             
+        case 'duplicate_quote':
+            if (isset($_POST['original_quote_id'])) {
+                $result = duplicateQuotation($_POST['original_quote_id']);
+                if ($result['success']) {
+                    header("Location: ?action=quote&quote_id=" . $result['new_quote_id'] . "&message=" . urlencode($result['message']));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            } else {
+                $error = 'Original quotation ID is required for duplication.';
+            }
+            break;
+            
         case 'add_to_quote':
             if ($quote_id && isset($_POST['inventory_item_id']) && isset($_POST['quantity'])) {
                 $item_id = $_POST['inventory_item_id'];
@@ -406,6 +420,58 @@ if ($_POST) {
                 } else {
                     $error = $result['message'];
                 }
+            }
+            break;
+            
+        case 'add_direct_quote_item':
+            if ($quote_id && isset($_POST['inventory_item_id']) && isset($_POST['custom_quantity']) && isset($_POST['custom_price'])) {
+                $item_id = $_POST['inventory_item_id'];
+                $custom_quantity = $_POST['custom_quantity'];
+                $custom_price = $_POST['custom_price'];
+                $discount_percentage = $_POST['discount_percentage'] ?? 0;
+                
+                $result = addDirectQuoteItem($quote_id, $item_id, $custom_quantity, $custom_price, $discount_percentage);
+                if ($result['success']) {
+                    $message = 'Direct quote item added successfully!';
+                    if (!empty($result['generated_serials'])) {
+                        $message .= ' Generated ' . count($result['generated_serials']) . ' serial numbers.';
+                    }
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($message));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            } else {
+                $error = 'Missing required fields for direct quote item.';
+            }
+            break;
+            
+        case 'create_purchase_order':
+            if ($quote_id && isset($_POST['item_to_order'])) {
+                $supplier_name = $_POST['supplier_name'] ?? '';
+                $contact_person = $_POST['contact_person'] ?? '';
+                $supplier_phone = $_POST['supplier_phone'] ?? '';
+                $supplier_email = $_POST['supplier_email'] ?? '';
+                $supplier_address = $_POST['supplier_address'] ?? '';
+                $special_instructions = $_POST['special_instructions'] ?? '';
+                $delivery_requirements = $_POST['delivery_requirements'] ?? '';
+                $items_to_order = $_POST['item_to_order'];
+                
+                // Generate purchase order number
+                $po_number = 'PO-' . date('Y') . '-' . str_pad($quote_id, 4, '0', STR_PAD_LEFT);
+                
+                // Create purchase order record
+                $result = createPurchaseOrder($quote_id, $po_number, $supplier_name, $contact_person, $supplier_phone, $supplier_email, $supplier_address, $special_instructions, $delivery_requirements, $items_to_order);
+                
+                if ($result['success']) {
+                    $message = 'Purchase Order created successfully! PO Number: ' . $po_number;
+                    header("Location: ?action=purchase_order&quote_id=" . $quote_id . "&message=" . urlencode($message));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            } else {
+                $error = 'Please select at least one item to order and provide supplier information.';
             }
             break;
             
@@ -507,7 +573,10 @@ if ($_POST) {
             
         case 'update_quote_status':
             if ($quote_id && isset($_POST['new_status'])) {
-                $result = updateQuoteStatus($quote_id, $_POST['new_status']);
+                // Check if we should ignore stock levels
+                $ignore_stock = isset($_POST['ignore_stock']) && $_POST['ignore_stock'] === '1';
+                
+                $result = updateQuoteStatus($quote_id, $_POST['new_status'], $ignore_stock);
                 
                 if (is_array($result) && $result['success']) {
                     $success_message = 'Status updated successfully!';
@@ -533,8 +602,17 @@ if ($_POST) {
                         
                         // Add inventory deduction message
                         if (isset($result['inventory_result']) && $result['inventory_result']['success']) {
-                            $deducted_count = count($result['inventory_result']['deducted_items']);
-                            $success_message .= " Inventory deducted for $deducted_count items.";
+                            if ($ignore_stock) {
+                                $success_message .= " Quote approved with stock levels ignored.";
+                            } else {
+                                $deducted_count = count($result['inventory_result']['deducted_items']);
+                                $success_message .= " Inventory deducted for $deducted_count items.";
+                            }
+                        }
+                        
+                        // Add revenue tracking message
+                        if (isset($result['project_created']) && $result['project_created']) {
+                            $success_message .= " Project created and will be counted in today's revenue.";
                         }
                     }
                     
@@ -665,6 +743,22 @@ switch ($action) {
                 // Check if quote has installment plan
                 $installment_plan = getInstallmentPlanWithAdjustments($quote_id);
             }
+        }
+        break;
+        
+    case 'purchase_order':
+        if ($quote_id) {
+            $quote = getQuote($quote_id);
+            if (!$quote) {
+                $error = 'Quotation not found.';
+                $action = 'list';
+            } else {
+                // Get customer information
+                $customer_info = getCustomerInfo($quote_id);
+            }
+        } else {
+            $error = 'Quote ID is required for purchase order.';
+            $action = 'list';
         }
         break;
         
@@ -803,15 +897,19 @@ include 'includes/header.php';
 </style>
 
 <?php if ($message): ?>
-<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4 alert-auto-hide">
-    <?php echo htmlspecialchars($message); ?>
-</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    showNotification('<?php echo addslashes($message); ?>', 'success');
+});
+</script>
 <?php endif; ?>
 
 <?php if ($error): ?>
-<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 alert-auto-hide">
-    <?php echo htmlspecialchars($error); ?>
-</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    showNotification('<?php echo addslashes($error); ?>', 'error');
+});
+</script>
 <?php endif; ?>
 
 <?php if ($action == 'list'): ?>
@@ -850,7 +948,9 @@ include 'includes/header.php';
                 <option value="draft">Draft</option>
                 <option value="sent">Sent</option>
                 <option value="under_review">Under Review</option>
-                <option value="accepted">Complete</option>
+                <option value="accepted">Approved</option>
+                <option value="ongoing">Ongoing</option>
+                <option value="completed">Completed</option>
                 <option value="rejected">Rejected</option>
                 <option value="expired">Expired</option>
             </select>
@@ -974,11 +1074,21 @@ include 'includes/header.php';
                                     case 'under_review': echo 'bg-purple-100 text-purple-800'; break;
                                     case 'accepted': 
                                     case 'approved': echo 'bg-green-100 text-green-800'; break;
+                                    case 'ongoing': echo 'bg-orange-100 text-orange-800'; break;
+                                    case 'completed': echo 'bg-emerald-100 text-emerald-800'; break;
                                     case 'rejected': echo 'bg-red-100 text-red-800'; break;
                                     case 'expired': echo 'bg-yellow-100 text-yellow-800'; break;
                                 }
                                 ?>">
-                                <?php echo $quote['status'] == 'accepted' ? 'Complete' : ucfirst(str_replace('_', ' ', $quote['status'])); ?>
+                                <?php 
+                                $status_display = $quote['status'];
+                                if ($status_display === 'accepted') {
+                                    $status_display = 'Approved';
+                                } else {
+                                    $status_display = ucfirst(str_replace('_', ' ', $status_display));
+                                }
+                                echo $status_display;
+                                ?>
                             </span>
                             <?php if ($quote['has_installment_plan'] > 0): ?>
                             <span class="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 flex items-center">
@@ -1042,6 +1152,10 @@ include 'includes/header.php';
                             </form>
                             <?php endif; ?>
                             
+                            <button onclick="duplicateQuote(<?php echo $quote['id']; ?>)" 
+                                    class="text-purple-600 hover:text-purple-900 p-0.5 inline-block" title="Duplicate Quote">
+                                <i class="fas fa-copy text-xs"></i>
+                            </button>
                             <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>"
                                class="text-orange-600 hover:text-orange-900 p-0.5 inline-block" title="Print Quote">
                                 <i class="fas fa-print text-xs"></i>
@@ -1383,10 +1497,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-credit-card mr-1"></i>Payment Plan
             </a>
             <?php endif; ?>
+            <a href="?action=purchase_order&quote_id=<?php echo $quote['id']; ?>" 
+               class="bg-orange-600 text-white px-3 py-2 rounded-lg hover:bg-orange-700 transition text-sm whitespace-nowrap">
+                <i class="fas fa-shopping-cart mr-1"></i>Purchase Order
+            </a>
             <a href="?action=order_fulfillment&quote_id=<?php echo $quote['id']; ?>" 
                class="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition text-sm whitespace-nowrap">
                 <i class="fas fa-clipboard-check mr-1"></i>Order Fulfillment
             </a>
+            <button onclick="duplicateQuote(<?php echo $quote['id']; ?>)" 
+                    class="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition text-sm whitespace-nowrap">
+                <i class="fas fa-copy mr-1"></i>Duplicate Quote
+            </button>
             <a href="print_inventory_quote.php?id=<?php echo $quote['id']; ?>"
                class="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition text-sm whitespace-nowrap">
                 <i class="fas fa-print mr-1"></i>Print Quote
@@ -1414,10 +1536,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($inventory_items)): ?>
-                <button onclick="document.getElementById('add-quote-item-modal').classList.remove('hidden')" 
-                        class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition text-sm">
-                    <i class="fas fa-plus mr-2"></i>Add Item
-                </button>
+                <div class="flex gap-2">
+                    <button onclick="document.getElementById('add-quote-item-modal').classList.remove('hidden')" 
+                            class="bg-solar-blue text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition text-sm">
+                        <i class="fas fa-plus mr-2"></i>Add Item
+                    </button>
+                    <button onclick="document.getElementById('add-direct-quote-modal').classList.remove('hidden')" 
+                            class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm">
+                        <i class="fas fa-edit mr-2"></i>Direct Quote
+                    </button>
+                </div>
                 <?php endif; ?>
             </div>
             
@@ -1438,9 +1566,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         <?php foreach ($quote['items'] as $item): ?>
                         <tr>
                             <td class="px-4 py-4">
-                                <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
+                                <div class="flex items-center gap-2">
+                                    <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
+                                    <?php if (isset($item['is_direct_quote']) && $item['is_direct_quote']): ?>
+                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        <i class="fas fa-edit mr-1"></i>Direct Quote
+                                    </span>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="text-xs text-gray-500"><?php echo htmlspecialchars($item['size_specification']); ?></div>
+                                <?php if (!isset($item['is_direct_quote']) || !$item['is_direct_quote']): ?>
                                 <div class="text-xs text-blue-600">Stock: <?php echo $item['stock_quantity']; ?></div>
+                                <?php else: ?>
+                                <div class="text-xs text-green-600">Custom Pricing</div>
+                                <?php endif; ?>
                                 <?php if (!empty($item['serial_numbers'])): ?>
                                 <div class="text-xs text-green-600 mt-1">
                                     <button type="button" onclick="toggleSerials('serials-<?php echo $item['id']; ?>')" 
@@ -1460,12 +1599,21 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <?php endif; ?>
                             </td>
                             <td class="px-3 py-4 text-center">
-                                <form method="POST" action="?action=update_quote_quantity&quote_id=<?php echo $quote['id']; ?>" class="inline">
-                                    <input type="hidden" name="quote_item_id" value="<?php echo $item['id']; ?>">
-                                    <input type="number" name="new_quantity" value="<?php echo $item['quantity']; ?>" 
-                                           min="1" class="w-16 px-2 py-1 border rounded text-center text-sm"
-                                           onchange="this.form.submit()">
-                                </form>
+                                <?php if ($item['generate_serials']): ?>
+                                    <!-- Serialized item - quantity is not editable -->
+                                    <div class="w-16 px-2 py-1 bg-gray-100 border border-gray-300 rounded text-center text-sm text-gray-600" 
+                                         title="Quantity is determined by selected serial numbers">
+                                        <?php echo $item['quantity']; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <!-- Non-serialized item - quantity is editable -->
+                                    <form method="POST" action="?action=update_quote_quantity&quote_id=<?php echo $quote['id']; ?>" class="inline">
+                                        <input type="hidden" name="quote_item_id" value="<?php echo $item['id']; ?>">
+                                        <input type="number" name="new_quantity" value="<?php echo $item['quantity']; ?>" 
+                                               min="1" class="w-16 px-2 py-1 border rounded text-center text-sm"
+                                               onchange="this.form.submit()">
+                                    </form>
+                                <?php endif; ?>
                             </td>
                             <td class="px-3 py-4 text-sm text-gray-900">
                                 <?php 
@@ -1494,7 +1642,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </td>
                             <td class="px-3 py-4 text-center">
                                 <div class="flex justify-center space-x-2">
-                                    <?php if (isset($item['inventory_item_id']) && $item['inventory_item_id']): ?>
+                                    <?php if (isset($item['inventory_item_id']) && $item['inventory_item_id'] && $_SESSION['role'] === ROLE_ADMIN): ?>
                                     <button onclick="editInventoryItem(<?php echo $item['inventory_item_id']; ?>, '<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>')" 
                                             class="text-blue-600 hover:text-blue-900 p-2"
                                             title="Edit inventory item">
@@ -1561,11 +1709,21 @@ document.addEventListener('DOMContentLoaded', function() {
                                 case 'under_review': echo 'bg-purple-100 text-purple-800'; break;
                                 case 'accepted': 
                                 case 'approved': echo 'bg-green-100 text-green-800'; break;
+                                case 'ongoing': echo 'bg-orange-100 text-orange-800'; break;
+                                case 'completed': echo 'bg-emerald-100 text-emerald-800'; break;
                                 case 'rejected': echo 'bg-red-100 text-red-800'; break;
                                 case 'expired': echo 'bg-yellow-100 text-yellow-800'; break;
                             }
                             ?>">
-                            <?php echo $quote['status'] == 'accepted' ? 'Complete' : ucfirst(str_replace('_', ' ', $quote['status'])); ?>
+                            <?php 
+                            $status_display = $quote['status'];
+                            if ($status_display === 'accepted') {
+                                $status_display = 'Approved';
+                            } else {
+                                $status_display = ucfirst(str_replace('_', ' ', $status_display));
+                            }
+                            echo $status_display;
+                            ?>
                         </span>
                         <?php if ($installment_plan): ?>
                         <span class="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 ml-2 flex items-center inline-flex">
@@ -1670,7 +1828,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <option value="draft" <?php echo $quote['status'] == 'draft' ? 'selected' : ''; ?>>Draft</option>
                                 <option value="sent" <?php echo $quote['status'] == 'sent' ? 'selected' : ''; ?>>Sent</option>
                                 <option value="under_review" <?php echo $quote['status'] == 'under_review' ? 'selected' : ''; ?>>Under Review</option>
-                                <option value="accepted" <?php echo $quote['status'] == 'accepted' ? 'selected' : ''; ?>>Complete</option>
+                                <option value="accepted" <?php echo $quote['status'] == 'accepted' ? 'selected' : ''; ?>>Approved</option>
+                                <option value="ongoing" <?php echo $quote['status'] == 'ongoing' ? 'selected' : ''; ?>>Ongoing</option>
+                                <option value="completed" <?php echo $quote['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
                                 <option value="rejected" <?php echo $quote['status'] == 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                                 <option value="expired" <?php echo $quote['status'] == 'expired' ? 'selected' : ''; ?>>Expired</option>
                             </select>
@@ -1860,6 +2020,180 @@ document.addEventListener('DOMContentLoaded', function() {
             
             <div class="flex justify-end mt-4">
                 <button type="button" onclick="document.getElementById('add-quote-item-modal').classList.add('hidden')"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Direct Quote Item Modal -->
+<div id="add-direct-quote-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Add Direct Quote Item</h3>
+            <p class="text-sm text-gray-600 mb-4">Add items with custom quantities and prices while pulling item data from inventory.</p>
+            
+            <!-- Search and Filter Bar -->
+            <div class="mb-4 space-y-3">
+                <div>
+                    <label for="direct-quote-item-search" class="block text-sm font-medium text-gray-700 mb-2">Search Items</label>
+                    <input type="text" id="direct-quote-item-search" placeholder="Search by brand, model, or category..."
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                           onkeyup="filterDirectQuoteItems()">
+                </div>
+                <div>
+                    <label for="direct-quote-category-filter" class="block text-sm font-medium text-gray-700 mb-2">Filter by Category</label>
+                    <select id="direct-quote-category-filter" 
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            onchange="filterDirectQuoteItems()">
+                        <option value="">All Categories</option>
+                        <?php 
+                        $categories = array_unique(array_column($inventory_items, 'category_name'));
+                        sort($categories);
+                        foreach ($categories as $category): 
+                        ?>
+                        <option value="<?php echo htmlspecialchars($category); ?>"><?php echo htmlspecialchars($category); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Items Grid -->
+            <div id="direct-quote-items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 max-h-96 overflow-y-auto">
+                <?php foreach ($inventory_items as $item): ?>
+                <div class="direct-quote-item-card border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-green-500 hover:bg-green-50 transition"
+                     data-item-id="<?php echo $item['id']; ?>"
+                     data-brand="<?php echo htmlspecialchars($item['brand']); ?>"
+                     data-model="<?php echo htmlspecialchars($item['model']); ?>"
+                     data-category="<?php echo htmlspecialchars($item['category_name']); ?>"
+                     data-generates-serials="<?php echo $item['generate_serials'] ? 'true' : 'false'; ?>"
+                     data-serial-prefix="<?php echo htmlspecialchars($item['serial_prefix']); ?>"
+                     data-selling-price="<?php echo $item['selling_price']; ?>"
+                     data-base-price="<?php echo $item['base_price']; ?>"
+                     data-image="<?php echo htmlspecialchars($item['image_path'] ?? ''); ?>"
+                     onclick="selectDirectQuoteItem(this)">
+                    <div class="flex gap-3 mb-3">
+                        <!-- Item Image -->
+                        <div class="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
+                            <?php if (!empty($item['image_path']) && file_exists($item['image_path'])): ?>
+                                <img src="<?php echo htmlspecialchars($item['image_path']); ?>" 
+                                     alt="<?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?>"
+                                     class="w-full h-full object-cover">
+                            <?php else: ?>
+                                <div class="w-full h-full flex items-center justify-center text-gray-400">
+                                    <i class="fas fa-image text-2xl"></i>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <!-- Item Details -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex justify-between items-start mb-1">
+                                <h4 class="font-medium text-gray-900 truncate"><?php echo htmlspecialchars($item['brand']); ?></h4>
+                                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded flex-shrink-0 ml-2"><?php echo htmlspecialchars($item['category_name']); ?></span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-1 truncate"><?php echo htmlspecialchars($item['model']); ?></p>
+                            <?php if (!empty($item['size_specification'])): ?>
+                            <p class="text-xs text-gray-500 truncate"><?php echo htmlspecialchars($item['size_specification']); ?></p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    
+                    <!-- Price Information -->
+                    <div class="mb-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-gray-500">Selling Price:</span>
+                            <span class="text-sm font-semibold text-green-600">₱<?php echo number_format($item['selling_price'], 2); ?></span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-gray-500">Base Price:</span>
+                            <span class="text-sm text-gray-600">₱<?php echo number_format($item['base_price'], 2); ?></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Serial Generation Badge -->
+                    <?php if ($item['generate_serials']): ?>
+                    <div class="mt-2">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <i class="fas fa-barcode mr-1"></i>Generates Serials
+                        </span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            
+            <!-- No Items Message -->
+            <div id="direct-quote-no-items" class="hidden text-center py-8">
+                <div class="text-gray-500">
+                    <i class="fas fa-search text-4xl mb-4"></i>
+                    <p>No items found matching your search.</p>
+                </div>
+            </div>
+            
+            <!-- Selected Item Form -->
+            <form id="add-direct-quote-form" method="POST" action="?action=add_direct_quote_item&quote_id=<?php echo $quote['id']; ?>" class="hidden">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                    <h4 class="font-medium text-gray-900 mb-2">Selected Item:</h4>
+                    <div id="selected-direct-quote-item-display" class="text-sm text-gray-700"></div>
+                </div>
+                
+                <input type="hidden" id="selected_direct_quote_inventory_item_id" name="inventory_item_id">
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label for="direct_quote_quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                        <input type="number" min="1" id="direct_quote_quantity" name="custom_quantity" required value="1"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                               oninput="updateDirectQuoteTotalPreview()">
+                    </div>
+                    <div>
+                        <label for="direct_quote_price" class="block text-sm font-medium text-gray-700 mb-2">Unit Price</label>
+                        <input type="number" min="0" step="0.01" id="direct_quote_price" name="custom_price" required
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                               oninput="updateDirectQuoteTotalPreview()">
+                        <div class="mt-1 text-xs text-gray-500">
+                            <span id="direct_quote_selling_price_info"></span>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="direct_quote_discount_percentage" class="block text-sm font-medium text-gray-700 mb-2">Discount %</label>
+                        <input type="number" min="0" max="100" step="0.01" id="direct_quote_discount_percentage" name="discount_percentage" value="0"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                               oninput="updateDirectQuoteTotalPreview()">
+                    </div>
+                </div>
+                
+                <!-- Total Preview -->
+                <div id="direct-quote-total-preview" class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 hidden">
+                    <h4 class="font-medium text-gray-900 mb-2">Total Preview:</h4>
+                    <div id="direct-quote-total-breakdown" class="text-sm text-gray-700"></div>
+                </div>
+                
+                <!-- Serial Generation Notice -->
+                <div id="direct-quote-serial-notice" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 hidden">
+                    <div class="flex items-center">
+                        <i class="fas fa-info-circle text-blue-500 mr-2"></i>
+                        <span class="text-sm text-blue-700">Serial numbers will be automatically generated for this item.</span>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="clearDirectQuoteSelection()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+                        <i class="fas fa-plus mr-2"></i>Add Direct Quote Item
+                    </button>
+                </div>
+            </form>
+            
+            <div class="flex justify-end mt-4">
+                <button type="button" onclick="document.getElementById('add-direct-quote-modal').classList.add('hidden')"
                         class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
                     Close
                 </button>
@@ -2277,6 +2611,154 @@ function formatCurrency(amount) {
     return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// Direct Quote Functions
+let selectedDirectQuoteItemData = null;
+
+function filterDirectQuoteItems() {
+    const searchTerm = document.getElementById('direct-quote-item-search').value.toLowerCase();
+    const categoryFilter = document.getElementById('direct-quote-category-filter').value;
+    const items = document.querySelectorAll('.direct-quote-item-card');
+    let visibleCount = 0;
+    
+    items.forEach(item => {
+        const brand = item.dataset.brand.toLowerCase();
+        const model = item.dataset.model.toLowerCase();
+        const category = item.dataset.category.toLowerCase();
+        
+        const matchesSearch = brand.includes(searchTerm) || model.includes(searchTerm) || category.includes(searchTerm);
+        const matchesCategory = !categoryFilter || category === categoryFilter.toLowerCase();
+        
+        if (matchesSearch && matchesCategory) {
+            item.style.display = 'block';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+    
+    const noItemsMessage = document.getElementById('direct-quote-no-items');
+    if (visibleCount === 0) {
+        noItemsMessage.classList.remove('hidden');
+    } else {
+        noItemsMessage.classList.add('hidden');
+    }
+}
+
+function selectDirectQuoteItem(cardElement) {
+    // Remove previous selection
+    document.querySelectorAll('.direct-quote-item-card').forEach(card => {
+        card.classList.remove('bg-green-100', 'border-green-500');
+    });
+    
+    // Add selection styling
+    cardElement.classList.add('bg-green-100', 'border-green-500');
+    
+    // Store selected item data
+    selectedDirectQuoteItemData = {
+        id: cardElement.dataset.itemId,
+        brand: cardElement.dataset.brand,
+        model: cardElement.dataset.model,
+        category: cardElement.dataset.category,
+        generatesSerials: cardElement.dataset.generatesSerials === 'true',
+        serialPrefix: cardElement.dataset.serialPrefix,
+        sellingPrice: parseFloat(cardElement.dataset.sellingPrice),
+        basePrice: parseFloat(cardElement.dataset.basePrice),
+        image: cardElement.dataset.image
+    };
+    
+    // Update display with image
+    const imageHtml = selectedDirectQuoteItemData.image ? 
+        `<img src="${selectedDirectQuoteItemData.image}" alt="${selectedDirectQuoteItemData.brand} ${selectedDirectQuoteItemData.model}" class="w-12 h-12 object-cover rounded mr-3">` : 
+        `<div class="w-12 h-12 bg-gray-100 rounded flex items-center justify-center mr-3"><i class="fas fa-image text-gray-400"></i></div>`;
+    
+    document.getElementById('selected-direct-quote-item-display').innerHTML = `
+        <div class="flex items-center">
+            ${imageHtml}
+            <div>
+                <strong>${selectedDirectQuoteItemData.brand} ${selectedDirectQuoteItemData.model}</strong><br>
+                <span class="text-sm text-gray-600">Category: ${selectedDirectQuoteItemData.category}</span><br>
+                <span class="text-sm text-green-600">Selling Price: ₱${selectedDirectQuoteItemData.sellingPrice.toLocaleString('en-PH', {minimumFractionDigits: 2})}</span><br>
+                <span class="text-xs text-gray-500">${selectedDirectQuoteItemData.generatesSerials ? 'Generates Serial Numbers' : 'No Serial Numbers'}</span>
+            </div>
+        </div>
+    `;
+    
+    // Set hidden input
+    document.getElementById('selected_direct_quote_inventory_item_id').value = selectedDirectQuoteItemData.id;
+    
+    // Pre-fill price with selling price
+    document.getElementById('direct_quote_price').value = selectedDirectQuoteItemData.sellingPrice;
+    
+    // Update price info
+    document.getElementById('direct_quote_selling_price_info').innerHTML = 
+        `Current selling price: ₱${selectedDirectQuoteItemData.sellingPrice.toLocaleString('en-PH', {minimumFractionDigits: 2})}`;
+    
+    // Show form
+    document.getElementById('add-direct-quote-form').classList.remove('hidden');
+    
+    // Show serial notice if applicable
+    const serialNotice = document.getElementById('direct-quote-serial-notice');
+    if (selectedDirectQuoteItemData.generatesSerials) {
+        serialNotice.classList.remove('hidden');
+    } else {
+        serialNotice.classList.add('hidden');
+    }
+    
+    // Update total preview
+    updateDirectQuoteTotalPreview();
+}
+
+function clearDirectQuoteSelection() {
+    // Remove selection styling
+    document.querySelectorAll('.direct-quote-item-card').forEach(card => {
+        card.classList.remove('bg-green-100', 'border-green-500');
+    });
+    
+    // Reset form fields
+    document.getElementById('direct_quote_price').value = '';
+    document.getElementById('direct_quote_quantity').value = '1';
+    document.getElementById('direct_quote_discount_percentage').value = '0';
+    document.getElementById('direct_quote_selling_price_info').innerHTML = '';
+    
+    // Hide form
+    document.getElementById('add-direct-quote-form').classList.add('hidden');
+    selectedDirectQuoteItemData = null;
+}
+
+function updateDirectQuoteTotalPreview() {
+    if (!selectedDirectQuoteItemData) return;
+    
+    const quantity = parseInt(document.getElementById('direct_quote_quantity').value) || 0;
+    const price = parseFloat(document.getElementById('direct_quote_price').value) || 0;
+    const discountPercent = parseFloat(document.getElementById('direct_quote_discount_percentage').value) || 0;
+    
+    const subtotal = price * quantity;
+    const discountAmount = subtotal * (discountPercent / 100);
+    const total = subtotal - discountAmount;
+    
+    // Round all calculations to 2 decimal places
+    const roundedSubtotal = Math.round(subtotal * 100) / 100;
+    const roundedDiscountAmount = Math.round(discountAmount * 100) / 100;
+    const roundedTotal = Math.round(total * 100) / 100;
+    
+    document.getElementById('direct-quote-total-breakdown').innerHTML = `
+        <div class="flex justify-between">
+            <span>Subtotal (${quantity} × ${formatCurrency(price)}):</span>
+            <span>${formatCurrency(roundedSubtotal)}</span>
+        </div>
+        <div class="flex justify-between">
+            <span>Discount (${discountPercent}%):</span>
+            <span>-${formatCurrency(roundedDiscountAmount)}</span>
+        </div>
+        <div class="flex justify-between font-semibold border-t pt-2 mt-2">
+            <span>Total:</span>
+            <span>${formatCurrency(roundedTotal)}</span>
+        </div>
+    `;
+    
+    document.getElementById('direct-quote-total-preview').classList.remove('hidden');
+}
+
 // Profit Modal Functions
 function showProfitModal() {
     const modal = document.getElementById('profit-modal');
@@ -2608,13 +3090,16 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                     body * {
                         visibility: hidden;
                     }
-                    .print\:shadow-none, .print\:shadow-none * {
+                    .print-content, .print-content * {
                         visibility: visible;
                     }
-                    .print\:shadow-none {
+                    .print-content {
                         position: absolute;
                         left: 0;
                         top: 0;
+                        width: 100%;
+                        margin: 0;
+                        padding: 0;
                     }
                     
                     /* Remove browser print headers and footers */
@@ -2628,22 +3113,16 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
-                    
-                    /* Ensure clean print layout */
-                    .print\:shadow-none {
-                        width: 100%;
-                        margin: 0;
-                        padding: 0;
-                    }
                 }
             </style>
         </head>
         <body>
-            <div class="header">
-                <h1>Profit Breakdown Report</h1>
-                <p><strong>Quote Number:</strong> ${quoteNumber}</p>
-                <p><strong>Generated:</strong> ${currentDate}</p>
-            </div>
+            <div class="print-content">
+                <div class="header">
+                    <h1>Profit Breakdown Report</h1>
+                    <p><strong>Quote Number:</strong> ${quoteNumber}</p>
+                    <p><strong>Generated:</strong> ${currentDate}</p>
+                </div>
             
             <div class="summary-cards">
                 <div class="summary-card">
@@ -2705,8 +3184,9 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                 </tfoot>
             </table>
             
-            <div class="note">
-                <strong>Note:</strong> <span class="note-text">Gross Profit = Selling Price - Base Price. Net Profit accounts for discounts applied to individual items.</span>
+                <div class="note">
+                    <strong>Note:</strong> <span class="note-text">Gross Profit = Selling Price - Base Price. Net Profit accounts for discounts applied to individual items.</span>
+                </div>
             </div>
         </body>
         </html>
@@ -2788,14 +3268,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                         <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
                             Check
                         </th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Quantity
-                        </th>
-                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
-                            Unit Amount
-                        </th>
-                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Total Amount
                         </th>
                     </tr>
                 </thead>
@@ -2835,21 +3309,15 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="item_checked[]" value="<?php echo isset($item['quote_item_id']) ? $item['quote_item_id'] : $item['id']; ?>" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 <?php echo number_format($item['quantity'], 0); ?>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                <?php echo formatCurrency($item['unit_price']); ?>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                <?php echo formatCurrency($item['total_amount']); ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>
                         
                         <!-- Static Extra Items for Fulfillment Checklist -->
                         <tr class="bg-yellow-50 border-t-2 border-yellow-300">
-                            <td colspan="6" class="px-4 py-2 text-center text-sm font-semibold text-yellow-800">
+                            <td colspan="4" class="px-4 py-2 text-center text-sm font-semibold text-yellow-800">
                                 <strong>EXTRA ITEMS FOR FULFILLMENT</strong>
                             </td>
                         </tr>
@@ -2864,14 +3332,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="grinder_disc_2" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -2885,14 +3347,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="rivets" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -2906,14 +3362,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="reviter" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -2927,14 +3377,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="anchor_bolt_3_8_10pcs" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -2948,14 +3392,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="barena_bala" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -2969,14 +3407,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="screw_2inches_20" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -2990,14 +3422,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="stuckers" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -3011,14 +3437,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="solar_out" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -3032,14 +3452,8 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="deye_ac_in" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         <tr class="bg-yellow-50">
@@ -3053,29 +3467,14 @@ function generatePrintContent(profitData, quoteNumber, currentDate) {
                                 <input type="checkbox" name="static_item_checked[]" value="battery_inverter" class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2 print:hidden">
                                 <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400"></span>
                             </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                                 
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                -
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                -
                             </td>
                         </tr>
                         
-                        <!-- Total Row -->
-                        <tr class="bg-gray-50 font-semibold border-t-2 border-gray-400">
-                            <td colspan="5" class="px-4 py-4 text-right text-sm text-gray-900 border-r border-gray-300">
-                                <strong>Grand Total:</strong>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-lg font-bold text-green-600">
-                                <?php echo formatCurrency($quote['total_amount']); ?>
-                            </td>
-                        </tr>
                     <?php else: ?>
                         <tr>
-                            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                            <td colspan="4" class="px-4 py-8 text-center text-gray-500">
                                 No items found in this quotation.
                             </td>
                         </tr>
@@ -3159,6 +3558,295 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
     // Could implement auto-save functionality here
     console.log('Form changed - could auto-save progress');
 });
+</script>
+
+<style>
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .print\:shadow-none, .print\:shadow-none * {
+        visibility: visible;
+    }
+    .print\:shadow-none {
+        position: absolute;
+        left: 0;
+        top: 0;
+    }
+    
+    /* Remove browser print headers and footers */
+    @page {
+        margin: 0.5in;
+        size: A4;
+    }
+    
+    /* Hide URL and other browser print info */
+    body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    /* Ensure clean print layout */
+    .print\:shadow-none {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+    }
+}
+</style>
+
+<?php elseif ($action == 'purchase_order' && isset($quote)): ?>
+<!-- Purchase Order Screen -->
+<div class="mb-6 purchase-order-page-header">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Purchase Order</h1>
+            <p class="text-gray-600 dark:text-gray-400">
+                Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
+                <?php if (!empty($quote['project_number'])): ?>
+                <br>Project Number: <span class="font-semibold"><?php echo htmlspecialchars($quote['project_number']); ?></span>
+                <?php endif; ?>
+            </p>
+        </div>
+        <div class="space-x-2">
+            <button onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                <i class="fas fa-print mr-2"></i>Print Purchase Order
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Purchase Order Form -->
+<div id="purchase-order-form-container" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 print:shadow-none print:p-0">
+    <?php if (isset($message)): ?>
+    <div class="mb-6 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+        <i class="fas fa-check-circle mr-2"></i><?php echo htmlspecialchars($message); ?>
+    </div>
+    <?php endif; ?>
+    
+    <?php if (isset($error)): ?>
+    <div class="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <i class="fas fa-exclamation-circle mr-2"></i><?php echo htmlspecialchars($error); ?>
+    </div>
+    <?php endif; ?>
+    
+    <form id="purchase-order-form" method="POST" action="">
+        <input type="hidden" name="action" value="create_purchase_order">
+        <input type="hidden" name="quote_id" value="<?php echo $quote['id']; ?>">
+        
+        <!-- Header Section -->
+        <div class="text-center mb-8 border-b-2 border-gray-300 pb-4">
+            <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">Purchase Order</h2>
+            <p class="text-gray-600 dark:text-gray-400">
+                Date: <?php echo date('Y-m-d'); ?><br>
+                Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
+                <?php if (!empty($quote['project_number'])): ?>
+                <br>Project Number: <strong><?php echo htmlspecialchars($quote['project_number']); ?></strong>
+                <?php endif; ?>
+            </p>
+        </div>
+
+        <!-- Customer Information -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Quotation Code:</label>
+                    <p class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($quote['quote_number']); ?></p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer Name:</label>
+                    <p class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($quote['customer_name']); ?></p>
+                </div>
+            </div>
+            <div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Location:</label>
+                    <p class="text-gray-900"><?php echo $customer_info && $customer_info['address'] ? htmlspecialchars($customer_info['address']) : 'Not specified'; ?></p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Contact Number:</label>
+                    <p class="text-gray-900"><?php echo $quote['customer_phone'] ? htmlspecialchars($quote['customer_phone']) : ($customer_info && $customer_info['phone_number'] ? htmlspecialchars($customer_info['phone_number']) : 'Not specified'); ?></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items to Purchase Table -->
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 border border-gray-300">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            No.
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Description
+                        </th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Order
+                        </th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Quantity
+                        </th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
+                            Unit Amount
+                        </th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Total Amount
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <?php if (!empty($quote['items'])): ?>
+                        <?php $item_no = 1; ?>
+                        <?php foreach ($quote['items'] as $item): ?>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo $item_no++; ?>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
+                                <div class="font-medium"><?php echo htmlspecialchars($item['brand'] ?? 'Custom Item'); ?></div>
+                                <div class="text-gray-500"><?php echo htmlspecialchars($item['model'] ?? $item['custom_item_name'] ?? ''); ?></div>
+                                <?php if (!empty($item['category'])): ?>
+                                <div class="text-xs text-blue-600 mt-1"><?php echo htmlspecialchars($item['category']); ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($item['serial_numbers'])): ?>
+                                <div class="text-xs text-green-600 mt-1">
+                                    <button type="button" onclick="toggleSerials('po-serials-<?php echo $item['id']; ?>')" 
+                                            class="text-green-600 hover:text-green-800 font-medium underline">
+                                        <i class="fas fa-chevron-down" id="po-serials-icon-<?php echo $item['id']; ?>"></i>
+                                        Serials (<?php echo substr_count($item['serial_numbers'], ',') + 1; ?>)
+                                    </button>
+                                    <div id="po-serials-<?php echo $item['id']; ?>" class="hidden mt-1 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded border">
+                                        <?php 
+                                        $serials = explode(',', $item['serial_numbers']);
+                                        foreach ($serials as $serial): 
+                                        ?>
+                                        <div class="mb-1"><?php echo htmlspecialchars(trim($serial)); ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
+                                <input type="checkbox" name="item_to_order[]" value="<?php echo isset($item['quote_item_id']) ? $item['quote_item_id'] : $item['id']; ?>" 
+                                       class="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500 focus:ring-2 print:hidden" checked>
+                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400 bg-orange-100"></span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo number_format($item['quantity'], 0); ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
+                                <?php echo formatCurrency($item['unit_price']); ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                <?php echo formatCurrency($item['total_amount']); ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                        
+                        <!-- Total Row -->
+                        <tr class="bg-gray-50 font-semibold border-t-2 border-gray-400">
+                            <td colspan="5" class="px-4 py-4 text-right text-sm text-gray-900 border-r border-gray-300">
+                                <strong>Grand Total:</strong>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-right text-lg font-bold text-orange-600">
+                                <?php echo formatCurrency($quote['total_amount']); ?>
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                                No items found in this quotation.
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Supplier Information -->
+        <div class="mt-8 pt-6 border-t-2 border-gray-300">
+            <h4 class="text-lg font-medium text-gray-700 mb-4">Supplier Information</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Supplier Name:</label>
+                    <input type="text" name="supplier_name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter supplier name">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Contact Person:</label>
+                    <input type="text" name="contact_person" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter contact person">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number:</label>
+                    <input type="text" name="supplier_phone" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter phone number">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Email:</label>
+                    <input type="email" name="supplier_email" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter email address">
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Supplier Address:</label>
+                <textarea name="supplier_address" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter supplier address"></textarea>
+            </div>
+        </div>
+
+        <!-- Notes Section -->
+        <div class="mt-8 pt-6 border-t-2 border-gray-300">
+            <h4 class="text-lg font-medium text-gray-700 mb-4">Purchase Order Notes</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Special Instructions:</label>
+                    <textarea name="special_instructions" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter any special instructions for the supplier"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Delivery Requirements:</label>
+                    <textarea name="delivery_requirements" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter delivery requirements and timeline"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-8 pt-6 border-t flex justify-between">
+            <button type="button" onclick="selectAllItems()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                <i class="fas fa-check-double mr-2"></i>Select All Items
+            </button>
+            <div class="space-x-2">
+                <button type="button" onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                    <i class="fas fa-print mr-2"></i>Print Purchase Order
+                </button>
+                <button type="submit" class="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition">
+                    <i class="fas fa-save mr-2"></i>Create Purchase Order
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function selectAllItems() {
+    const checkboxes = document.querySelectorAll('input[name="item_to_order[]"]');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+    });
+}
+
+function toggleSerials(elementId) {
+    const element = document.getElementById(elementId);
+    const icon = document.getElementById(elementId.replace('po-serials-', 'po-serials-icon-'));
+    
+    if (element.classList.contains('hidden')) {
+        element.classList.remove('hidden');
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+    } else {
+        element.classList.add('hidden');
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
+    }
+}
 </script>
 
 <style>
@@ -4514,6 +5202,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
                     Cancel
                 </button>
+                <button type="button" onclick="ignoreStockAndApprove()"
+                        class="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition">
+                    <i class="fas fa-times-circle mr-2"></i>Ignore
+                </button>
                 <button type="button" onclick="proceedWithApproval()"
                         class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition">
                     <i class="fas fa-exclamation-triangle mr-2"></i>Proceed Anyway
@@ -4540,6 +5232,24 @@ function viewCustomerDetails(quoteId) {
 function closeCustomerDetailsModal() {
     const modal = document.getElementById('customer-details-modal');
     modal.classList.add('hidden');
+}
+
+function duplicateQuote(quoteId) {
+    if (confirm('Are you sure you want to duplicate this quotation? This will create a new quotation with the same items, but serialized items will be excluded and need to be added manually.')) {
+        // Create a form to submit the duplication request
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '?action=duplicate_quote';
+        
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'original_quote_id';
+        input.value = quoteId;
+        
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    }
 }
 
 function loadCustomerDetails(quoteId) {
@@ -5081,6 +5791,34 @@ function goToInventory() {
     
     // Redirect to inventory page
     window.location.href = 'inventory.php';
+}
+
+function ignoreStockAndApprove() {
+    const quoteId = document.getElementById('stock_notification_quote_id').value;
+    
+    // Close stock notification modal
+    closeStockNotificationModal();
+    
+    // Proceed with approval process ignoring stock levels
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `?action=update_quote_status&quote_id=${quoteId}`;
+    
+    const statusInput = document.createElement('input');
+    statusInput.type = 'hidden';
+    statusInput.name = 'new_status';
+    statusInput.value = 'accepted';
+    
+    // Add a flag to indicate we're ignoring stock levels
+    const ignoreStockInput = document.createElement('input');
+    ignoreStockInput.type = 'hidden';
+    ignoreStockInput.name = 'ignore_stock';
+    ignoreStockInput.value = '1';
+    
+    form.appendChild(statusInput);
+    form.appendChild(ignoreStockInput);
+    document.body.appendChild(form);
+    form.submit();
 }
 
 // Handle custom status change with stock checking for Complete status

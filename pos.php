@@ -27,6 +27,9 @@ if (isset($_GET['success'])) {
         case 'quantity_updated':
             $message = 'Quantity updated successfully!';
             break;
+        case 'price_updated':
+            $message = 'Unit price updated successfully!';
+            break;
         case 'item_removed':
             $message = 'Item removed from sale successfully!';
             break;
@@ -122,6 +125,18 @@ if ($_POST) {
             }
             break;
             
+        case 'update_price':
+            if (isset($_POST['sale_item_id']) && isset($_POST['new_unit_price'])) {
+                $result = updatePOSSaleItemPrice($_POST['sale_item_id'], $_POST['new_unit_price']);
+                if ($result['success']) {
+                    header("Location: ?action=sale&id=" . $sale_id . "&success=price_updated");
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            }
+            break;
+            
         case 'complete_sale':
             if ($sale_id && isset($_POST['payment_method']) && isset($_POST['amount_paid'])) {
                 $result = completePOSSaleWithSerials(
@@ -185,7 +200,11 @@ switch ($action) {
         $date_from = $_GET['date_from'] ?? null;
         $date_to = $_GET['date_to'] ?? null;
         $status = $_GET['status'] ?? null;
-        $sales = getPOSSales($status, $date_from, $date_to);
+        
+        // Check if user wants to include incomplete transactions
+        $include_incomplete = isset($_GET['include_incomplete']) && $_GET['include_incomplete'] === '1';
+        
+        $sales = getPOSSales($status, $date_from, $date_to, $include_incomplete);
         $stats = getPOSStats($date_from, $date_to);
         break;
         
@@ -398,7 +417,13 @@ include 'includes/header.php';
                                 </form>
                             </td>
                             <td class="px-3 py-4 text-sm text-gray-900">
-                                <?php echo formatCurrency($item['unit_price']); ?>
+                                <form method="POST" action="?action=update_price&id=<?php echo $sale['id']; ?>" class="inline">
+                                    <input type="hidden" name="sale_item_id" value="<?php echo $item['id']; ?>">
+                                    <input type="number" name="new_unit_price" value="<?php echo $item['unit_price']; ?>" 
+                                           min="0.01" step="0.01"
+                                           class="w-20 px-2 py-1 border rounded text-center text-sm"
+                                           onchange="this.form.submit()">
+                                </form>
                             </td>
                             <td class="px-3 py-4 text-sm text-gray-900">
                                 <?php echo $item['discount_percentage']; ?>%
@@ -634,11 +659,11 @@ include 'includes/header.php';
                 
                 <!-- Serial Number Selection -->
                 <div id="serial-selection-section" class="mb-4 hidden">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Serial Numbers</label>
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Serial Number Selection</h4>
                     <div id="serial-selection-status" class="text-sm text-blue-600 mb-2 font-medium">
                         <!-- Status will be updated here -->
                     </div>
-                    <div id="available-serials" class="border border-gray-300 rounded-md p-3 max-h-32 overflow-y-auto">
+                    <div id="available-serials" class="border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-32 overflow-y-auto">
                         <!-- Serial numbers will be loaded here -->
                     </div>
                     <p class="text-xs text-gray-500 mt-1">Select the specific serial numbers to sell</p>
@@ -871,18 +896,31 @@ function displaySerialSelection(serials, quantity) {
     const section = document.getElementById('serial-selection-section');
     
     if (serials.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-sm">No serial numbers available</p>';
+        container.innerHTML = '<p class="text-red-500 text-sm font-medium">No stock available</p>';
         section.classList.add('hidden');
         return;
     }
     
     if (quantity > serials.length) {
         container.innerHTML = `<p class="text-red-500 text-sm">Only ${serials.length} serial numbers available, but ${quantity} requested</p>`;
-        section.classList.add('hidden');
+        section.classList.remove('hidden');
         return;
     }
     
     let html = '<div class="space-y-2">';
+    // Controls row to match quotation style
+    html += `
+        <div class="mb-3 pb-2 border-b border-gray-200">
+            <button type="button" onclick="selectAllPOSSerials(${quantity})" 
+                    class="px-3 py-1 bg-solar-blue text-white text-sm rounded hover:bg-blue-700 transition-colors">
+                Select All (${quantity})
+            </button>
+            <button type="button" onclick="clearAllPOSSerials()" 
+                    class="ml-2 px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors">
+                Clear All
+            </button>
+        </div>
+    `;
     serials.forEach(serial => {
         html += `
             <label class="flex items-center">
@@ -913,6 +951,29 @@ function validateSerialSelection() {
     }
     
     // Update submit button state based on validation
+    updateSubmitButtonState();
+}
+
+function selectAllPOSSerials(maxQuantity) {
+    const checkboxes = document.querySelectorAll('.serial-checkbox');
+    const quantity = parseInt(document.getElementById('quantity').value) || 1;
+    const targetQuantity = Math.min(quantity, maxQuantity);
+    // Clear all first
+    checkboxes.forEach(cb => { cb.checked = false; });
+    // Select up to the required quantity
+    let selectedCount = 0;
+    checkboxes.forEach(cb => {
+        if (selectedCount < targetQuantity) {
+            cb.checked = true;
+            selectedCount++;
+        }
+    });
+    updateSubmitButtonState();
+}
+
+function clearAllPOSSerials() {
+    const checkboxes = document.querySelectorAll('.serial-checkbox');
+    checkboxes.forEach(cb => { cb.checked = false; });
     updateSubmitButtonState();
 }
 
@@ -1491,10 +1552,18 @@ function printReceipt() {
             <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select id="status" name="status"
                     class="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-                <option value="">All Status</option>
+                <option value="">Completed Only (Default)</option>
                 <option value="completed" <?php echo ($_GET['status'] ?? '') === 'completed' ? 'selected' : ''; ?>>Completed</option>
                 <option value="pending" <?php echo ($_GET['status'] ?? '') === 'pending' ? 'selected' : ''; ?>>Pending</option>
             </select>
+        </div>
+        <div>
+            <label class="flex items-center text-sm font-medium text-gray-700">
+                <input type="checkbox" name="include_incomplete" value="1" 
+                       <?php echo (isset($_GET['include_incomplete']) && $_GET['include_incomplete'] === '1') ? 'checked' : ''; ?>
+                       class="mr-2 rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                Show All Transactions (including incomplete)
+            </label>
         </div>
         <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
             <i class="fas fa-search mr-2"></i>Filter
