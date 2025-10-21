@@ -206,7 +206,7 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
     
     <?php if ($use_bootstrap): ?>
         <!-- Bootstrap Navigation -->
-        <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: var(--header-bg-color, #1e40af); color: var(--header-text-color, #ffffff);">
+        <nav class="navbar navbar-expand-lg navbar-dark no-print" style="background-color: var(--header-bg-color, #1e40af); color: var(--header-text-color, #ffffff);">
             <div class="container-fluid">
                 <button class="sidebar-toggle me-3" onclick="toggleSidebar()">
                     <i class="fas fa-bars"></i>
@@ -238,7 +238,7 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
         <div class="container-fluid">
             <div class="row">
                 <!-- Bootstrap Sidebar -->
-                <nav class="col-md-3 col-lg-2 d-md-block sidebar" id="sidebar">
+                <nav class="col-md-3 col-lg-2 d-md-block sidebar no-print" id="sidebar">
                     <div class="position-sticky pt-3">
                         <ul class="nav flex-column">
                             <li class="nav-item">
@@ -319,7 +319,7 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
                 <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content" id="main-content">
     <?php else: ?>
         <!-- Tailwind Navigation -->
-        <nav class="bg-solar-blue dark:bg-gray-800 shadow-lg" style="background-color: var(--header-bg-color, #1e40af); color: var(--header-text-color, #ffffff);">
+        <nav class="bg-solar-blue dark:bg-gray-800 shadow-lg no-print" style="background-color: var(--header-bg-color, #1e40af); color: var(--header-text-color, #ffffff);">
             <div class="px-4">
                 <div class="flex justify-between items-center py-4">
                     <div class="flex items-center space-x-3">
@@ -364,7 +364,7 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
             <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
             
             <!-- Sidebar -->
-            <div class="w-64 bg-white dark:bg-gray-800 shadow-lg min-h-screen transition-all duration-300 ease-in-out" id="sidebar">
+            <div class="w-64 bg-white dark:bg-gray-800 shadow-lg min-h-screen transition-all duration-300 ease-in-out no-print" id="sidebar">
                 <div class="p-4">
                     <ul class="space-y-2">
                         <li>

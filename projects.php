@@ -321,7 +321,7 @@ include 'includes/header.php';
                                class="text-red-600 hover:text-red-900 p-1.5 rounded hover:bg-red-50 transition" 
                                title="Delete" 
                                onclick="confirmDeleteProject(<?php echo $project['id']; ?>, '<?php echo htmlspecialchars($project['project_name'], ENT_QUOTES); ?>')">
-                                <i class="fas fa-trash-alt text-sm"></i>
+                                <i class="fas fa-trash text-xs"></i>
                             </button>
                         </div>
                     </td>

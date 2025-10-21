@@ -1012,7 +1012,14 @@ include 'includes/header.php';
                 <label for="stock_quantity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stock Quantity</label>
                 <input type="number" min="0" id="stock_quantity" name="stock_quantity" required
                        value="<?php echo isset($item) ? $item['stock_quantity'] : '0'; ?>"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                       <?php echo ($action == 'edit' && isset($item)) ? 'readonly' : ''; ?>
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent <?php echo ($action == 'edit' && isset($item)) ? 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed' : ''; ?>">
+                <?php if ($action == 'edit' && isset($item)): ?>
+                <p class="text-sm text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Stock quantity cannot be edited directly. Use stock adjustment features to modify inventory levels.
+                </p>
+                <?php endif; ?>
             </div>
             
             <div>

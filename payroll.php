@@ -619,13 +619,8 @@ include 'includes/header.php';
                     </div>
                     <div class="col-md-6">
                         <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
+                            <div class="card-header">
                                 <h6 class="mb-0">Quick Actions</h6>
-                                <div class="no-print">
-                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="window.print()">
-                                        <i class="fas fa-print"></i> Print This Page
-                                    </button>
-                                </div>
                             </div>
                             <div class="card-body">
                                 <a href="?view=payroll&export=excel" class="btn btn-outline-success btn-sm mb-2 w-100">
@@ -644,13 +639,8 @@ include 'includes/header.php';
 
                 <!-- Employee Payout Summary -->
                 <div class="card mt-4">
-                    <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="card-header">
                         <h6 class="mb-0"><i class="fas fa-users me-2"></i>Employee Payout Summary</h6>
-                        <div class="no-print">
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="window.print()">
-                                <i class="fas fa-print"></i> Print Summary
-                            </button>
-                        </div>
                     </div>
                     <div class="card-body">
                         <?php if (empty($employee_totals)): ?>

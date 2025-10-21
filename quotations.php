@@ -988,7 +988,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 Under Review
             </button>
             <button onclick="setQuickFilter('accepted')" class="quick-filter-btn px-3 py-1 text-sm bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-800 transition">
-                Complete
+                Approved
             </button>
             <button onclick="setQuickFilter('rejected')" class="quick-filter-btn px-3 py-1 text-sm bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-md hover:bg-red-200 dark:hover:bg-red-800 transition">
                 Rejected
@@ -6121,8 +6121,12 @@ function displayEditForm(item) {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
-                    <input type="number" name="stock_quantity" value="${item.stock_quantity}" min="0" required
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <input type="number" name="stock_quantity" value="${item.stock_quantity}" min="0" required readonly
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-100 cursor-not-allowed">
+                    <p class="text-sm text-gray-500 mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Stock quantity cannot be edited directly. Use inventory management to modify stock levels.
+                    </p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>

@@ -186,7 +186,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Date Filter and Report Type Selector -->
-<div class="bg-white rounded-lg shadow p-6 mb-8">
+<div class="bg-white rounded-lg shadow p-6 mb-8 no-print">
     <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center space-x-4">
             <h2 class="text-lg font-semibold text-gray-800">📅 Report Filters</h2>
@@ -664,7 +664,7 @@ include 'includes/header.php';
             </div>
         </a>
         
-        <button onclick="window.print()" class="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-solar-blue hover:bg-blue-50 transition">
+        <button onclick="window.print()" class="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-solar-blue hover:bg-blue-50 transition no-print">
             <div class="text-center">
                 <i class="fas fa-print text-2xl text-gray-400 mb-2"></i>
                 <p class="text-sm font-medium text-gray-900">Print Report</p>
@@ -676,9 +676,70 @@ include 'includes/header.php';
 
 <!-- Print Styles -->
 <style media="print">
+    /* Hide UI elements */
     .no-print { display: none !important; }
-    .bg-gradient-to-r { background: #f8f9fa !important; color: #000 !important; }
-    .text-white { color: #000 !important; }
-</style>
-
+    
+    /* Hide navigation, header, footer, and sidebar */
+    nav, .navbar, .sidebar, header, footer,
+    .includes-header, .includes-footer { display: none !important; }
+    
+    /* Hide form elements and buttons */
+    form, .btn, button, input, select, textarea,
+    .btn-toolbar, .form-group, .form-control { display: none !important; }
+    
+    /* Hide export/actions section */
+    .bg-white.rounded-lg.shadow.p-6:last-child { display: none !important; }
+    
+    /* Hide any elements with these classes */
+    .border-dashed, .hover\:border-solar-blue,
+    .transition, .cursor-pointer { display: none !important; }
+    
+    /* Reset backgrounds and colors for print */
+    body { background: white !important; color: black !important; }
+    .bg-gradient-to-r { background: white !important; color: black !important; }
+    .text-white { color: black !important; }
+    .bg-gray-50, .bg-gray-100 { background: #f8f9fa !important; }
+    
+    /* Ensure data tables and content are visible */
+    .bg-white.rounded-lg.shadow.p-6 { 
+        background: white !important; 
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+        margin-bottom: 20px !important;
+    }
+    
+    /* Style headings for print */
+    h1, h2, h3, h4, h5, h6 { 
+        color: black !important; 
+        page-break-after: avoid !important;
+    }
+    
+    /* Ensure tables print well */
+    table { 
+        page-break-inside: avoid !important;
+        border-collapse: collapse !important;
+    }
+    
+    /* Remove unnecessary spacing */
+    .container, .max-w-7xl { 
+        max-width: none !important; 
+        padding: 0 !important; 
+        margin: 0 !important; 
+    }
+    
+    /* Hide specific UI sections by targeting their content */
+    .bg-white.rounded-lg.shadow.p-6:has(.fas.fa-print),
+    .bg-white.rounded-lg.shadow.p-6:has(.fas.fa-boxes),
+    .bg-white.rounded-lg.shadow.p-6:has(.fas.fa-project-diagram),
+    .bg-white.rounded-lg.shadow.p-6:has(.fas.fa-cash-register) { 
+        display: none !important; 
+    }
+    
+    /* Page breaks */
+    .page-break { page-break-before: always !important; }
+    
+    @page {
+        margin: 0.5in;
+        size: A4;
+    }
 <?php include 'includes/footer.php'; ?>
