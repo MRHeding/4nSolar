@@ -12,6 +12,9 @@ $page_title = 'Solar System Calculator';
 $calculation_result = null;
 $error_message = null;
 
+// Initialize sample appliances
+$sample_appliances = [];
+
 // Handle form submission
 if ($_POST && isset($_POST['calculate'])) {
     $appliances = [];
@@ -19,10 +22,10 @@ if ($_POST && isset($_POST['calculate'])) {
     // Process appliance data from form
     if (isset($_POST['appliances']) && is_array($_POST['appliances'])) {
         foreach ($_POST['appliances'] as $appliance_data) {
-            if (!empty($appliance_data['name']) && !empty($appliance_data['wattage']) && !empty($appliance_data['hours'])) {
+            if (!empty($appliance_data['name']) && !empty($appliance_data['quantity']) && !empty($appliance_data['wattage']) && !empty($appliance_data['hours'])) {
                 $appliances[] = [
                     'name' => trim($appliance_data['name']),
-                    'voltage' => floatval($appliance_data['voltage'] ?? 220),
+                    'quantity' => intval($appliance_data['quantity']),
                     'wattage' => floatval($appliance_data['wattage']),
                     'hours' => floatval($appliance_data['hours'])
                 ];
@@ -31,18 +34,21 @@ if ($_POST && isset($_POST['calculate'])) {
     }
     
     if (!empty($appliances)) {
-        $calculation_result = calculateSolarSystemRequirements($appliances);
+        // Get system voltage from form, default to 51.2V
+        $system_voltage = isset($_POST['system_voltage']) ? floatval($_POST['system_voltage']) : 51.2;
+        $calculation_result = calculateSolarSystemRequirements($appliances, $system_voltage);
         if (!$calculation_result['success']) {
             $error_message = $calculation_result['error'];
         }
+        // Preserve appliances for display after calculation
+        $sample_appliances = $appliances;
     } else {
         $error_message = "Please add at least one appliance to calculate system requirements.";
     }
 }
 
-// Load sample data if requested
-$sample_appliances = [];
-if (isset($_GET['load_sample'])) {
+// Load sample data if requested (only if not already populated from form submission)
+if (isset($_GET['load_sample']) && empty($sample_appliances)) {
     $sample_appliances = getSampleAppliances();
 }
 
@@ -104,10 +110,10 @@ include 'includes/header.php';
                                                        value="<?php echo htmlspecialchars($appliance['name']); ?>" required>
                                             </div>
                                             <div>
-                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Voltage (V)</label>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quantity</label>
                                                 <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" 
-                                                       name="appliances[<?php echo $index; ?>][voltage]" 
-                                                       value="<?php echo $appliance['voltage']; ?>" min="12" max="480" required>
+                                                       name="appliances[<?php echo $index; ?>][quantity]" 
+                                                       value="<?php echo $appliance['quantity'] ?? 1; ?>" min="1" required>
                                             </div>
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Wattage (W)</label>
@@ -122,8 +128,8 @@ include 'includes/header.php';
                                                        value="<?php echo $appliance['hours']; ?>" min="0" max="24" step="0.1" required>
                                             </div>
                                             <div>
-                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Daily kWh</label>
-                                                <input type="text" class="daily-kwh w-full px-3 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300" readonly>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Daily W</label>
+                                                <input type="text" class="daily-w w-full px-3 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300" readonly>
                                             </div>
                                             <div class="flex justify-center">
                                                 <button type="button" class="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors" onclick="removeAppliance(this)">
@@ -133,41 +139,42 @@ include 'includes/header.php';
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
-                            <?php else: ?>
-                                <div class="appliance-row mb-4 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-                                        <div class="md:col-span-2">
-                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Appliance Name</label>
-                                            <input type="text" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" 
-                                                   name="appliances[0][name]" placeholder="e.g., LED Lights" required>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Voltage (V)</label>
-                                            <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" 
-                                                   name="appliances[0][voltage]" value="220" min="12" max="480" required>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Wattage (W)</label>
-                                            <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" 
-                                                   name="appliances[0][wattage]" placeholder="100" min="1" step="0.1" required>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Hours/Day</label>
-                                            <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" 
-                                                   name="appliances[0][hours]" placeholder="6" min="0" max="24" step="0.1" required>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Daily kWh</label>
-                                            <input type="text" class="daily-kwh w-full px-3 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300" readonly>
-                                        </div>
-                                        <div class="flex justify-center">
-                                            <button type="button" class="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors" onclick="removeAppliance(this)">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </div>
+                            <?php endif; ?>
+                            
+                            <!-- Empty state message when no appliances -->
+                            <?php if (empty($sample_appliances)): ?>
+                            <div id="emptyState" class="text-center py-12 bg-gray-50 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                                <i class="fas fa-plug text-4xl text-gray-400 mb-4"></i>
+                                <h3 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">No Appliances Added</h3>
+                                <p class="text-gray-500 dark:text-gray-400 mb-4">Click "Add Appliance" to start building your solar system calculation</p>
+                                <button type="button" class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors" onclick="addAppliance()">
+                                    <i class="fas fa-plus mr-2"></i>Add Your First Appliance
+                                </button>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <!-- System Configuration -->
+                        <div class="mt-6">
+                            <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+                                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center">
+                                    <i class="fas fa-cog mr-2 text-blue-600"></i>
+                                    System Configuration
+                                </h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Battery Nominal Voltage</label>
+                                        <select name="system_voltage" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white">
+                                            <option value="51.2" <?php echo (!isset($_POST['system_voltage']) || $_POST['system_voltage'] == '51.2') ? 'selected' : ''; ?>>51.2V (LiFePO4)</option>
+                                            <option value="25.6" <?php echo (isset($_POST['system_voltage']) && $_POST['system_voltage'] == '25.6') ? 'selected' : ''; ?>>25.6V (LiFePO4)</option>
+                                            <option value="12.8" <?php echo (isset($_POST['system_voltage']) && $_POST['system_voltage'] == '12.8') ? 'selected' : ''; ?>>12.8V (LiFePO4)</option>
+                                            <option value="24" <?php echo (isset($_POST['system_voltage']) && $_POST['system_voltage'] == '24') ? 'selected' : ''; ?>>24V</option>
+                                            <option value="12" <?php echo (isset($_POST['system_voltage']) && $_POST['system_voltage'] == '12') ? 'selected' : ''; ?>>12V</option>
+                                        </select>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">LiFePO4 voltages (51.2V, 25.6V, 12.8V) have optimized capacity calculations</p>
                                     </div>
                                 </div>
-                            <?php endif; ?>
+                            </div>
                         </div>
                         
                         <!-- Dynamic Calculate Button (appears after adding appliances) -->
@@ -192,8 +199,8 @@ include 'includes/header.php';
                                         <div class="text-blue-100 text-sm">Peak Load</div>
                                     </div>
                                     <div class="text-center">
-                                        <div class="text-2xl font-bold mb-1" id="totalDailyKwh">0 kWh</div>
-                                        <div class="text-blue-100 text-sm">Daily Energy</div>
+                                        <div class="text-2xl font-bold mb-1" id="totalDailyW">0 W</div>
+                                    <div class="text-blue-100 text-sm">Daily Energy</div>
                                     </div>
                                 </div>
                             </div>
@@ -325,11 +332,7 @@ include 'includes/header.php';
                                 <div class="space-y-3">
                                     <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-600">
                                         <span class="text-gray-600 dark:text-gray-400">Daily Energy Need:</span>
-                                        <span class="font-semibold text-gray-800 dark:text-gray-200"><?php echo $calculation_result['energy_analysis']['total_daily_kwh']; ?> kWh</span>
-                                    </div>
-                                    <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-600">
-                                        <span class="text-gray-600 dark:text-gray-400">Monthly Energy:</span>
-                                        <span class="font-semibold text-gray-800 dark:text-gray-200"><?php echo $calculation_result['energy_analysis']['total_monthly_kwh']; ?> kWh</span>
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200"><?php echo $calculation_result['energy_analysis']['total_daily_w']; ?> W</span>
                                     </div>
                                     <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-600">
                                         <span class="text-gray-600 dark:text-gray-400">Peak Load:</span>
@@ -359,10 +362,21 @@ include 'includes/header.php';
                                         <span class="text-gray-600 dark:text-gray-400">System Losses:</span>
                                         <span class="font-semibold text-gray-800 dark:text-gray-200"><?php echo $calculation_result['system_requirements']['efficiency_factors']['system_losses']; ?>%</span>
                                     </div>
-                                    <div class="flex justify-between items-center py-2">
+                                    <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-600">
                                         <span class="text-gray-600 dark:text-gray-400">Safety Margin:</span>
                                         <span class="font-semibold text-gray-800 dark:text-gray-200"><?php echo $calculation_result['system_requirements']['efficiency_factors']['safety_margin']; ?>%</span>
                                     </div>
+                                    <?php if (isset($calculation_result['system_requirements']['battery_capacity_factor']) && $calculation_result['system_requirements']['battery_capacity_factor'] < 1.0): ?>
+                                    <div class="flex justify-between items-center py-2">
+                                        <span class="text-gray-600 dark:text-gray-400">Battery Optimization:</span>
+                                        <span class="font-semibold text-green-600"><?php echo round((1 - $calculation_result['system_requirements']['battery_capacity_factor']) * 100); ?>% reduction</span>
+                                    </div>
+                                    <?php else: ?>
+                                    <div class="flex justify-between items-center py-2">
+                                        <span class="text-gray-600 dark:text-gray-400">Battery Optimization:</span>
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">Standard</span>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -379,22 +393,20 @@ include 'includes/header.php';
                                         <thead class="bg-gray-50 dark:bg-gray-600">
                                             <tr>
                                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Appliance</th>
-                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Voltage</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Quantity</th>
                                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Wattage</th>
                                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Hours/Day</th>
-                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Daily kWh</th>
-                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Monthly kWh</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Daily W</th>
                                             </tr>
                                         </thead>
                                         <tbody class="bg-white dark:bg-gray-700 divide-y divide-gray-200 dark:divide-gray-600">
                                             <?php foreach ($calculation_result['appliance_summary'] as $appliance): ?>
                                                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-600">
                                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100"><?php echo htmlspecialchars($appliance['name']); ?></td>
-                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300"><?php echo $appliance['voltage']; ?>V</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300"><?php echo $appliance['quantity']; ?></td>
                                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300"><?php echo $appliance['wattage']; ?>W</td>
                                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300"><?php echo $appliance['hours']; ?></td>
-                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300"><?php echo $appliance['daily_kwh']; ?></td>
-                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300"><?php echo $appliance['monthly_kwh']; ?></td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300"><?php echo $appliance['daily_w']; ?>W</td>
                                                 </tr>
                                             <?php endforeach; ?>
                                         </tbody>
@@ -404,8 +416,7 @@ include 'includes/header.php';
                                                 <th class="px-6 py-4 text-left text-sm font-bold text-gray-900 dark:text-gray-100">-</th>
                                                 <th class="px-6 py-4 text-left text-sm font-bold text-gray-900 dark:text-gray-100"><?php echo $calculation_result['energy_analysis']['total_wattage']; ?>W</th>
                                                 <th class="px-6 py-4 text-left text-sm font-bold text-gray-900 dark:text-gray-100">-</th>
-                                                <th class="px-6 py-4 text-left text-sm font-bold text-gray-900 dark:text-gray-100"><?php echo $calculation_result['energy_analysis']['total_daily_kwh']; ?></th>
-                                                <th class="px-6 py-4 text-left text-sm font-bold text-gray-900 dark:text-gray-100"><?php echo $calculation_result['energy_analysis']['total_monthly_kwh']; ?></th>
+                                                <th class="px-6 py-4 text-left text-sm font-bold text-gray-900 dark:text-gray-100"><?php echo $calculation_result['energy_analysis']['total_daily_w']; ?>W</th>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -420,38 +431,44 @@ include 'includes/header.php';
 </div>
 
 <script>
-let applianceCount = <?php echo !empty($sample_appliances) ? count($sample_appliances) : 1; ?>;
+let applianceCount = <?php echo !empty($sample_appliances) ? count($sample_appliances) : 0; ?>;
 
 function addAppliance() {
     const container = document.getElementById('appliancesContainer');
+    const emptyState = document.getElementById('emptyState');
+    
+    // Hide empty state if it exists
+    if (emptyState) {
+        emptyState.style.display = 'none';
+    }
+    
     const newRow = document.createElement('div');
     newRow.className = 'appliance-row bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 border border-gray-200 dark:border-gray-600';
     newRow.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-            <div>
+            <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Appliance Name</label>
-                <input type="text" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][name]" placeholder="e.g., LED Lights" required>
+                <input type="text" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][name]" placeholder="e.g., LED Lights" required>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Voltage (V)</label>
-                <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][voltage]" value="220" min="12" max="480" required>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quantity</label>
+                <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][quantity]" value="1" min="1" required>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Wattage (W)</label>
-                <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][wattage]" placeholder="100" min="1" step="0.1" required>
+                <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][wattage]" placeholder="100" min="1" step="0.1" required>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Hours/Day</label>
-                <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][hours]" placeholder="6" min="0" max="24" step="0.1" required>
+                <input type="number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white" name="appliances[${applianceCount}][hours]" placeholder="6" min="0" max="24" step="0.1" required>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Daily kWh</label>
-                <input type="text" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 daily-kwh" readonly>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Daily W</label>
+                <input type="text" class="daily-w w-full px-3 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300" readonly>
             </div>
-            <div>
-                <button type="button" class="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center justify-center" onclick="removeAppliance(this)">
-                    <i class="fas fa-trash mr-2"></i>
-                    Remove
+            <div class="flex justify-center">
+                <button type="button" class="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors" onclick="removeAppliance(this)">
+                    <i class="fas fa-trash"></i>
                 </button>
             </div>
         </div>
@@ -461,7 +478,7 @@ function addAppliance() {
     updateTotals();
     
     // Add event listeners to the new row inputs for real-time updates
-    const newInputs = newRow.querySelectorAll('input[name*="[name]"], input[name*="[wattage]"], input[name*="[hours]"]');
+    const newInputs = newRow.querySelectorAll('input[name*="[name]"], input[name*="[quantity]"], input[name*="[wattage]"], input[name*="[hours]"]');
     newInputs.forEach(input => {
         input.addEventListener('input', updateTotals);
     });
@@ -469,42 +486,55 @@ function addAppliance() {
 
 function removeAppliance(button) {
     const container = document.getElementById('appliancesContainer');
-    if (container.children.length > 1) {
-        button.closest('.appliance-row').remove();
-        updateTotals();
+    const applianceRows = container.querySelectorAll('.appliance-row');
+    const emptyState = document.getElementById('emptyState');
+    
+    // Always allow removal
+    button.closest('.appliance-row').remove();
+    
+    // Show empty state if no appliances left
+    if (container.querySelectorAll('.appliance-row').length === 0 && emptyState) {
+        emptyState.style.display = 'block';
     }
+    
+    updateTotals();
 }
 
 function updateTotals() {
     let totalWattage = 0;
-    let totalDailyKwh = 0;
+    let totalDailyW = 0;
     const applianceRows = document.querySelectorAll('.appliance-row');
     
     applianceRows.forEach(row => {
+        const quantityInput = row.querySelector('input[name*="[quantity]"]');
         const wattageInput = row.querySelector('input[name*="[wattage]"]');
         const hoursInput = row.querySelector('input[name*="[hours]"]');
-        const dailyKwhInput = row.querySelector('.daily-kwh');
+        const dailyWInput = row.querySelector('.daily-w');
         
+        const quantity = parseFloat(quantityInput.value) || 0;
         const wattage = parseFloat(wattageInput.value) || 0;
         const hours = parseFloat(hoursInput.value) || 0;
-        const dailyKwh = (wattage * hours) / 1000;
+        const totalApplianceWattage = quantity * wattage;
+        const dailyW = totalApplianceWattage * hours;
         
-        dailyKwhInput.value = dailyKwh.toFixed(2);
-        totalWattage += wattage;
-        totalDailyKwh += dailyKwh;
+        dailyWInput.value = dailyW.toFixed(0);
+        totalWattage += totalApplianceWattage;
+        totalDailyW += dailyW;
     });
     
     document.getElementById('totalWattage').textContent = totalWattage.toFixed(0) + ' W';
-    document.getElementById('totalDailyKwh').textContent = totalDailyKwh.toFixed(2) + ' kWh';
+    document.getElementById('totalDailyW').textContent = totalDailyW.toFixed(0) + ' W';
     
     // Show/hide dynamic calculate button based on appliance count and data
     const dynamicButton = document.getElementById('dynamicCalculateButton');
     const hasValidAppliances = Array.from(applianceRows).some(row => {
         const nameInput = row.querySelector('input[name*="[name]"]');
+        const quantityInput = row.querySelector('input[name*="[quantity]"]');
         const wattageInput = row.querySelector('input[name*="[wattage]"]');
         const hoursInput = row.querySelector('input[name*="[hours]"]');
         
         return nameInput.value.trim() !== '' && 
+               parseFloat(quantityInput.value) > 0 && 
                parseFloat(wattageInput.value) > 0 && 
                parseFloat(hoursInput.value) > 0;
     });
@@ -521,13 +551,13 @@ document.addEventListener('DOMContentLoaded', function() {
     updateTotals();
     
     // Add event listeners to existing appliance inputs
-    document.querySelectorAll('#appliancesContainer input[name*="[name]"], #appliancesContainer input[name*="[wattage]"], #appliancesContainer input[name*="[hours]"]').forEach(input => {
+    document.querySelectorAll('#appliancesContainer input[name*="[name]"], #appliancesContainer input[name*="[quantity]"], #appliancesContainer input[name*="[wattage]"], #appliancesContainer input[name*="[hours]"]').forEach(input => {
         input.addEventListener('input', updateTotals);
     });
     
     // Also listen for changes on the container for dynamically added elements
     document.getElementById('appliancesContainer').addEventListener('input', function(e) {
-        if (e.target.matches('input[name*="[wattage]"], input[name*="[hours]"], input[name*="[name]"]')) {
+        if (e.target.matches('input[name*="[quantity]"], input[name*="[wattage]"], input[name*="[hours]"], input[name*="[name]"]')) {
             updateTotals();
         }
     });

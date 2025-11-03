@@ -976,6 +976,10 @@ function convertQuotationToProject($quote_id) {
             throw new Exception("Quotation not found");
         }
         
+        // Get solar project details from quote_solar_details table
+        $solar_details = getSolarProjectDetails($quote_id);
+        $system_size_kw = ($solar_details && isset($solar_details['system_size_kw'])) ? $solar_details['system_size_kw'] : calculateSystemSize($quote['items']);
+        
         // Prepare project data from quotation
         $project_data = [
             'project_name' => $quote['proposal_name'] ?? $quote['quote_number'] . ' - Solar Project',
@@ -984,7 +988,7 @@ function convertQuotationToProject($quote_id) {
             'customer_phone' => $quote['customer_phone'],
             'customer_address' => '', // quotations table doesn't have address field
             'remarks' => 'Converted from quotation ' . $quote['quote_number'],
-            'system_size_kw' => calculateSystemSize($quote['items']),
+            'system_size_kw' => $system_size_kw, // Use actual system size from quote_solar_details, fallback to calculated
             'quote_id' => $quote_id, // Link back to quotation
             'project_status' => 'approved', // Set as approved since quotation was accepted
         ];

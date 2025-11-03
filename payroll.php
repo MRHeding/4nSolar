@@ -213,9 +213,30 @@ $sort_order = $_GET['order'] ?? 'ASC';
 $employees = getAllEmployees($pdo, true, $sort_by, $sort_order);
 $payroll_records = getPayrollRecords($pdo, $employee_id, 100);
 
-// Build per-employee totals for Reports view
+// For Reports view: filter to only show most recent payroll per employee
+$filtered_payroll_records = [];
+if ($view === 'reports') {
+	// Group payroll records by employee and keep only the most recent one
+	$latest_by_employee = [];
+	foreach ($payroll_records as $rec) {
+		$eid = $rec['employee_id'];
+		$created_at = strtotime($rec['created_at'] ?? '1970-01-01');
+		
+		// Keep the most recently created payroll for each employee
+		if (!isset($latest_by_employee[$eid]) || $created_at > strtotime($latest_by_employee[$eid]['created_at'] ?? '1970-01-01')) {
+			$latest_by_employee[$eid] = $rec;
+		}
+	}
+	$filtered_payroll_records = array_values($latest_by_employee);
+} else {
+	$filtered_payroll_records = $payroll_records;
+}
+
+// Build per-employee totals for Reports view (using filtered records for reports)
 $employee_totals = [];
-foreach ($payroll_records as $rec) {
+$records_for_summary = ($view === 'reports') ? $filtered_payroll_records : $payroll_records;
+
+foreach ($records_for_summary as $rec) {
 	$eid = $rec['employee_id'];
 	if (!isset($employee_totals[$eid])) {
 		$employee_totals[$eid] = [
@@ -549,28 +570,32 @@ include 'includes/header.php';
                 </div>
             </div>
             <div class="card-body">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Note:</strong> This report shows only the most recently generated payroll for each employee, not historical data.
+                </div>
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <div class="card bg-primary text-white">
                             <div class="card-body text-center">
-                                <h3>₱<?php echo number_format(array_sum(array_column($payroll_records, 'gross_salary')), 2); ?></h3>
-                                <p>Total Gross Pay</p>
+                                <h3>₱<?php echo number_format(array_sum(array_column($filtered_payroll_records, 'gross_salary')), 2); ?></h3>
+                                <p>Total Gross Pay (Latest Payrolls)</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4 mb-3">
                         <div class="card bg-danger text-white">
                             <div class="card-body text-center">
-                                <h3>₱<?php echo number_format(array_sum(array_column($payroll_records, 'total_deductions')), 2); ?></h3>
-                                <p>Total Deductions</p>
+                                <h3>₱<?php echo number_format(array_sum(array_column($filtered_payroll_records, 'total_deductions')), 2); ?></h3>
+                                <p>Total Deductions (Latest Payrolls)</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4 mb-3">
                         <div class="card bg-success text-white">
                             <div class="card-body text-center">
-                                <h3>₱<?php echo number_format(array_sum(array_column($payroll_records, 'net_salary')), 2); ?></h3>
-                                <p>Total Net Pay</p>
+                                <h3>₱<?php echo number_format(array_sum(array_column($filtered_payroll_records, 'net_salary')), 2); ?></h3>
+                                <p>Total Net Pay (Latest Payrolls)</p>
                             </div>
                         </div>
                     </div>
@@ -580,12 +605,12 @@ include 'includes/header.php';
                     <div class="col-md-6">
                         <div class="card">
                             <div class="card-header">
-                                <h6>Payroll Status Distribution</h6>
+                                <h6>Payroll Status Distribution (Latest)</h6>
                             </div>
                             <div class="card-body">
                                 <?php
-                                $status_counts = array_count_values(array_column($payroll_records, 'status'));
-                                $total_records = count($payroll_records);
+                                $status_counts = array_count_values(array_column($filtered_payroll_records, 'status'));
+                                $total_records = count($filtered_payroll_records);
                                 ?>
                                 <div class="mb-2">
                                     <div class="d-flex justify-content-between">
@@ -640,7 +665,7 @@ include 'includes/header.php';
                 <!-- Employee Payout Summary -->
                 <div class="card mt-4">
                     <div class="card-header">
-                        <h6 class="mb-0"><i class="fas fa-users me-2"></i>Employee Payout Summary</h6>
+                        <h6 class="mb-0"><i class="fas fa-users me-2"></i>Employee Payout Summary (Latest Payroll Only)</h6>
                     </div>
                     <div class="card-body">
                         <?php if (empty($employee_totals)): ?>

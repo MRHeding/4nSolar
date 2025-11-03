@@ -57,3 +57,5 @@ CREATE INDEX `idx_purchase_order_items_brand_model` ON `purchase_order_items` (`
 -- Insert sample data (optional - remove if not needed)
 -- INSERT INTO `purchase_orders` (`quote_id`, `po_number`, `supplier_name`, `contact_person`, `supplier_phone`, `supplier_email`, `supplier_address`, `special_instructions`, `delivery_requirements`, `status`) VALUES
 -- (1, 'PO-2024-0001', 'SolarTech Supplies', 'John Smith', '+1-555-0123', 'john@solartech.com', '123 Solar Street, Tech City, TC 12345', 'Please ensure all items are properly packaged', 'Delivery required within 5 business days', 'pending');
+
+

@@ -605,10 +605,15 @@ function createProjectFromQuotation($quote_id) {
             throw new Exception('Quotation not found');
         }
         
+        // Get solar project details from quote_solar_details table
+        $solar_details = getSolarProjectDetails($quote_id);
+        $system_size_kw = ($solar_details && isset($solar_details['system_size_kw'])) ? $solar_details['system_size_kw'] : 0;
+        
         error_log("Creating project from quotation: " . json_encode([
             'quote_id' => $quote_id,
             'quote_number' => $quote['quote_number'] ?? 'N/A',
             'customer_name' => $quote['customer_name'] ?? 'N/A',
+            'system_size_kw' => $system_size_kw,
             'items_count' => count($quote['items'] ?? [])
         ]));
         
@@ -628,7 +633,7 @@ function createProjectFromQuotation($quote_id) {
             '', // email - can be added to quotations table later if needed
             $quote['customer_phone'] ?? '',
             '', // address - can be added to quotations table later if needed
-            0, // system_size_kw - can be calculated from items
+            $system_size_kw, // system_size_kw - retrieved from quote_solar_details
             'draft', // initial status
             $quote_id, // reference to quotation
             $_SESSION['user_id']

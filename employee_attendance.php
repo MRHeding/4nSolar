@@ -62,6 +62,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } catch (Exception $e) {
             $error = 'Error: ' . $e->getMessage();
         }
+    } elseif ($_POST['action'] === 'delete_all_attendance') {
+        try {
+            $employee_id = $_POST['employee_id'];
+            $month = $_POST['month'];
+            
+            // Delete all attendance records for the employee in the specified month
+            $start_date = $month . '-01';
+            $end_date = date('Y-m-t', strtotime($start_date));
+            
+            $stmt = $pdo->prepare("DELETE FROM attendance WHERE employee_id = ? AND attendance_date BETWEEN ? AND ?");
+            $result = $stmt->execute([$employee_id, $start_date, $end_date]);
+            
+            if ($result) {
+                $deleted_count = $stmt->rowCount();
+                $message = "Successfully deleted $deleted_count attendance records for " . date('F Y', strtotime($start_date)) . "!";
+                // Refresh the page to show updated records
+                header("Location: employee_attendance.php?employee_id=$employee_id&month=$month");
+                exit();
+            } else {
+                $error = 'Failed to delete attendance records.';
+            }
+        } catch (Exception $e) {
+            $error = 'Error: ' . $e->getMessage();
+        }
     } elseif ($_POST['action'] === 'bulk_attendance') {
         try {
             $employee_id = $_POST['employee_id'];
@@ -147,6 +171,11 @@ include 'includes/header.php';
             <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#bulkAttendanceModal">
                 <i class="fas fa-calendar-plus"></i> Bulk Entry (15 Days)
             </button>
+            <?php if (!empty($attendance_records) && (hasRole(ROLE_ADMIN) || hasRole(ROLE_HR))): ?>
+            <button type="button" class="btn btn-danger" onclick="deleteAllAttendance()" title="Delete all attendance records for this month">
+                <i class="fas fa-trash-alt"></i> Delete All
+            </button>
+            <?php endif; ?>
             <?php endif; ?>
             <a href="payroll.php" class="btn btn-outline-secondary">
                 <i class="fas fa-arrow-left"></i> Back to Payroll
@@ -562,11 +591,41 @@ $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'))
     <input type="hidden" name="attendance_id" id="deleteAttendanceId">
 </form>
 
+<!-- Hidden form for delete all operations -->
+<form id="deleteAllAttendanceForm" method="POST" style="display: none;">
+    <input type="hidden" name="action" value="delete_all_attendance">
+    <input type="hidden" name="employee_id" value="<?php echo $employee_id; ?>">
+    <input type="hidden" name="month" value="<?php echo $month; ?>">
+</form>
+
 <script>
 function deleteAttendance(attendanceId) {
     if (confirm('Are you sure you want to delete this attendance record?\n\nThis action cannot be undone.')) {
         document.getElementById('deleteAttendanceId').value = attendanceId;
         document.getElementById('deleteAttendanceForm').submit();
+    }
+}
+
+function deleteAllAttendance() {
+    const employeeName = '<?php echo addslashes($employee['employee_name'] ?? ''); ?>';
+    const monthName = '<?php echo date('F Y', strtotime($month . '-01')); ?>';
+    const recordCount = <?php echo count($attendance_records); ?>;
+    
+    const confirmMessage = `Are you sure you want to delete ALL ${recordCount} attendance records for ${employeeName} in ${monthName}?\n\nThis action cannot be undone and will permanently remove all attendance data for this month.\n\nType "DELETE ALL" to confirm:`;
+    
+    const userInput = prompt(confirmMessage);
+    
+    if (userInput === 'DELETE ALL') {
+        // Show loading state
+        const deleteBtn = event.target;
+        const originalText = deleteBtn.innerHTML;
+        deleteBtn.disabled = true;
+        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+        
+        // Submit the form
+        document.getElementById('deleteAllAttendanceForm').submit();
+    } else if (userInput !== null) {
+        alert('Deletion cancelled. You must type "DELETE ALL" exactly to confirm.');
     }
 }
 // Auto-calculate hours based on time in/out

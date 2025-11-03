@@ -7,11 +7,11 @@ echo "<h1>Solar Calculator Test</h1>\n";
 
 // Test with sample appliances
 $appliances = [
-    ['name' => 'LED Light', 'voltage' => 12, 'wattage' => 10, 'hours' => 8],
-    ['name' => 'Refrigerator', 'voltage' => 220, 'wattage' => 150, 'hours' => 24],
-    ['name' => 'TV', 'voltage' => 220, 'wattage' => 100, 'hours' => 6],
-    ['name' => 'Laptop', 'voltage' => 220, 'wattage' => 65, 'hours' => 8],
-    ['name' => 'Fan', 'voltage' => 220, 'wattage' => 75, 'hours' => 12]
+    ['name' => 'LED Light', 'quantity' => 4, 'voltage' => 12, 'wattage' => 10, 'hours' => 8],
+    ['name' => 'Refrigerator', 'quantity' => 1, 'voltage' => 220, 'wattage' => 150, 'hours' => 24],
+    ['name' => 'TV', 'quantity' => 1, 'voltage' => 220, 'wattage' => 100, 'hours' => 6],
+    ['name' => 'Laptop', 'quantity' => 2, 'voltage' => 220, 'wattage' => 65, 'hours' => 8],
+    ['name' => 'Fan', 'quantity' => 3, 'voltage' => 220, 'wattage' => 75, 'hours' => 12]
 ];
 
 echo "<h2>Test Appliances:</h2>\n";
