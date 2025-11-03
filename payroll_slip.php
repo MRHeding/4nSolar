@@ -301,14 +301,21 @@ $employees = getAllEmployees($pdo);
                 
                 <!-- Signature Section -->
                 <div class="row mt-5">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="signature-line mb-2" style="border-bottom: 1px solid #000; width: 200px; margin: 0 auto;"></div>
+                            <p class="mb-1"><strong><?php echo htmlspecialchars($payroll['employee_name']); ?></strong></p>
+                            <p class="text-muted small">Employee Signature</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
                         <div class="text-center">
                             <div class="signature-line mb-2" style="border-bottom: 1px solid #000; width: 200px; margin: 0 auto;"></div>
                             <p class="mb-1"><strong>Mr. Novie G. Mohadsa</strong></p>
                             <p class="text-muted small">Operations Manager</p>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="text-center">
                             <div class="signature-line mb-2" style="border-bottom: 1px solid #000; width: 200px; margin: 0 auto;"></div>
                             <p class="mb-1"><strong>Ms. Liddy Lou Orsuga</strong></p>

@@ -639,9 +639,6 @@ $solar_details = getSolarProjectDetails($quote_id);
                                     <?php if ($item['discount_percentage'] > 0): ?>
                                         <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($item['unit_price']); ?></div>
                                         <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_price'] * (1 - $item['discount_percentage'] / 100)); ?></div>
-                                    <?php elseif ($price_changed): ?>
-                                        <div class="text-xs text-gray-500 line-through"><?php echo formatCurrency($original_price); ?></div>
-                                        <div class="text-xs text-green-600"><?php echo formatCurrency($item['unit_price']); ?></div>
                                     <?php else: ?>
                                         <?php echo formatCurrency($item['unit_price']); ?>
                                     <?php endif; ?>

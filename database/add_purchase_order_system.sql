@@ -59,3 +59,6 @@ CREATE INDEX `idx_purchase_order_items_brand_model` ON `purchase_order_items` (`
 -- (1, 'PO-2024-0001', 'SolarTech Supplies', 'John Smith', '+1-555-0123', 'john@solartech.com', '123 Solar Street, Tech City, TC 12345', 'Please ensure all items are properly packaged', 'Delivery required within 5 business days', 'pending');
 
 
+
+
+
