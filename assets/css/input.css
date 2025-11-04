@@ -21,15 +21,15 @@
   }
   
   .form-input {
-    @apply w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent;
+    @apply w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-solar-blue focus:border-transparent;
   }
   
   .form-select {
-    @apply w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent;
+    @apply w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-solar-blue focus:border-transparent;
   }
   
   .card {
-    @apply bg-white rounded-lg shadow p-6;
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow p-6;
   }
   
   .alert-success {

@@ -5,7 +5,8 @@
         <?php if (isLoggedIn()): ?>
             <?php 
             // Determine if we're in the payroll section
-            $payroll_pages = ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php'];
+            // Note: payroll.php and employee_attendance.php now use Tailwind CSS, so they're excluded from Bootstrap list
+            $payroll_pages = ['employees.php', 'payroll_detail.php', 'payroll_slip.php'];
             $current_page = basename($_SERVER['PHP_SELF']);
             $use_bootstrap = in_array($current_page, $payroll_pages);
             ?>

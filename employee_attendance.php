@@ -160,50 +160,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 include 'includes/header.php';
 ?>
 
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-calendar-check me-2"></i>Employee Attendance</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2">
-            <?php if ($employee): ?>
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAttendanceModal">
-                <i class="fas fa-plus"></i> Add Attendance
+<div class="flex justify-between items-center flex-wrap gap-4 py-4 mb-6 border-b border-gray-200 dark:border-gray-700">
+    <h1 class="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+        <i class="fas fa-calendar-check"></i>
+        <span>Employee Attendance</span>
+    </h1>
+    <div class="flex flex-wrap gap-2">
+        <?php if ($employee): ?>
+        <div class="flex gap-2">
+            <button type="button" class="btn-primary" onclick="openModal('addAttendanceModal')">
+                <i class="fas fa-plus mr-2"></i> Add Attendance
             </button>
-            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#bulkAttendanceModal">
-                <i class="fas fa-calendar-plus"></i> Bulk Entry (15 Days)
+            <button type="button" class="btn-success" onclick="openModal('bulkAttendanceModal')">
+                <i class="fas fa-calendar-plus mr-2"></i> Bulk Entry (15 Days)
             </button>
             <?php if (!empty($attendance_records) && (hasRole(ROLE_ADMIN) || hasRole(ROLE_HR))): ?>
-            <button type="button" class="btn btn-danger" onclick="deleteAllAttendance()" title="Delete all attendance records for this month">
-                <i class="fas fa-trash-alt"></i> Delete All
+            <button type="button" class="btn-danger" onclick="deleteAllAttendance()" title="Delete all attendance records for this month">
+                <i class="fas fa-trash-alt mr-2"></i> Delete All
             </button>
             <?php endif; ?>
-            <?php endif; ?>
-            <a href="payroll.php" class="btn btn-outline-secondary">
-                <i class="fas fa-arrow-left"></i> Back to Payroll
-            </a>
         </div>
+        <?php endif; ?>
+        <a href="payroll.php" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <i class="fas fa-arrow-left mr-2"></i> Back to Payroll
+        </a>
     </div>
 </div>
 
 <?php if ($message): ?>
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        <i class="fas fa-check-circle me-2"></i><?php echo htmlspecialchars($message); ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <div class="alert-success mb-4 flex items-center justify-between" id="successAlert">
+        <div class="flex items-center">
+            <i class="fas fa-check-circle mr-2"></i>
+            <span><?php echo htmlspecialchars($message); ?></span>
+        </div>
+        <button type="button" class="text-green-700 hover:text-green-900 ml-4" onclick="this.parentElement.style.display='none'">
+            <i class="fas fa-times"></i>
+        </button>
     </div>
+    <script>
+        setTimeout(function() {
+            const alert = document.getElementById('successAlert');
+            if (alert) {
+                alert.style.transition = 'opacity 0.5s';
+                alert.style.opacity = '0';
+                setTimeout(() => alert.remove(), 500);
+            }
+        }, 5000);
+    </script>
 <?php endif; ?>
 
 <?php if ($error): ?>
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <i class="fas fa-exclamation-circle me-2"></i><?php echo htmlspecialchars($error); ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <div class="alert-error mb-4 flex items-center justify-between">
+        <div class="flex items-center">
+            <i class="fas fa-exclamation-circle mr-2"></i>
+            <span><?php echo htmlspecialchars($error); ?></span>
+        </div>
+        <button type="button" class="text-red-700 hover:text-red-900 ml-4" onclick="this.parentElement.style.display='none'">
+            <i class="fas fa-times"></i>
+        </button>
     </div>
 <?php endif; ?>
 
 <!-- Filter Controls -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="GET" action="" class="row g-3 align-items-end">
-            <div class="col-md-5">
-                <label for="employee_id" class="form-label">Select Employee</label>
+<div class="card mb-6">
+    <div class="p-6">
+        <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            <div class="md:col-span-5">
+                <label for="employee_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select Employee</label>
                 <select class="form-select" id="employee_id" name="employee_id" onchange="this.form.submit()">
                     <option value="">Choose an employee...</option>
                     <?php foreach ($employees as $emp): ?>
@@ -213,17 +236,17 @@ include 'includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label for="month" class="form-label">Month</label>
-                <input type="month" class="form-control" id="month" name="month" value="<?php echo $month; ?>" onchange="this.form.submit()">
+            <div class="md:col-span-3">
+                <label for="month" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Month</label>
+                <input type="month" class="form-input" id="month" name="month" value="<?php echo $month; ?>" onchange="this.form.submit()">
             </div>
-            <div class="col-md-4">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-search"></i> View Attendance
+            <div class="md:col-span-4 flex gap-2">
+                <button type="submit" class="btn-primary flex-1">
+                    <i class="fas fa-search mr-2"></i> View Attendance
                 </button>
                 <?php if ($employee_id): ?>
-                <a href="?employee_id=<?php echo $employee_id; ?>&month=<?php echo $month; ?>&export=csv" class="btn btn-outline-success">
-                    <i class="fas fa-download"></i> Export CSV
+                <a href="?employee_id=<?php echo $employee_id; ?>&month=<?php echo $month; ?>&export=csv" class="btn-success px-4 py-2 rounded-lg text-sm font-medium text-white hover:bg-green-700 transition-colors">
+                    <i class="fas fa-download mr-2"></i> Export CSV
                 </a>
                 <?php endif; ?>
             </div>
@@ -233,28 +256,28 @@ include 'includes/header.php';
 
 <?php if ($employee): ?>
 <!-- Employee Info Card -->
-<div class="card mb-4">
-    <div class="card-header">
-        <h5 class="mb-0"><i class="fas fa-user me-2"></i>Employee Information</h5>
+<div class="card mb-6">
+    <div class="mb-4 pb-3 border-b border-gray-200 dark:border-gray-700">
+        <h5 class="text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+            <i class="fas fa-user mr-2"></i>Employee Information
+        </h5>
     </div>
-    <div class="card-body">
-        <div class="row">
-            <div class="col-md-3">
-                <strong>Employee Code:</strong><br>
-                <?php echo htmlspecialchars($employee['employee_code']); ?>
-            </div>
-            <div class="col-md-3">
-                <strong>Name:</strong><br>
-                <?php echo htmlspecialchars($employee['employee_name']); ?>
-            </div>
-            <div class="col-md-3">
-                <strong>Position:</strong><br>
-                <?php echo htmlspecialchars($employee['position']); ?>
-            </div>
-            <div class="col-md-3">
-                <strong>Date Joined:</strong><br>
-                <?php echo date('M d, Y', strtotime($employee['date_of_joining'])); ?>
-            </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+            <strong class="text-gray-700 dark:text-gray-300 block mb-1">Employee Code:</strong>
+            <span class="text-gray-900 dark:text-white"><?php echo htmlspecialchars($employee['employee_code']); ?></span>
+        </div>
+        <div>
+            <strong class="text-gray-700 dark:text-gray-300 block mb-1">Name:</strong>
+            <span class="text-gray-900 dark:text-white"><?php echo htmlspecialchars($employee['employee_name']); ?></span>
+        </div>
+        <div>
+            <strong class="text-gray-700 dark:text-gray-300 block mb-1">Position:</strong>
+            <span class="text-gray-900 dark:text-white"><?php echo htmlspecialchars($employee['position']); ?></span>
+        </div>
+        <div>
+            <strong class="text-gray-700 dark:text-gray-300 block mb-1">Date Joined:</strong>
+            <span class="text-gray-900 dark:text-white"><?php echo date('M d, Y', strtotime($employee['date_of_joining'])); ?></span>
         </div>
     </div>
 </div>
@@ -270,162 +293,157 @@ $total_hours = array_sum(array_column($attendance_records, 'hours_worked'));
 $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'));
 ?>
 
-<div class="row mb-4">
-    <div class="col-md-2">
-        <div class="card bg-success text-white">
-            <div class="card-body text-center">
-                <h4><?php echo $present_days; ?></h4>
-                <small>Present Days</small>
-            </div>
-        </div>
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+    <div class="bg-green-600 text-white rounded-lg p-4 text-center">
+        <h4 class="text-2xl font-bold mb-1"><?php echo $present_days; ?></h4>
+        <small class="text-green-100 text-sm">Present Days</small>
     </div>
-    <div class="col-md-2">
-        <div class="card bg-danger text-white">
-            <div class="card-body text-center">
-                <h4><?php echo $absent_days; ?></h4>
-                <small>Absent Days</small>
-            </div>
-        </div>
+    <div class="bg-red-600 text-white rounded-lg p-4 text-center">
+        <h4 class="text-2xl font-bold mb-1"><?php echo $absent_days; ?></h4>
+        <small class="text-red-100 text-sm">Absent Days</small>
     </div>
-    <div class="col-md-2">
-        <div class="card bg-warning text-white">
-            <div class="card-body text-center">
-                <h4><?php echo $late_days; ?></h4>
-                <small>Late Days</small>
-            </div>
-        </div>
+    <div class="bg-yellow-600 text-white rounded-lg p-4 text-center">
+        <h4 class="text-2xl font-bold mb-1"><?php echo $late_days; ?></h4>
+        <small class="text-yellow-100 text-sm">Late Days</small>
     </div>
-    <div class="col-md-2">
-        <div class="card bg-info text-white">
-            <div class="card-body text-center">
-                <h4><?php echo $half_days; ?></h4>
-                <small>Half Days</small>
-            </div>
-        </div>
+    <div class="bg-cyan-600 text-white rounded-lg p-4 text-center">
+        <h4 class="text-2xl font-bold mb-1"><?php echo $half_days; ?></h4>
+        <small class="text-cyan-100 text-sm">Half Days</small>
     </div>
-    <div class="col-md-2">
-        <div class="card bg-primary text-white">
-            <div class="card-body text-center">
-                <h4><?php echo number_format($total_hours, 1); ?></h4>
-                <small>Total Hours</small>
-            </div>
-        </div>
+    <div class="bg-blue-600 text-white rounded-lg p-4 text-center">
+        <h4 class="text-2xl font-bold mb-1"><?php echo number_format($total_hours, 1); ?></h4>
+        <small class="text-blue-100 text-sm">Total Hours</small>
     </div>
-    <div class="col-md-2">
-        <div class="card bg-secondary text-white">
-            <div class="card-body text-center">
-                <h4><?php echo number_format($overtime_hours, 1); ?></h4>
-                <small>Overtime Hours</small>
-            </div>
-        </div>
+    <div class="bg-gray-600 text-white rounded-lg p-4 text-center">
+        <h4 class="text-2xl font-bold mb-1"><?php echo number_format($overtime_hours, 1); ?></h4>
+        <small class="text-gray-100 text-sm">Overtime Hours</small>
     </div>
 </div>
 
 <!-- Attendance Records -->
 <div class="card">
-    <div class="card-header">
-        <h5 class="mb-0">
-            <i class="fas fa-calendar-alt me-2"></i>
+    <div class="mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+        <h5 class="text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+            <i class="fas fa-calendar-alt mr-2"></i>
             Attendance Records for <?php echo date('F Y', strtotime($month . '-01')); ?>
         </h5>
     </div>
-    <div class="card-body">
+    <div>
         <?php if (empty($attendance_records)): ?>
-            <div class="text-center py-5">
-                <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
-                <h5 class="text-muted">No attendance records found</h5>
-                <p class="text-muted">Add attendance records using the "Add Attendance" button above.</p>
+            <div class="text-center py-12">
+                <i class="fas fa-calendar-times text-6xl text-gray-400 dark:text-gray-600 mb-4"></i>
+                <h5 class="text-gray-500 dark:text-gray-400 mb-2">No attendance records found</h5>
+                <p class="text-gray-400 dark:text-gray-500">Add attendance records using the "Add Attendance" button above.</p>
             </div>
         <?php else: ?>
-            <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                    <thead class="table-dark">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-800 dark:bg-gray-700">
                         <tr>
-                            <th>Date</th>
-                            <th>Day</th>
-                            <th>Time In</th>
-                            <th>Time Out</th>
-                            <th>Hours Worked</th>
-                            <th>Overtime</th>
-                            <th>Status</th>
-                            <th>Notes</th>
-                            <th>Actions</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Date</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Day</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Time In</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Time Out</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Hours Worked</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Overtime</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Notes</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         <?php foreach ($attendance_records as $record): ?>
-                        <tr>
-                            <td><?php echo date('M d, Y', strtotime($record['attendance_date'])); ?></td>
-                            <td><?php echo date('l', strtotime($record['attendance_date'])); ?></td>
-                            <td>
-                                <div class="time-edit-container" data-attendance-id="<?php echo $record['id']; ?>" data-field="time_in">
-                                    <span class="time-display">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            <td class="px-4 py-4 whitespace-nowrap text-gray-900 dark:text-white">
+                                <?php echo date('M d, Y', strtotime($record['attendance_date'])); ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-gray-900 dark:text-white">
+                                <?php echo date('l', strtotime($record['attendance_date'])); ?>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap">
+                                <div class="time-edit-container inline-block relative" data-attendance-id="<?php echo $record['id']; ?>" data-field="time_in">
+                                    <span class="time-display inline-block px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white min-w-[80px]">
                                         <?php echo $record['time_in'] ? date('g:i A', strtotime($record['time_in'])) : '-'; ?>
                                     </span>
-                                    <div class="time-edit-form" style="display: none;">
-                                        <input type="time" class="form-control form-control-sm" 
+                                    <div class="time-edit-form hidden absolute top-0 left-0 z-10 bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-lg p-2 shadow-lg min-w-[200px]">
+                                        <input type="time" class="form-input mb-2 w-full text-sm" 
                                                value="<?php echo $record['time_in'] ? date('H:i', strtotime($record['time_in'])) : ''; ?>"
                                                data-original-value="<?php echo $record['time_in'] ? date('H:i', strtotime($record['time_in'])) : ''; ?>">
-                                        <div class="btn-group btn-group-sm mt-1">
-                                            <button type="button" class="btn btn-success btn-sm" onclick="saveTimeEdit(this)">
-                                                <i class="fas fa-check"></i>
+                                        <div class="flex gap-2">
+                                            <button type="button" class="btn-success text-sm px-3 py-1 flex-1" onclick="saveTimeEdit(this)">
+                                                <i class="fas fa-check mr-1"></i> Save
                                             </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick="cancelTimeEdit(this)">
-                                                <i class="fas fa-times"></i>
+                                            <button type="button" class="btn-secondary text-sm px-3 py-1 flex-1" onclick="cancelTimeEdit(this)">
+                                                <i class="fas fa-times mr-1"></i> Cancel
                                             </button>
                                         </div>
                                     </div>
-                                    <button type="button" class="btn btn-outline-primary btn-sm ms-1 edit-time-btn" onclick="editTime(this)" title="Edit Time">
+                                    <button type="button" class="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors opacity-70 hover:opacity-100 ml-1 edit-time-btn" onclick="editTime(this)" title="Edit Time">
                                         <i class="fas fa-edit"></i>
                                     </button>
                                 </div>
                             </td>
-                            <td>
-                                <div class="time-edit-container" data-attendance-id="<?php echo $record['id']; ?>" data-field="time_out">
-                                    <span class="time-display">
+                            <td class="px-4 py-4 whitespace-nowrap">
+                                <div class="time-edit-container inline-block relative" data-attendance-id="<?php echo $record['id']; ?>" data-field="time_out">
+                                    <span class="time-display inline-block px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white min-w-[80px]">
                                         <?php echo $record['time_out'] ? date('g:i A', strtotime($record['time_out'])) : '-'; ?>
                                     </span>
-                                    <div class="time-edit-form" style="display: none;">
-                                        <input type="time" class="form-control form-control-sm" 
+                                    <div class="time-edit-form hidden absolute top-0 left-0 z-10 bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-lg p-2 shadow-lg min-w-[200px]">
+                                        <input type="time" class="form-input mb-2 w-full text-sm" 
                                                value="<?php echo $record['time_out'] ? date('H:i', strtotime($record['time_out'])) : ''; ?>"
                                                data-original-value="<?php echo $record['time_out'] ? date('H:i', strtotime($record['time_out'])) : ''; ?>">
-                                        <div class="btn-group btn-group-sm mt-1">
-                                            <button type="button" class="btn btn-success btn-sm" onclick="saveTimeEdit(this)">
-                                                <i class="fas fa-check"></i>
+                                        <div class="flex gap-2">
+                                            <button type="button" class="btn-success text-sm px-3 py-1 flex-1" onclick="saveTimeEdit(this)">
+                                                <i class="fas fa-check mr-1"></i> Save
                                             </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick="cancelTimeEdit(this)">
-                                                <i class="fas fa-times"></i>
+                                            <button type="button" class="btn-secondary text-sm px-3 py-1 flex-1" onclick="cancelTimeEdit(this)">
+                                                <i class="fas fa-times mr-1"></i> Cancel
                                             </button>
                                         </div>
                                     </div>
-                                    <button type="button" class="btn btn-outline-primary btn-sm ms-1 edit-time-btn" onclick="editTime(this)" title="Edit Time">
+                                    <button type="button" class="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors opacity-70 hover:opacity-100 ml-1 edit-time-btn" onclick="editTime(this)" title="Edit Time">
                                         <i class="fas fa-edit"></i>
                                     </button>
                                 </div>
                             </td>
-                            <td><?php echo number_format($record['hours_worked'], 2); ?> hrs</td>
-                            <td><?php echo number_format($record['overtime_hours'], 2); ?> hrs</td>
-                            <td>
+                            <td class="px-4 py-4 whitespace-nowrap text-gray-900 dark:text-white">
+                                <?php echo number_format($record['hours_worked'], 2); ?> hrs
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-gray-900 dark:text-white">
+                                <?php echo number_format($record['overtime_hours'], 2); ?> hrs
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap">
                                 <?php
                                 $status_class = '';
+                                $status_bg = '';
                                 switch ($record['status']) {
-                                    case 'present': $status_class = 'success'; break;
-                                    case 'absent': $status_class = 'danger'; break;
-                                    case 'late': $status_class = 'warning'; break;
-                                    case 'half_day': $status_class = 'info'; break;
-                                    case 'overtime': $status_class = 'primary'; break;
+                                    case 'present': 
+                                        $status_class = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'; 
+                                        break;
+                                    case 'absent': 
+                                        $status_class = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'; 
+                                        break;
+                                    case 'late': 
+                                        $status_class = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'; 
+                                        break;
+                                    case 'half_day': 
+                                        $status_class = 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'; 
+                                        break;
+                                    case 'overtime': 
+                                        $status_class = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'; 
+                                        break;
                                 }
                                 ?>
-                                <span class="badge bg-<?php echo $status_class; ?>">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full <?php echo $status_class; ?>">
                                     <?php echo ucfirst(str_replace('_', ' ', $record['status'])); ?>
                                 </span>
                             </td>
-                            <td>
+                            <td class="px-4 py-4 text-gray-900 dark:text-white">
                                 <?php echo $record['notes'] ? htmlspecialchars($record['notes']) : '-'; ?>
                             </td>
-                            <td>
+                            <td class="px-4 py-4 whitespace-nowrap">
                                 <?php if (hasRole(ROLE_ADMIN) || hasRole(ROLE_HR)): ?>
-                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAttendance(<?php echo $record['id']; ?>)" title="Delete Record">
+                                <button type="button" class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" onclick="deleteAttendance(<?php echo $record['id']; ?>)" title="Delete Record">
                                     <i class="fas fa-trash"></i>
                                 </button>
                                 <?php endif; ?>
@@ -440,40 +458,39 @@ $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'))
 </div>
 
 <!-- Add Attendance Modal -->
-<div class="modal fade" id="addAttendanceModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-calendar-plus me-2"></i>
+<div id="addAttendanceModal" class="modal hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-black opacity-50" onclick="closeModal('addAttendanceModal')"></div>
+        <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                <h5 class="text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+                    <i class="fas fa-calendar-plus mr-2"></i>
                     Add Attendance for <?php echo htmlspecialchars($employee['employee_name']); ?>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick="closeModal('addAttendanceModal')">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
             <form method="POST" action="">
                 <input type="hidden" name="action" value="add_attendance">
                 <input type="hidden" name="employee_id" value="<?php echo $employee_id; ?>">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="attendance_date" class="form-label">Date</label>
-                        <input type="date" class="form-control" id="attendance_date" name="attendance_date" value="<?php echo date('Y-m-d'); ?>" required>
+                <div class="space-y-4">
+                    <div>
+                        <label for="attendance_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
+                        <input type="date" class="form-input" id="attendance_date" name="attendance_date" value="<?php echo date('Y-m-d'); ?>" required>
                     </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="time_in" class="form-label">Time In</label>
-                                <input type="time" class="form-control" id="time_in" name="time_in">
-                            </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="time_in" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time In</label>
+                            <input type="time" class="form-input" id="time_in" name="time_in">
                         </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="time_out" class="form-label">Time Out</label>
-                                <input type="time" class="form-control" id="time_out" name="time_out">
-                            </div>
+                        <div>
+                            <label for="time_out" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time Out</label>
+                            <input type="time" class="form-input" id="time_out" name="time_out">
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="status" class="form-label">Status</label>
+                    <div>
+                        <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
                         <select class="form-select" id="status" name="status" required>
                             <option value="present">Present</option>
                             <option value="absent">Absent</option>
@@ -482,28 +499,24 @@ $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'))
                             <option value="overtime">Overtime</option>
                         </select>
                     </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="hours_worked" class="form-label">Hours Worked</label>
-                                <input type="number" class="form-control" id="hours_worked" name="hours_worked" step="0.25" value="8">
-                            </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="hours_worked" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Hours Worked</label>
+                            <input type="number" class="form-input" id="hours_worked" name="hours_worked" step="0.25" value="8">
                         </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="overtime_hours" class="form-label">Overtime Hours</label>
-                                <input type="number" class="form-control" id="overtime_hours" name="overtime_hours" step="0.25" value="0">
-                            </div>
+                        <div>
+                            <label for="overtime_hours" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Overtime Hours</label>
+                            <input type="number" class="form-input" id="overtime_hours" name="overtime_hours" step="0.25" value="0">
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="notes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                    <div>
+                        <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+                        <textarea class="form-input" id="notes" name="notes" rows="3"></textarea>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add Attendance</button>
+                <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" class="btn-secondary" onclick="closeModal('addAttendanceModal')">Cancel</button>
+                    <button type="submit" class="btn-primary">Add Attendance</button>
                 </div>
             </form>
         </div>
@@ -511,36 +524,39 @@ $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'))
 </div>
 
 <!-- Bulk Attendance Modal -->
-<div class="modal fade" id="bulkAttendanceModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-calendar-plus me-2"></i>
+<div id="bulkAttendanceModal" class="modal hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4 py-4">
+        <div class="fixed inset-0 bg-black opacity-50" onclick="closeModal('bulkAttendanceModal')"></div>
+        <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-[95%] w-full p-6">
+            <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                <h5 class="text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+                    <i class="fas fa-calendar-plus mr-2"></i>
                     Bulk Attendance Entry for <?php echo htmlspecialchars($employee['employee_name']); ?>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick="closeModal('bulkAttendanceModal')">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
             <form method="POST" action="" id="bulkAttendanceForm">
                 <input type="hidden" name="action" value="bulk_attendance">
                 <input type="hidden" name="employee_id" value="<?php echo $employee_id; ?>">
                 <input type="hidden" name="start_date" id="bulk_start_date">
-                <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="bulk_period_start" class="form-label">Start Date</label>
-                            <input type="date" class="form-control" id="bulk_period_start" value="<?php echo date('Y-m-01'); ?>" onchange="generateBulkDays()">
+                <div class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="bulk_period_start" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
+                            <input type="date" class="form-input" id="bulk_period_start" value="<?php echo date('Y-m-01'); ?>" onchange="generateBulkDays()">
                         </div>
-                        <div class="col-md-6">
-                            <label for="bulk_period_end" class="form-label">End Date</label>
-                            <input type="date" class="form-control" id="bulk_period_end" value="<?php echo date('Y-m-t'); ?>" onchange="generateBulkDays()">
+                        <div>
+                            <label for="bulk_period_end" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date</label>
+                            <input type="date" class="form-input" id="bulk_period_end" value="<?php echo date('Y-m-t'); ?>" onchange="generateBulkDays()">
                         </div>
                     </div>
                     
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
+                    <div class="alert-info">
+                        <i class="fas fa-info-circle mr-2"></i>
                         <strong>Instructions:</strong> 
-                        <ul class="mb-0">
+                        <ul class="list-disc list-inside mt-2 space-y-1">
                             <li><strong>Flexible Entry:</strong> Enter time data for present days, leave blank for absent days</li>
                             <li><strong>Auto-Calculation:</strong> Hours calculated automatically based on time in/out</li>
                             <li><strong>Lunch Break:</strong> 1 hour automatically deducted for shifts longer than 5 hours</li>
@@ -549,33 +565,33 @@ $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'))
                         </ul>
                     </div>
                     
-                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                        <table class="table table-sm table-bordered">
-                            <thead class="table-dark sticky-top">
+                    <div class="overflow-auto border border-gray-300 dark:border-gray-600 rounded-lg" style="max-height: 500px;">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-800 dark:bg-gray-700 sticky top-0">
                                 <tr>
-                                    <th style="width: 120px;">Date</th>
-                                    <th style="width: 100px;">Day</th>
-                                    <th style="width: 100px;">Time In</th>
-                                    <th style="width: 100px;">Time Out</th>
-                                    <th style="width: 80px;">Status</th>
-                                    <th style="width: 80px;">Hours</th>
-                                    <th style="width: 80px;">OT Hours</th>
-                                    <th style="width: 200px;">Notes</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 120px;">Date</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 100px;">Day</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 100px;">Time In</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 100px;">Time Out</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 80px;">Status</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 80px;">Hours</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 80px;">OT Hours</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-white uppercase tracking-wider" style="width: 200px;">Notes</th>
                                 </tr>
                             </thead>
-                            <tbody id="bulkAttendanceTable">
+                            <tbody id="bulkAttendanceTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 <!-- Days will be generated by JavaScript -->
                             </tbody>
                         </table>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-info" onclick="generateBulkDays()">
-                        <i class="fas fa-refresh"></i> Regenerate Days
+                <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" class="btn-secondary" onclick="closeModal('bulkAttendanceModal')">Cancel</button>
+                    <button type="button" class="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700 transition-colors" onclick="generateBulkDays()">
+                        <i class="fas fa-refresh mr-2"></i> Regenerate Days
                     </button>
-                    <button type="submit" class="btn btn-success" onclick="return validateBulkAttendance()">
-                        <i class="fas fa-save"></i> Save All Attendance
+                    <button type="submit" class="btn-success" onclick="return validateBulkAttendance()">
+                        <i class="fas fa-save mr-2"></i> Save All Attendance
                     </button>
                 </div>
             </form>
@@ -599,6 +615,38 @@ $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'))
 </form>
 
 <script>
+// Modal functions
+function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    
+    // Initialize bulk days when bulk modal opens
+    if (modalId === 'bulkAttendanceModal') {
+        setTimeout(() => {
+            generateBulkDays();
+            checkSundayDuty();
+        }, 100);
+    }
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+    document.body.style.overflow = 'auto';
+}
+
+// Close modal on ESC key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            if (!modal.classList.contains('hidden')) {
+                closeModal(modal.id);
+            }
+        });
+    }
+});
+
 function deleteAttendance(attendanceId) {
     if (confirm('Are you sure you want to delete this attendance record?\n\nThis action cannot be undone.')) {
         document.getElementById('deleteAttendanceId').value = attendanceId;
@@ -616,18 +664,17 @@ function deleteAllAttendance() {
     const userInput = prompt(confirmMessage);
     
     if (userInput === 'DELETE ALL') {
-        // Show loading state
         const deleteBtn = event.target;
         const originalText = deleteBtn.innerHTML;
         deleteBtn.disabled = true;
-        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Deleting...';
         
-        // Submit the form
         document.getElementById('deleteAllAttendanceForm').submit();
     } else if (userInput !== null) {
         alert('Deletion cancelled. You must type "DELETE ALL" exactly to confirm.');
     }
 }
+
 // Function to round to nearest 0.25 increment
 function roundToQuarter(value) {
     return Math.round(value * 4) / 4;
@@ -649,7 +696,7 @@ function calculateAttendanceHours() {
             
             // Account for lunch break (1 hour) if working more than 5 hours
             if (totalHours > 5) {
-                totalHours = totalHours - 1; // Subtract 1 hour for lunch break
+                totalHours = totalHours - 1;
             }
             
             // Calculate regular hours and overtime automatically
@@ -660,7 +707,6 @@ function calculateAttendanceHours() {
             if (totalHours > 8.00) {
                 hoursWorked = 8.00;
                 overtimeHours = totalHours - 8.00;
-                // Round overtime hours to nearest 0.25 increment
                 overtimeHours = roundToQuarter(overtimeHours);
             }
             
@@ -674,22 +720,19 @@ function calculateAttendanceHours() {
             if (overtimeHoursInput) overtimeHoursInput.value = overtimeHours.toFixed(2);
             
             // Auto-update status based on time_in and hours worked
-            // Only mark as half_day if time_in is between 1:00 PM (13:00) and 5:30 PM (17:30)
             const timeInHour = parseInt(timeIn.split(':')[0]);
             const timeInMinute = parseInt(timeIn.split(':')[1]);
             const timeInMinutes = timeInHour * 60 + timeInMinute;
-            const halfDayStart = 13 * 60; // 1:00 PM in minutes
-            const halfDayEnd = 17 * 60 + 30; // 5:30 PM in minutes
+            const halfDayStart = 13 * 60;
+            const halfDayEnd = 17 * 60 + 30;
             
             const statusSelect = document.getElementById('status');
             if (statusSelect) {
                 if (totalHours >= 8) {
                     statusSelect.value = 'present';
                 } else if (totalHours >= 4 && timeInMinutes >= halfDayStart && timeInMinutes <= halfDayEnd) {
-                    // Only mark as half_day if time_in is between 1:00 PM and 5:30 PM
                     statusSelect.value = 'half_day';
                 } else if (totalHours >= 4) {
-                    // If working 4+ hours but not in half_day time range, mark as present
                     statusSelect.value = 'present';
                 } else {
                     statusSelect.value = 'absent';
@@ -718,7 +761,6 @@ document.getElementById('status')?.addEventListener('change', function() {
         case 'half_day':
             if (hoursWorked) hoursWorked.value = '4';
             if (overtimeHours) overtimeHours.value = '0';
-            // Recalculate if times are set
             if (timeIn && timeOut) {
                 calculateAttendanceHours();
             }
@@ -727,7 +769,6 @@ document.getElementById('status')?.addEventListener('change', function() {
         case 'late':
             if (hoursWorked) hoursWorked.value = '8';
             if (overtimeHours) overtimeHours.value = '0';
-            // Recalculate if times are set (might exceed 8 hours)
             if (timeIn && timeOut) {
                 calculateAttendanceHours();
             }
@@ -760,29 +801,29 @@ function generateBulkDays() {
         const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'short' });
         const isSunday = currentDate.getDay() === 0;
         
-        // Include all days, but mark Sundays differently
         const row = document.createElement('tr');
-        const sundayClass = isSunday ? 'table-warning' : '';
+        const sundayClass = isSunday ? 'bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500' : '';
         const sundayLabel = isSunday ? ' (Sunday)' : '';
         
+        row.className = `hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${sundayClass}`;
         row.innerHTML = `
-            <td class="${sundayClass}">
+            <td class="px-3 py-2 text-sm text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700">
                 <input type="hidden" name="attendance[${dateStr}][date]" value="${dateStr}">
                 ${dateStr}${sundayLabel}
             </td>
-            <td class="${sundayClass}">${dayName}</td>
-            <td>
-                <input type="time" class="form-control form-control-sm" 
+            <td class="px-3 py-2 text-sm text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700">${dayName}</td>
+            <td class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                <input type="time" class="form-input text-sm w-full" 
                        name="attendance[${dateStr}][time_in]" 
                        onchange="calculateBulkHours('${dateStr}')">
             </td>
-            <td>
-                <input type="time" class="form-control form-control-sm" 
+            <td class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                <input type="time" class="form-input text-sm w-full" 
                        name="attendance[${dateStr}][time_out]" 
                        onchange="calculateBulkHours('${dateStr}')">
             </td>
-            <td>
-                <select class="form-select form-select-sm" 
+            <td class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                <select class="form-select text-sm w-full" 
                         name="attendance[${dateStr}][status]" 
                         onchange="updateBulkStatus('${dateStr}')">
                     <option value="absent">Absent</option>
@@ -792,18 +833,18 @@ function generateBulkDays() {
                     <option value="overtime">Overtime</option>
                 </select>
             </td>
-            <td>
-                <input type="number" class="form-control form-control-sm" 
+            <td class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                <input type="number" class="form-input text-sm w-full bg-gray-100 dark:bg-gray-700" 
                        name="attendance[${dateStr}][hours_worked]" 
                        step="0.25" value="0" readonly>
             </td>
-            <td>
-                <input type="number" class="form-control form-control-sm" 
+            <td class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                <input type="number" class="form-input text-sm w-full" 
                        name="attendance[${dateStr}][overtime_hours]" 
                        step="0.25" value="0">
             </td>
-            <td>
-                <input type="text" class="form-control form-control-sm" 
+            <td class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                <input type="text" class="form-input text-sm w-full" 
                        name="attendance[${dateStr}][notes]" 
                        placeholder="Notes">
             </td>
@@ -829,47 +870,37 @@ function calculateBulkHours(dateStr) {
             const diffMs = timeOutDate - timeInDate;
             let totalHours = diffMs / (1000 * 60 * 60);
             
-            // Account for lunch break (1 hour) if working more than 5 hours
             if (totalHours > 5) {
-                totalHours = totalHours - 1; // Subtract 1 hour for lunch break
+                totalHours = totalHours - 1;
             }
             
-            // Calculate regular hours and overtime automatically
             let hoursWorked = totalHours;
             let overtimeHours = 0;
             
-            // If total hours exceed 8.00, split into regular hours (8.00) and overtime
             if (totalHours > 8.00) {
                 hoursWorked = 8.00;
                 overtimeHours = totalHours - 8.00;
-                // Round overtime hours to nearest 0.25 increment
                 overtimeHours = roundToQuarter(overtimeHours);
             }
             
-            // Round hours worked to 2 decimal places
             hoursWorked = Math.round(hoursWorked * 100) / 100;
             
-            // Update the form fields
             hoursInput.value = hoursWorked.toFixed(2);
             if (overtimeInput) {
                 overtimeInput.value = overtimeHours.toFixed(2);
             }
             
-            // Auto-set status based on time_in and hours worked
-            // Only mark as half_day if time_in is between 1:00 PM (13:00) and 5:30 PM (17:30)
             const timeInHour = parseInt(timeIn.split(':')[0]);
             const timeInMinute = parseInt(timeIn.split(':')[1]);
             const timeInMinutes = timeInHour * 60 + timeInMinute;
-            const halfDayStart = 13 * 60; // 1:00 PM in minutes
-            const halfDayEnd = 17 * 60 + 30; // 5:30 PM in minutes
+            const halfDayStart = 13 * 60;
+            const halfDayEnd = 17 * 60 + 30;
             
             if (totalHours >= 8) {
                 statusSelect.value = 'present';
             } else if (totalHours >= 4 && timeInMinutes >= halfDayStart && timeInMinutes <= halfDayEnd) {
-                // Only mark as half_day if time_in is between 1:00 PM and 5:30 PM
                 statusSelect.value = 'half_day';
             } else if (totalHours >= 4) {
-                // If working 4+ hours but not in half_day time range, mark as present
                 statusSelect.value = 'present';
             } else {
                 statusSelect.value = 'absent';
@@ -897,7 +928,6 @@ function updateBulkStatus(dateStr) {
             if (overtimeInput) overtimeInput.value = '0';
             if (!timeInInput.value) timeInInput.value = '08:00';
             if (!timeOutInput.value) timeOutInput.value = '12:00';
-            // Recalculate in case times exceed 4 hours
             if (timeInInput.value && timeOutInput.value) {
                 calculateBulkHours(dateStr);
             }
@@ -909,7 +939,6 @@ function updateBulkStatus(dateStr) {
             if (overtimeInput) overtimeInput.value = '0';
             if (!timeInInput.value) timeInInput.value = '08:30';
             if (!timeOutInput.value) timeOutInput.value = '17:30';
-            // Recalculate in case times exceed 8 hours
             if (timeInInput.value && timeOutInput.value) {
                 calculateBulkHours(dateStr);
             }
@@ -919,7 +948,6 @@ function updateBulkStatus(dateStr) {
 
 // Add validation before form submission
 function validateBulkAttendance() {
-    const form = document.getElementById('bulkAttendanceForm');
     const rows = document.querySelectorAll('#bulkAttendanceTable tr');
     let hasValidData = false;
     let emptyPresentCount = 0;
@@ -945,18 +973,15 @@ function validateBulkAttendance() {
         }
     });
     
-    // Allow saving if there's at least one valid record, even if others are blank
     if (!hasValidData && totalRecords > 0) {
         alert('Please enter at least one attendance record with time data or set status to absent.');
         return false;
     }
     
-    // If all records are blank, just proceed (user understands this)
     if (totalRecords === 0) {
         return true;
     }
     
-    // Only warn if there are many empty present records
     if (emptyPresentCount > 0 && emptyPresentCount > totalRecords / 2) {
         const confirmMessage = `You have ${emptyPresentCount} days marked as "Present" but with no time data. These will be saved as "Absent". Continue?`;
         if (!confirm(confirmMessage)) {
@@ -967,11 +992,6 @@ function validateBulkAttendance() {
     return true;
 }
 
-// Initialize bulk days when modal opens
-document.getElementById('bulkAttendanceModal').addEventListener('shown.bs.modal', function() {
-    generateBulkDays();
-    checkSundayDuty();
-});
 
 // Check for Sunday duty and pre-populate
 function checkSundayDuty() {
@@ -983,13 +1003,12 @@ function checkSundayDuty() {
     
     if (!startDate || !endDate) return;
     
-    // Check each Sunday in the date range
     const start = new Date(startDate);
     const end = new Date(endDate);
     const currentDate = new Date(start);
     
     while (currentDate <= end) {
-        if (currentDate.getDay() === 0) { // Sunday
+        if (currentDate.getDay() === 0) {
             const dateStr = currentDate.toISOString().split('T')[0];
             checkAndPopulateSundayDuty(employeeId, dateStr);
         }
@@ -999,31 +1018,28 @@ function checkSundayDuty() {
 
 // Check if employee was on duty on a specific Sunday and pre-populate
 function checkAndPopulateSundayDuty(employeeId, dateStr) {
-    // Make AJAX request to check Sunday duty
     fetch(`check_attendance.php?employee_id=${employeeId}&date=${dateStr}`)
         .then(response => response.json())
         .then(data => {
             if (data.wasOnDuty) {
-                // Pre-populate Sunday attendance
                 const timeInInput = document.querySelector(`input[name="attendance[${dateStr}][time_in]"]`);
                 const timeOutInput = document.querySelector(`input[name="attendance[${dateStr}][time_out]"]`);
                 const statusSelect = document.querySelector(`select[name="attendance[${dateStr}][status]"]`);
                 const hoursInput = document.querySelector(`input[name="attendance[${dateStr}][hours_worked]"]`);
                 
                 if (timeInInput && timeOutInput && statusSelect && hoursInput) {
-                    // Set default values for Sunday duty
                     timeInInput.value = '08:00';
                     timeOutInput.value = '17:00';
                     statusSelect.value = 'present';
                     hoursInput.value = '8.00';
                     
-                    // Add visual indicator
                     const row = timeInInput.closest('tr');
                     if (row) {
-                        row.classList.add('table-info');
+                        row.classList.add('bg-cyan-50', 'dark:bg-cyan-900/20', 'border-l-4', 'border-cyan-500');
                         const dateCell = row.querySelector('td:first-child');
                         if (dateCell) {
-                            dateCell.innerHTML = dateCell.innerHTML.replace('(Sunday)', '(Sunday - On Duty)');
+                            const currentText = dateCell.textContent;
+                            dateCell.innerHTML = currentText.replace('(Sunday)', '(Sunday - On Duty)');
                         }
                     }
                 }
@@ -1041,12 +1057,10 @@ function editTime(button) {
     const editForm = container.querySelector('.time-edit-form');
     const input = editForm.querySelector('input[type="time"]');
     
-    // Hide display and show edit form
-    display.style.display = 'none';
-    editForm.style.display = 'block';
-    button.style.display = 'none';
+    display.classList.add('hidden');
+    editForm.classList.remove('hidden');
+    button.classList.add('hidden');
     
-    // Focus on input
     input.focus();
     input.select();
 }
@@ -1058,13 +1072,11 @@ function cancelTimeEdit(button) {
     const input = editForm.querySelector('input[type="time"]');
     const editBtn = container.querySelector('.edit-time-btn');
     
-    // Reset input to original value
     input.value = input.getAttribute('data-original-value');
     
-    // Hide edit form and show display
-    editForm.style.display = 'none';
-    display.style.display = 'inline';
-    editBtn.style.display = 'inline-block';
+    editForm.classList.add('hidden');
+    display.classList.remove('hidden');
+    editBtn.classList.remove('hidden');
 }
 
 function saveTimeEdit(button) {
@@ -1075,17 +1087,14 @@ function saveTimeEdit(button) {
     const newValue = input.value;
     const originalValue = input.getAttribute('data-original-value');
     
-    // If no change, just cancel
     if (newValue === originalValue) {
         cancelTimeEdit(button);
         return;
     }
     
-    // Show loading state
     button.disabled = true;
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     
-    // Make AJAX request to update time
     fetch('update_attendance_time.php', {
         method: 'POST',
         headers: {
@@ -1100,10 +1109,8 @@ function saveTimeEdit(button) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Update display with new value
             const display = container.querySelector('.time-display');
             if (newValue) {
-                // Convert 24-hour format to 12-hour format for display
                 const [hours, minutes] = newValue.split(':');
                 const hour12 = hours % 12 || 12;
                 const ampm = hours >= 12 ? 'PM' : 'AM';
@@ -1112,35 +1119,26 @@ function saveTimeEdit(button) {
                 display.textContent = '-';
             }
             
-            // Update original value
             input.setAttribute('data-original-value', newValue);
             
-            // Hide edit form and show display
-            container.querySelector('.time-edit-form').style.display = 'none';
-            display.style.display = 'inline';
-            container.querySelector('.edit-time-btn').style.display = 'inline-block';
+            container.querySelector('.time-edit-form').classList.add('hidden');
+            display.classList.remove('hidden');
+            container.querySelector('.edit-time-btn').classList.remove('hidden');
             
-            // Show success message
             showNotification('Time updated successfully!', 'success');
             
-            // Recalculate hours if both time_in and time_out are present
             recalculateHours(container);
         } else {
-            // Show error message
             showNotification('Failed to update time: ' + (data.message || 'Unknown error'), 'error');
-            
-            // Reset button
             button.disabled = false;
-            button.innerHTML = '<i class="fas fa-check"></i>';
+            button.innerHTML = '<i class="fas fa-check mr-1"></i> Save';
         }
     })
     .catch(error => {
         console.error('Error updating time:', error);
         showNotification('Error updating time: ' + error.message, 'error');
-        
-        // Reset button
         button.disabled = false;
-        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.innerHTML = '<i class="fas fa-check mr-1"></i> Save';
     });
 }
 
@@ -1158,7 +1156,6 @@ function recalculateHours(container) {
             const timeOut = timeOutInput.value;
             
             if (timeIn && timeOut) {
-                // Calculate hours worked
                 const timeInDate = new Date('1970-01-01T' + timeIn + ':00');
                 const timeOutDate = new Date('1970-01-01T' + timeOut + ':00');
                 
@@ -1166,34 +1163,27 @@ function recalculateHours(container) {
                     const diffMs = timeOutDate - timeInDate;
                     let totalHours = diffMs / (1000 * 60 * 60);
                     
-                    // Account for lunch break (1 hour) if working more than 5 hours
                     if (totalHours > 5) {
-                        totalHours = totalHours - 1; // Subtract 1 hour for lunch break
+                        totalHours = totalHours - 1;
                     }
                     
-                    // Calculate regular hours and overtime automatically
                     let hoursWorked = totalHours;
                     let overtimeHours = 0;
                     
-                    // If total hours exceed 8.00, split into regular hours (8.00) and overtime
                     if (totalHours > 8.00) {
                         hoursWorked = 8.00;
                         overtimeHours = totalHours - 8.00;
-                        // Round overtime hours to nearest 0.25 increment
                         overtimeHours = roundToQuarter(overtimeHours);
                     }
                     
-                    // Round hours worked to 2 decimal places
                     hoursWorked = Math.round(hoursWorked * 100) / 100;
                     
-                    // Update hours worked display
-                    const hoursCell = row.querySelector('td:nth-child(5)'); // Hours Worked column
+                    const hoursCell = row.querySelector('td:nth-child(5)');
                     if (hoursCell) {
                         hoursCell.textContent = hoursWorked.toFixed(2) + ' hrs';
                     }
                     
-                    // Update overtime hours display
-                    const overtimeCell = row.querySelector('td:nth-child(6)'); // Overtime column
+                    const overtimeCell = row.querySelector('td:nth-child(6)');
                     if (overtimeCell) {
                         overtimeCell.textContent = overtimeHours.toFixed(2) + ' hrs';
                     }
@@ -1204,152 +1194,44 @@ function recalculateHours(container) {
 }
 
 function showNotification(message, type = 'info') {
-    // Create notification element
     const notification = document.createElement('div');
-    notification.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
-    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    const bgColor = type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 
+                    type === 'error' ? 'bg-red-100 border-red-400 text-red-700' : 
+                    'bg-blue-100 border-blue-400 text-blue-700';
+    
+    notification.className = `${bgColor} border px-4 py-3 rounded fixed top-5 right-5 z-50 min-w-[300px] shadow-lg`;
+    notification.style.cssText = 'animation: slideInRight 0.3s ease-out;';
     notification.innerHTML = `
-        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} me-2"></i>
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} mr-2"></i>
+                ${message}
+            </div>
+            <button type="button" class="ml-4 text-current opacity-70 hover:opacity-100" onclick="this.parentElement.parentElement.remove()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
     `;
     
-    // Add to page
     document.body.appendChild(notification);
     
-    // Auto-remove after 3 seconds
     setTimeout(() => {
         if (notification.parentNode) {
-            notification.remove();
+            notification.style.transition = 'opacity 0.3s';
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 300);
         }
     }, 3000);
 }
 </script>
 
 <style>
-/* Bulk Attendance Modal Styles */
-#bulkAttendanceModal .modal-dialog {
-    max-width: 95%;
-}
-
-#bulkAttendanceModal .table-responsive {
-    border: 1px solid #dee2e6;
-    border-radius: 0.375rem;
-}
-
-#bulkAttendanceModal .table th {
-    background-color: #343a40;
-    color: white;
-    font-size: 0.875rem;
-    font-weight: 600;
-    text-align: center;
-    vertical-align: middle;
-}
-
-#bulkAttendanceModal .table td {
-    vertical-align: middle;
-    padding: 0.5rem;
-}
-
-#bulkAttendanceModal .form-control-sm,
-#bulkAttendanceModal .form-select-sm {
-    font-size: 0.8rem;
-    padding: 0.25rem 0.5rem;
-}
-
-#bulkAttendanceModal .table tbody tr:hover {
-    background-color: #f8f9fa;
-}
-
-/* Sticky header for better UX */
-#bulkAttendanceModal .table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-/* Status indicators */
-.status-present { color: #28a745; }
-.status-absent { color: #dc3545; }
-.status-late { color: #ffc107; }
-.status-half_day { color: #17a2b8; }
-.status-overtime { color: #6f42c1; }
-
-/* Sunday duty styling */
-.table-warning {
-    background-color: #fff3cd !important;
-    border-left: 4px solid #ffc107;
-}
-
-.table-info {
-    background-color: #d1ecf1 !important;
-    border-left: 4px solid #17a2b8;
-}
-
-.sunday-duty-indicator {
-    font-weight: bold;
-    color: #856404;
-}
-
 /* Time editing styles */
-.time-edit-container {
-    position: relative;
-    display: inline-block;
-    min-width: 120px;
-}
-
-.time-display {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    min-width: 80px;
-}
-
-.time-edit-form {
-    display: none;
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 10;
-    background: white;
-    border: 2px solid #007bff;
-    border-radius: 4px;
-    padding: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    min-width: 200px;
-}
-
-.time-edit-form input[type="time"] {
-    width: 100%;
-    margin-bottom: 8px;
-}
-
-.edit-time-btn {
-    opacity: 0.7;
-    transition: opacity 0.2s;
-}
-
-.edit-time-btn:hover {
-    opacity: 1;
-}
-
 .time-edit-container:hover .edit-time-btn {
-    opacity: 1;
+    opacity: 1 !important;
 }
 
-/* Loading state for save button */
-.btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* Notification styles */
-.alert.position-fixed {
-    animation: slideInRight 0.3s ease-out;
-}
-
+/* Animation for notifications */
 @keyframes slideInRight {
     from {
         transform: translateX(100%);
@@ -1358,6 +1240,17 @@ function showNotification(message, type = 'info') {
     to {
         transform: translateX(0);
         opacity: 1;
+    }
+}
+
+/* Print styles */
+@media print {
+    .no-print, .no-print * { display: none !important; }
+    button, a, nav, header, footer { display: none !important; }
+    .card { box-shadow: none !important; border: 0 !important; }
+    table thead { 
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact; 
     }
 }
 </style>

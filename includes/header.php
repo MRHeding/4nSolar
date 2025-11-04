@@ -24,7 +24,8 @@ $favicon_url = getFaviconUrl();
 // Settings functions already included at the top
 
 // Determine if we're in the payroll section
-$payroll_pages = ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php'];
+// Note: payroll.php and employee_attendance.php now use Tailwind CSS, so they're excluded from Bootstrap list
+$payroll_pages = ['employees.php', 'payroll_detail.php', 'payroll_slip.php'];
 $current_page = basename($_SERVER['PHP_SELF']);
 $use_bootstrap = in_array($current_page, $payroll_pages);
 
@@ -285,7 +286,7 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
                             </li>
                             <?php if (hasRole(ROLE_ADMIN) || hasRole(ROLE_HR)): ?>
                             <li class="nav-item">
-                                <a class="nav-link sidebar-link <?php echo in_array(basename($_SERVER['PHP_SELF']), ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php']) ? 'active' : ''; ?>" href="payroll.php">
+                                <a class="nav-link sidebar-link <?php echo in_array(basename($_SERVER['PHP_SELF']), ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php']) ? 'active' : ''; ?>" href="payroll.php">
                                     <i class="fas fa-money-check-alt"></i>
                                     <span class="ms-2">Payroll</span>
                                 </a>
@@ -411,7 +412,7 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
                         </li>
                         <?php if (hasRole(ROLE_ADMIN) || hasRole(ROLE_HR)): ?>
                         <li>
-                            <a href="payroll.php" class="sidebar-link flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white transition-all duration-200 <?php echo in_array(basename($_SERVER['PHP_SELF']), ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php']) ? 'bg-solar-blue text-white' : ''; ?>">
+                            <a href="payroll.php" class="sidebar-link flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white transition-all duration-200 <?php echo in_array(basename($_SERVER['PHP_SELF']), ['payroll.php', 'employees.php', 'employee_attendance.php', 'payroll_detail.php', 'payroll_slip.php']) ? 'bg-solar-blue text-white' : ''; ?>">
                                 <i class="fas fa-money-check-alt w-5 text-center"></i>
                                 <span class="transition-all duration-300">Payroll</span>
                             </a>
