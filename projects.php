@@ -227,7 +227,14 @@ include 'includes/header.php';
         color: black !important;
         background: white !important;
         margin: 0;
+    }
+    /* Force light mode for printing */
+    .dark * {
+        background: white !important;
+        color: black !important;
+        border-color: #d1d5db !important;
         padding: 0;
+        line-height: 1.3;
     }
     .company-header {
         background: #1e40af !important;
@@ -236,6 +243,14 @@ include 'includes/header.php';
         print-color-adjust: exact !important;
         page-break-inside: avoid !important;
         page-break-after: avoid !important;
+    }
+    /* Logo print styles */
+    img[alt*="Logo"], img[alt*="logo"] {
+        max-height: 60px !important;
+        width: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
     .bg-blue-600 {
         background: #3b82f6 !important;
@@ -290,14 +305,28 @@ include 'includes/header.php';
         max-width: 100% !important;
         margin: 0 !important;
     }
-    .shadow-lg {
+    .shadow-lg, .shadow {
         box-shadow: none !important;
     }
     .overflow-hidden {
         overflow: visible !important;
     }
+    .print-break {
+        page-break-before: avoid;
+    }
+    .print-break-before {
+        page-break-before: avoid;
+        margin-top: 10px;
+    }
+    .print-break-after {
+        page-break-after: avoid;
+        margin-bottom: 10px;
+    }
     .p-8 {
-        padding: 10px !important;
+        padding: 12px !important;
+    }
+    .p-6 {
+        padding: 8px !important;
     }
     .p-4 {
         padding: 6px !important;
@@ -305,38 +334,76 @@ include 'includes/header.php';
     .p-3 {
         padding: 4px !important;
     }
-    .mb-6 {
-        margin-bottom: 6px !important;
+    .p-2 {
+        padding: 2px !important;
+    }
+    .mb-8 {
+        margin-bottom: 10px !important;
     }
     .mb-4 {
-        margin-bottom: 4px !important;
-    }
-    .mb-2 {
-        margin-bottom: 2px !important;
+        margin-bottom: 6px !important;
     }
     .mt-4 {
-        margin-top: 4px !important;
+        margin-top: 6px !important;
+    }
+    .mt-8 {
+        margin-top: 10px !important;
+    }
+    .mt-12 {
+        margin-top: 10px !important;
+    }
+    .pt-8 {
+        padding-top: 10px !important;
+    }
+    .pt-6 {
+        padding-top: 8px !important;
+    }
+    .pb-2 {
+        padding-bottom: 3px !important;
     }
     .gap-8 {
-        gap: 8px !important;
+        gap: 6px !important;
+    }
+    .gap-4 {
+        gap: 4px !important;
+    }
+    h3 {
+        font-size: 13px !important;
+        margin-bottom: 4px !important;
+    }
+    h4 {
+        font-size: 12px !important;
+        margin-bottom: 3px !important;
+    }
+    .w-64 {
+        width: 200px !important;
+    }
+    .w-80 {
+        width: 200px !important;
     }
     .text-3xl {
-        font-size: 18px !important;
+        font-size: 20px !important;
     }
     .text-2xl {
-        font-size: 16px !important;
+        font-size: 18px !important;
     }
     .text-lg {
-        font-size: 13px !important;
+        font-size: 14px !important;
     }
     .text-xl {
-        font-size: 14px !important;
+        font-size: 16px !important;
     }
     .text-sm {
         font-size: 11px !important;
     }
     .text-xs {
         font-size: 10px !important;
+    }
+    .space-y-3 > * + * {
+        margin-top: 3px !important;
+    }
+    .space-y-2 > * + * {
+        margin-top: 2px !important;
     }
     .customer-details-grid {
         display: grid !important;
@@ -355,19 +422,20 @@ include 'includes/header.php';
         page-break-before: avoid !important;
         page-break-inside: auto !important;
         page-break-after: auto !important;
-        margin-bottom: 8px !important;
+        margin-bottom: 15px !important;
     }
     .totals-section {
         page-break-before: auto !important;
         page-break-inside: avoid !important;
-        margin-top: 8px !important;
-        margin-bottom: 8px !important;
+        margin-top: 15px !important;
+        clear: both !important;
     }
     .invoice-table {
         page-break-inside: auto !important;
     }
     .total-section {
-        page-break-inside: avoid !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
         border: 2px solid #1e40af !important;
     }
     .border-t {
@@ -375,18 +443,28 @@ include 'includes/header.php';
         margin-top: 6px !important;
         padding-top: 4px !important;
     }
-    .w-64 {
-        width: auto !important;
-        max-width: 250px !important;
+    .grid {
+        display: block !important;
     }
-    .grid-cols-2 {
-        grid-template-columns: 1fr 1fr !important;
+    .grid > div {
+        display: inline-block !important;
+        width: 48% !important;
+        vertical-align: top !important;
+        margin-right: 2% !important;
+    }
+    .mx-auto {
+        margin: 0 !important;
     }
 }
 
 @page {
-    margin: 0.4in 0.5in;
+    margin: 0.5in;
     size: A4;
+}
+
+.print-header {
+    border-bottom: 2px solid #1e40af;
+    margin-bottom: 8px;
 }
 </style>
 
@@ -728,15 +806,23 @@ include 'includes/header.php';
 <div id="printableReceipt" style="display: none;">
     <div class="quotation-content max-w-4xl mx-auto bg-white shadow-lg rounded-lg overflow-hidden">
         <!-- Company Header -->
-        <div class="header-section company-header text-white p-8">
+        <div class="header-section print-header company-header text-white p-8">
             <div class="flex justify-between items-start">
                 <div>
-                    <h1 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></h1>
-                    <p class="text-blue-100 text-lg"><?php echo htmlspecialchars(getSystemSetting('company_subtitle', 'Solar Power Installation Services')); ?></p>
-                    <p class="text-blue-100 text-lg">Your Trusted Partner in Solar Solutions</p>
-                    <p class="text-blue-100 text-lg">NON VAT Reg TIN: 247-334-690-00001</p>
-                    <div class="mt-4 text-sm text-blue-100">
-                        <p>📧 info@4nsolar.com | 📞 +63 906 386 1728 | 📍 Zamboanga City, Philippines</p>
+                    <div class="mb-4">
+                        <img src="<?php echo htmlspecialchars(getSystemSetting('logo_url', 'images/logo.png')); ?>" 
+                             alt="<?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?> Logo" 
+                             class="h-20 w-auto print:h-16"
+                             style="max-height: 80px; object-fit: contain;">
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></h1>
+                        <p class="text-blue-100 text-lg"><?php echo htmlspecialchars(getSystemSetting('company_subtitle', 'Business Management System')); ?></p>
+                        <p class="text-blue-100 text-lg">Your Trusted Partner in Solar Solutions</p>
+                        <p class="text-blue-100 text-lg">NON VAT Reg TIN: 247-334-690-00001</p>
+                        <div class="mt-4 text-sm text-blue-100">
+                            <p>📧 info@4nsolar.com | 📞 +63 906 386 1728 | 📍 Zamboanga City, Philippines</p>
+                        </div>
                     </div>
                 </div>
                 <div class="text-right">

@@ -46,7 +46,13 @@ if ($_POST) {
             if (empty($available_inventory)) {
                 $error = 'Cannot create sale: No inventory items available. Please add inventory items with stock before creating a sale.';
             } else {
-                $sale_id = createPOSSale(null, null);
+                // Get shop_type from POST, validate and default to '4nsolar'
+                $shop_type = isset($_POST['shop_type']) ? $_POST['shop_type'] : '4nsolar';
+                if (!in_array($shop_type, ['4nsolar', '168shop'])) {
+                    $shop_type = '4nsolar';
+                }
+                
+                $sale_id = createPOSSale(null, null, $shop_type);
                 
                 if ($sale_id) {
                     $message = 'New sale created successfully!';
@@ -196,21 +202,24 @@ switch ($action) {
         }
         break;
         
-    case 'history':
+            case 'history':
         $date_from = $_GET['date_from'] ?? null;
         $date_to = $_GET['date_to'] ?? null;
         $status = $_GET['status'] ?? null;
+        $shop_type = $_GET['shop'] ?? null; // Get shop filter from URL
         
-        // Check if user wants to include incomplete transactions
-        $include_incomplete = isset($_GET['include_incomplete']) && $_GET['include_incomplete'] === '1';
+        // Validate shop_type
+        if ($shop_type && !in_array($shop_type, ['4nsolar', '168shop'])) {
+            $shop_type = null;
+        }
         
-        $sales = getPOSSales($status, $date_from, $date_to, $include_incomplete);
-        $stats = getPOSStats($date_from, $date_to);
+        $sales = getPOSSales($status, $date_from, $date_to, false, $shop_type);
+        $stats = getPOSStats($date_from, $date_to, $shop_type);
         break;
         
-    default:
+            default:
         $inventory_items = getPOSInventoryItems();
-        $stats = getPOSStats(date('Y-m-d'), date('Y-m-d')); // Today's stats
+        $stats = getPOSStats(date('Y-m-d'), date('Y-m-d'), null); // Today's stats
         break;
 }
 
@@ -309,13 +318,14 @@ include 'includes/header.php';
 <!-- Start New Sale -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
     <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Start New Sale</h2>
-    <form method="POST" action="pos.php" class="space-y-4">
+    <form id="start-sale-form" method="POST" action="pos.php" class="space-y-4">
         <input type="hidden" name="action" value="create">
+        <input type="hidden" id="shop_type_input" name="shop_type" value="4nsolar">
         <div class="text-center">
             <p class="text-gray-600 dark:text-gray-400 mb-4">Start a new sale and add items. Customer details will be collected before payment.</p>
         </div>
         <div class="flex justify-end">
-            <button type="submit" <?php echo !$has_inventory ? 'disabled' : ''; ?>
+            <button type="button" onclick="showShopSelectionModal()" <?php echo !$has_inventory ? 'disabled' : ''; ?>
                     class="<?php echo $has_inventory ? 'bg-solar-blue hover:bg-blue-800' : 'bg-gray-400 cursor-not-allowed'; ?> text-white px-6 py-3 rounded-lg transition text-lg">
                 <i class="fas fa-plus mr-2"></i>Start Sale
             </button>
@@ -326,22 +336,96 @@ include 'includes/header.php';
     </form>
 </div>
 
+<!-- Shop Selection Modal -->
+<div id="shop-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4 text-center">Select Shop</h3>
+            <p class="text-sm text-gray-600 mb-6 text-center">Choose which shop this transaction is for:</p>
+            
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <button type="button" onclick="selectShop('4nsolar')" 
+                        class="shop-option-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-8 px-6 rounded-lg transition transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-sun text-3xl mb-2"></i>
+                    <div class="text-xl">4NSOLAR</div>
+                </button>
+                <button type="button" onclick="selectShop('168shop')" 
+                        class="shop-option-btn bg-orange-600 hover:bg-orange-700 text-white font-bold py-8 px-6 rounded-lg transition transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-store text-3xl mb-2"></i>
+                    <div class="text-xl">168SHOP</div>
+                </button>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeShopSelectionModal()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Shop Selection Modal Functions
+function showShopSelectionModal() {
+    document.getElementById('shop-selection-modal').classList.remove('hidden');
+}
+
+function closeShopSelectionModal() {
+    document.getElementById('shop-selection-modal').classList.add('hidden');
+}
+
+function selectShop(shopType) {
+    // Set the hidden input value
+    document.getElementById('shop_type_input').value = shopType;
+    
+    // Close the modal
+    closeShopSelectionModal();
+    
+    // Submit the form
+    document.getElementById('start-sale-form').submit();
+}
+
+// Close modal when clicking outside
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('shop-selection-modal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeShopSelectionModal();
+            }
+        });
+    }
+});
+</script>
+
 <?php elseif (($action == 'sale') && isset($sale)): ?>
 <!-- Sale Screen -->
 <div class="mb-6">
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Sale: <?php echo htmlspecialchars($sale['receipt_number']); ?></h1>
-            <p class="text-gray-600 dark:text-gray-400">
-                <?php if ($sale['customer_name']): ?>
-                Customer: <?php echo htmlspecialchars($sale['customer_name']); ?>
-                <?php if ($sale['customer_phone']): ?>
-                - <?php echo htmlspecialchars($sale['customer_phone']); ?>
-                <?php endif; ?>
-                <?php else: ?>
-                Walk-in Customer
-                <?php endif; ?>
-            </p>
+            <div class="flex items-center space-x-3 mt-2">
+                <?php 
+                $shop_type = $sale['shop_type'] ?? '4nsolar';
+                $shop_color = $shop_type === '4nsolar' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800';
+                $shop_label = $shop_type === '4nsolar' ? '4NSOLAR' : '168SHOP';
+                ?>
+                <span class="px-3 py-1 rounded-full text-sm font-semibold <?php echo $shop_color; ?>">
+                    <i class="fas <?php echo $shop_type === '4nsolar' ? 'fa-sun' : 'fa-store'; ?> mr-1"></i><?php echo $shop_label; ?>
+                </span>
+                <p class="text-gray-600 dark:text-gray-400">
+                    <?php if ($sale['customer_name']): ?>
+                    Customer: <?php echo htmlspecialchars($sale['customer_name']); ?>
+                    <?php if ($sale['customer_phone']): ?>
+                    - <?php echo htmlspecialchars($sale['customer_phone']); ?>
+                    <?php endif; ?>
+                    <?php else: ?>
+                    Walk-in Customer
+                    <?php endif; ?>
+                </p>
+            </div>
         </div>
         <div class="space-x-2">
             <a href="?action=cancel_sale&id=<?php echo $sale['id']; ?>" 
@@ -1078,6 +1162,38 @@ function validateFormSubmission() {
 function formatCurrency(amount) {
     return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
+
+// Shop Selection Modal Functions
+function showShopSelectionModal() {
+    document.getElementById('shop-selection-modal').classList.remove('hidden');
+}
+
+function closeShopSelectionModal() {
+    document.getElementById('shop-selection-modal').classList.add('hidden');
+}
+
+function selectShop(shopType) {
+    // Set the hidden input value
+    document.getElementById('shop_type_input').value = shopType;
+    
+    // Close the modal
+    closeShopSelectionModal();
+    
+    // Submit the form
+    document.getElementById('start-sale-form').submit();
+}
+
+// Close modal when clicking outside
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('shop-selection-modal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeShopSelectionModal();
+            }
+        });
+    }
+});
 </script>
 
 <?php elseif (($action == 'receipt') && isset($sale)): ?>
@@ -1327,6 +1443,13 @@ function printReceipt() {
             </div>
             <div class="thermal-company-address">📍 <?php echo htmlspecialchars(getSystemSetting('company_address', 'Zambonga City, Philippines')); ?></div>
             <div class="thermal-separator">═══════════════════════════════════</div>
+            <?php 
+            $receipt_shop_type = $sale['shop_type'] ?? '4nsolar';
+            $receipt_shop_label = $receipt_shop_type === '4nsolar' ? '4NSOLAR' : '168SHOP';
+            ?>
+            <div style="text-align: center; margin-top: 8px; margin-bottom: 4px; font-weight: bold; font-size: 13px;">
+                Shop: <?php echo $receipt_shop_label; ?>
+            </div>
             <div class="thermal-receipt-number">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></div>
         </div>
         
@@ -1426,6 +1549,12 @@ function printReceipt() {
         <p class="text-sm text-gray-500 mb-2"><?php echo htmlspecialchars(getSystemSetting('company_tagline', 'Your Trusted Partner in Solar Solutions')); ?></p>
         <p class="text-xs text-gray-500 mb-2"><?php echo htmlspecialchars(getSystemSetting('company_tin', 'NON VAT Reg TIN: 247-334-690-00001')); ?></p>
         <p class="text-xs text-gray-500 mb-2">📧 <?php echo htmlspecialchars(getSystemSetting('company_email', 'info@4nsolar.com')); ?> | 📞 <?php echo htmlspecialchars(getSystemSetting('company_phone', '+63 906 386 1728')); ?> | 📍 <?php echo htmlspecialchars(getSystemSetting('company_address', 'Zambonga City, Philippines')); ?></p>
+        <?php 
+        $receipt_shop_type = $sale['shop_type'] ?? '4nsolar';
+        $receipt_shop_label = $receipt_shop_type === '4nsolar' ? '4NSOLAR' : '168SHOP';
+        $receipt_shop_color = $receipt_shop_type === '4nsolar' ? 'text-blue-600' : 'text-orange-600';
+        ?>
+        <p class="text-sm font-semibold <?php echo $receipt_shop_color; ?> mb-1">Shop: <?php echo $receipt_shop_label; ?></p>
         <p class="text-sm text-gray-500">Receipt #<?php echo htmlspecialchars($sale['receipt_number']); ?></p>
     </div>
     
@@ -1551,19 +1680,10 @@ function printReceipt() {
         <div>
             <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select id="status" name="status"
-                    class="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
-                <option value="">Completed Only (Default)</option>
-                <option value="completed" <?php echo ($_GET['status'] ?? '') === 'completed' ? 'selected' : ''; ?>>Completed</option>
-                <option value="pending" <?php echo ($_GET['status'] ?? '') === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                    class="border border-gray-300 rounded-md px-3 py-2 pr-8 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
+                <option value="completed" <?php echo (!isset($_GET['status']) || $_GET['status'] === 'completed') ? 'selected' : ''; ?>>Completed</option>
+                <option value="pending" <?php echo (isset($_GET['status']) && $_GET['status'] === 'pending') ? 'selected' : ''; ?>>Pending</option>
             </select>
-        </div>
-        <div>
-            <label class="flex items-center text-sm font-medium text-gray-700">
-                <input type="checkbox" name="include_incomplete" value="1" 
-                       <?php echo (isset($_GET['include_incomplete']) && $_GET['include_incomplete'] === '1') ? 'checked' : ''; ?>
-                       class="mr-2 rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
-                Show All Transactions (including incomplete)
-            </label>
         </div>
         <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
             <i class="fas fa-search mr-2"></i>Filter
@@ -1574,8 +1694,40 @@ function printReceipt() {
     </form>
 </div>
 
+<!-- Shop Statistics Switcher -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <span class="text-sm font-medium text-gray-700">View Statistics:</span>
+            <div class="flex space-x-2">
+                <a href="?action=history<?php echo isset($_GET['date_from']) ? '&date_from=' . htmlspecialchars($_GET['date_from']) : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . htmlspecialchars($_GET['date_to']) : ''; ?><?php echo isset($_GET['status']) ? '&status=' . htmlspecialchars($_GET['status']) : ''; ?><?php echo isset($_GET['include_incomplete']) ? '&include_incomplete=1' : ''; ?>" 
+                   class="px-4 py-2 rounded-md transition <?php echo (!isset($_GET['shop']) || $_GET['shop'] === '') ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
+                    All Shops
+                </a>
+                <a href="?action=history&shop=4nsolar<?php echo isset($_GET['date_from']) ? '&date_from=' . htmlspecialchars($_GET['date_from']) : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . htmlspecialchars($_GET['date_to']) : ''; ?><?php echo isset($_GET['status']) ? '&status=' . htmlspecialchars($_GET['status']) : ''; ?><?php echo isset($_GET['include_incomplete']) ? '&include_incomplete=1' : ''; ?>" 
+                   class="px-4 py-2 rounded-md transition <?php echo (isset($_GET['shop']) && $_GET['shop'] === '4nsolar') ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
+                    4NSOLAR
+                </a>
+                <a href="?action=history&shop=168shop<?php echo isset($_GET['date_from']) ? '&date_from=' . htmlspecialchars($_GET['date_from']) : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . htmlspecialchars($_GET['date_to']) : ''; ?><?php echo isset($_GET['status']) ? '&status=' . htmlspecialchars($_GET['status']) : ''; ?><?php echo isset($_GET['include_incomplete']) ? '&include_incomplete=1' : ''; ?>" 
+                   class="px-4 py-2 rounded-md transition <?php echo (isset($_GET['shop']) && $_GET['shop'] === '168shop') ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
+                    168SHOP
+                </a>
+            </div>
+        </div>
+        <?php if (isset($_GET['shop']) && $_GET['shop'] !== ''): ?>
+        <span class="text-sm text-gray-600">
+            Showing: <strong><?php echo $_GET['shop'] === '4nsolar' ? '4NSOLAR' : '168SHOP'; ?> Only</strong>
+        </span>
+        <?php else: ?>
+        <span class="text-sm text-gray-600">
+            Showing: <strong>All Shops</strong>
+        </span>
+        <?php endif; ?>
+    </div>
+</div>
+
 <!-- Stats Summary -->
-<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 class="text-sm font-medium text-gray-500">Total Sales</h3>
         <p class="text-2xl font-bold text-gray-900"><?php echo $stats['total_sales']; ?></p>
@@ -1583,6 +1735,17 @@ function printReceipt() {
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 class="text-sm font-medium text-gray-500">Total Revenue</h3>
         <p class="text-2xl font-bold text-gray-900"><?php echo formatCurrency($stats['total_revenue']); ?></p>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="p-3 rounded-full bg-purple-100 text-purple-600">
+                <i class="fas fa-chart-line text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-sm font-medium text-gray-500">Total Profit (30%)</h3>
+                <p class="text-2xl font-bold text-gray-900"><?php echo formatCurrency($stats['total_profit'] ?? 0); ?></p>
+            </div>
+        </div>
     </div>
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 class="text-sm font-medium text-gray-500">Today's Sales</h3>
@@ -1600,6 +1763,7 @@ function printReceipt() {
         <thead class="bg-gray-50">
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Receipt #</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shop</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
@@ -1615,6 +1779,16 @@ function printReceipt() {
                 <tr class="hover:bg-gray-50">
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         <?php echo htmlspecialchars($sale['receipt_number']); ?>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <?php 
+                        $sale_shop_type = $sale['shop_type'] ?? '4nsolar';
+                        $sale_shop_color = $sale_shop_type === '4nsolar' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800';
+                        $sale_shop_label = $sale_shop_type === '4nsolar' ? '4NSOLAR' : '168SHOP';
+                        ?>
+                        <span class="px-2 py-1 rounded-full text-xs font-semibold <?php echo $sale_shop_color; ?>">
+                            <i class="fas <?php echo $sale_shop_type === '4nsolar' ? 'fa-sun' : 'fa-store'; ?> mr-1"></i><?php echo $sale_shop_label; ?>
+                        </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <?php echo $sale['customer_name'] ? htmlspecialchars($sale['customer_name']) : 'Walk-in'; ?>
@@ -1659,7 +1833,7 @@ function printReceipt() {
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="8" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    <td colspan="9" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                         No sales found.
                     </td>
                 </tr>

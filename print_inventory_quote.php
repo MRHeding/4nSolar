@@ -118,6 +118,14 @@ $solar_details = getSolarProjectDetails($quote_id);
             .mx-auto {
                 margin: 0 !important;
             }
+            /* Logo print styles */
+            img[alt*="Logo"], img[alt*="logo"] {
+                max-height: 60px !important;
+                width: auto !important;
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
             .p-8 {
                 padding: 12px !important;
             }
@@ -379,13 +387,20 @@ $solar_details = getSolarProjectDetails($quote_id);
         <div class="header-section print-header company-header text-white p-8 print:bg-blue-600">
             <div class="flex justify-between items-start">
                 <div>
-                    <h1 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></h1>
-                    <p class="text-blue-100 text-lg"><?php echo htmlspecialchars(getSystemSetting('company_subtitle', 'Solar Power Installation Services')); ?></p>
-                    <p class="text-blue-100 text-lg">Your Trusted Partner in Solar Solutions</p>
-                    <p class="text-blue-100 text-lg">NON VAT Reg TIN: 247-334-690-00001</p>
-                    <p class="text-blue-100 text-lg"></p>
-                    <div class="mt-4 text-sm text-blue-100">
-                        <p>📧 info@4nsolar.com | 📞 +63 906 386 1728 | 📍 Zambonga City, Philippines</p>
+                    <div class="mb-4">
+                        <img src="<?php echo htmlspecialchars(getSystemSetting('logo_url', 'images/logo.png')); ?>" 
+                             alt="<?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?> Logo" 
+                             class="h-20 w-auto print:h-16"
+                             style="max-height: 80px; object-fit: contain;">
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars(getSystemSetting('company_title', '4NSOLAR ELECTRICZ')); ?></h1>
+                        <p class="text-blue-100 text-lg"><?php echo htmlspecialchars(getSystemSetting('company_subtitle', 'Business Management System')); ?></p>
+                        <p class="text-blue-100 text-lg">Your Trusted Partner in Solar Solutions</p>
+                        <p class="text-blue-100 text-lg">NON VAT Reg TIN: 247-334-690-00001</p>
+                        <div class="mt-4 text-sm text-blue-100">
+                            <p>📧 info@4nsolar.com | 📞 +63 906 386 1728 | 📍 Zambonga City, Philippines</p>
+                        </div>
                     </div>
                 </div>
                 <div class="text-right">

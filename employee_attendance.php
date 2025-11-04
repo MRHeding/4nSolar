@@ -628,11 +628,16 @@ function deleteAllAttendance() {
         alert('Deletion cancelled. You must type "DELETE ALL" exactly to confirm.');
     }
 }
-// Auto-calculate hours based on time in/out
-document.getElementById('time_out')?.addEventListener('change', function() {
-    const timeIn = document.getElementById('time_in').value;
-    const timeOut = this.value;
-    const status = document.getElementById('status').value;
+// Function to round to nearest 0.25 increment
+function roundToQuarter(value) {
+    return Math.round(value * 4) / 4;
+}
+
+// Function to calculate hours and overtime
+function calculateAttendanceHours() {
+    const timeIn = document.getElementById('time_in')?.value;
+    const timeOut = document.getElementById('time_out')?.value;
+    const status = document.getElementById('status')?.value;
     
     if (timeIn && timeOut) {
         const timeInDate = new Date('1970-01-01T' + timeIn + ':00');
@@ -640,19 +645,33 @@ document.getElementById('time_out')?.addEventListener('change', function() {
         
         if (timeOutDate > timeInDate) {
             const diffMs = timeOutDate - timeInDate;
-            let diffHours = diffMs / (1000 * 60 * 60);
+            let totalHours = diffMs / (1000 * 60 * 60);
             
             // Account for lunch break (1 hour) if working more than 5 hours
-            if (diffHours > 5) {
-                diffHours = diffHours - 1; // Subtract 1 hour for lunch break
+            if (totalHours > 5) {
+                totalHours = totalHours - 1; // Subtract 1 hour for lunch break
             }
             
-            // Cap regular work hours at 8.00 (unless it's overtime status)
-            if (status !== 'overtime' && diffHours > 8) {
-                diffHours = 8.00;
+            // Calculate regular hours and overtime automatically
+            let hoursWorked = totalHours;
+            let overtimeHours = 0;
+            
+            // If total hours exceed 8.00, split into regular hours (8.00) and overtime
+            if (totalHours > 8.00) {
+                hoursWorked = 8.00;
+                overtimeHours = totalHours - 8.00;
+                // Round overtime hours to nearest 0.25 increment
+                overtimeHours = roundToQuarter(overtimeHours);
             }
             
-            document.getElementById('hours_worked').value = diffHours.toFixed(2);
+            // Round hours worked to 2 decimal places
+            hoursWorked = Math.round(hoursWorked * 100) / 100;
+            
+            // Update the form fields
+            const hoursWorkedInput = document.getElementById('hours_worked');
+            const overtimeHoursInput = document.getElementById('overtime_hours');
+            if (hoursWorkedInput) hoursWorkedInput.value = hoursWorked.toFixed(2);
+            if (overtimeHoursInput) overtimeHoursInput.value = overtimeHours.toFixed(2);
             
             // Auto-update status based on time_in and hours worked
             // Only mark as half_day if time_in is between 1:00 PM (13:00) and 5:30 PM (17:30)
@@ -662,34 +681,56 @@ document.getElementById('time_out')?.addEventListener('change', function() {
             const halfDayStart = 13 * 60; // 1:00 PM in minutes
             const halfDayEnd = 17 * 60 + 30; // 5:30 PM in minutes
             
-            if (diffHours >= 8) {
-                document.getElementById('status').value = 'present';
-            } else if (diffHours >= 4 && timeInMinutes >= halfDayStart && timeInMinutes <= halfDayEnd) {
-                // Only mark as half_day if time_in is between 1:00 PM and 5:30 PM
-                document.getElementById('status').value = 'half_day';
-            } else if (diffHours >= 4) {
-                // If working 4+ hours but not in half_day time range, mark as present
-                document.getElementById('status').value = 'present';
-            } else {
-                document.getElementById('status').value = 'absent';
+            const statusSelect = document.getElementById('status');
+            if (statusSelect) {
+                if (totalHours >= 8) {
+                    statusSelect.value = 'present';
+                } else if (totalHours >= 4 && timeInMinutes >= halfDayStart && timeInMinutes <= halfDayEnd) {
+                    // Only mark as half_day if time_in is between 1:00 PM and 5:30 PM
+                    statusSelect.value = 'half_day';
+                } else if (totalHours >= 4) {
+                    // If working 4+ hours but not in half_day time range, mark as present
+                    statusSelect.value = 'present';
+                } else {
+                    statusSelect.value = 'absent';
+                }
             }
         }
     }
-});
+}
+
+// Auto-calculate hours based on time in/out
+document.getElementById('time_in')?.addEventListener('change', calculateAttendanceHours);
+document.getElementById('time_out')?.addEventListener('change', calculateAttendanceHours);
 
 // Set hours worked based on status
 document.getElementById('status')?.addEventListener('change', function() {
     const hoursWorked = document.getElementById('hours_worked');
+    const overtimeHours = document.getElementById('overtime_hours');
+    const timeIn = document.getElementById('time_in')?.value;
+    const timeOut = document.getElementById('time_out')?.value;
+    
     switch (this.value) {
         case 'absent':
-            hoursWorked.value = '0';
+            if (hoursWorked) hoursWorked.value = '0';
+            if (overtimeHours) overtimeHours.value = '0';
             break;
         case 'half_day':
-            hoursWorked.value = '4';
+            if (hoursWorked) hoursWorked.value = '4';
+            if (overtimeHours) overtimeHours.value = '0';
+            // Recalculate if times are set
+            if (timeIn && timeOut) {
+                calculateAttendanceHours();
+            }
             break;
         case 'present':
         case 'late':
-            hoursWorked.value = '8';
+            if (hoursWorked) hoursWorked.value = '8';
+            if (overtimeHours) overtimeHours.value = '0';
+            // Recalculate if times are set (might exceed 8 hours)
+            if (timeIn && timeOut) {
+                calculateAttendanceHours();
+            }
             break;
     }
 });
@@ -777,6 +818,7 @@ function calculateBulkHours(dateStr) {
     const timeIn = document.querySelector(`input[name="attendance[${dateStr}][time_in]"]`).value;
     const timeOut = document.querySelector(`input[name="attendance[${dateStr}][time_out]"]`).value;
     const hoursInput = document.querySelector(`input[name="attendance[${dateStr}][hours_worked]"]`);
+    const overtimeInput = document.querySelector(`input[name="attendance[${dateStr}][overtime_hours]"]`);
     const statusSelect = document.querySelector(`select[name="attendance[${dateStr}][status]"]`);
     
     if (timeIn && timeOut) {
@@ -785,19 +827,33 @@ function calculateBulkHours(dateStr) {
         
         if (timeOutDate > timeInDate) {
             const diffMs = timeOutDate - timeInDate;
-            let diffHours = diffMs / (1000 * 60 * 60);
+            let totalHours = diffMs / (1000 * 60 * 60);
             
             // Account for lunch break (1 hour) if working more than 5 hours
-            if (diffHours > 5) {
-                diffHours = diffHours - 1; // Subtract 1 hour for lunch break
+            if (totalHours > 5) {
+                totalHours = totalHours - 1; // Subtract 1 hour for lunch break
             }
             
-            // Cap regular work hours at 8.00 (unless it's overtime status)
-            if (statusSelect.value !== 'overtime' && diffHours > 8) {
-                diffHours = 8.00;
+            // Calculate regular hours and overtime automatically
+            let hoursWorked = totalHours;
+            let overtimeHours = 0;
+            
+            // If total hours exceed 8.00, split into regular hours (8.00) and overtime
+            if (totalHours > 8.00) {
+                hoursWorked = 8.00;
+                overtimeHours = totalHours - 8.00;
+                // Round overtime hours to nearest 0.25 increment
+                overtimeHours = roundToQuarter(overtimeHours);
             }
             
-            hoursInput.value = diffHours.toFixed(2);
+            // Round hours worked to 2 decimal places
+            hoursWorked = Math.round(hoursWorked * 100) / 100;
+            
+            // Update the form fields
+            hoursInput.value = hoursWorked.toFixed(2);
+            if (overtimeInput) {
+                overtimeInput.value = overtimeHours.toFixed(2);
+            }
             
             // Auto-set status based on time_in and hours worked
             // Only mark as half_day if time_in is between 1:00 PM (13:00) and 5:30 PM (17:30)
@@ -807,12 +863,12 @@ function calculateBulkHours(dateStr) {
             const halfDayStart = 13 * 60; // 1:00 PM in minutes
             const halfDayEnd = 17 * 60 + 30; // 5:30 PM in minutes
             
-            if (diffHours >= 8) {
+            if (totalHours >= 8) {
                 statusSelect.value = 'present';
-            } else if (diffHours >= 4 && timeInMinutes >= halfDayStart && timeInMinutes <= halfDayEnd) {
+            } else if (totalHours >= 4 && timeInMinutes >= halfDayStart && timeInMinutes <= halfDayEnd) {
                 // Only mark as half_day if time_in is between 1:00 PM and 5:30 PM
                 statusSelect.value = 'half_day';
-            } else if (diffHours >= 4) {
+            } else if (totalHours >= 4) {
                 // If working 4+ hours but not in half_day time range, mark as present
                 statusSelect.value = 'present';
             } else {
@@ -825,26 +881,38 @@ function calculateBulkHours(dateStr) {
 function updateBulkStatus(dateStr) {
     const statusSelect = document.querySelector(`select[name="attendance[${dateStr}][status]"]`);
     const hoursInput = document.querySelector(`input[name="attendance[${dateStr}][hours_worked]"]`);
+    const overtimeInput = document.querySelector(`input[name="attendance[${dateStr}][overtime_hours]"]`);
     const timeInInput = document.querySelector(`input[name="attendance[${dateStr}][time_in]"]`);
     const timeOutInput = document.querySelector(`input[name="attendance[${dateStr}][time_out]"]`);
     
     switch (statusSelect.value) {
         case 'absent':
             hoursInput.value = '0';
+            if (overtimeInput) overtimeInput.value = '0';
             timeInInput.value = '';
             timeOutInput.value = '';
             break;
         case 'half_day':
             hoursInput.value = '4';
+            if (overtimeInput) overtimeInput.value = '0';
             if (!timeInInput.value) timeInInput.value = '08:00';
             if (!timeOutInput.value) timeOutInput.value = '12:00';
+            // Recalculate in case times exceed 4 hours
+            if (timeInInput.value && timeOutInput.value) {
+                calculateBulkHours(dateStr);
+            }
             break;
         case 'present':
         case 'late':
         case 'overtime':
             hoursInput.value = '8';
+            if (overtimeInput) overtimeInput.value = '0';
             if (!timeInInput.value) timeInInput.value = '08:30';
             if (!timeOutInput.value) timeOutInput.value = '17:30';
+            // Recalculate in case times exceed 8 hours
+            if (timeInInput.value && timeOutInput.value) {
+                calculateBulkHours(dateStr);
+            }
             break;
     }
 }
@@ -1096,17 +1164,38 @@ function recalculateHours(container) {
                 
                 if (timeOutDate > timeInDate) {
                     const diffMs = timeOutDate - timeInDate;
-                    let diffHours = diffMs / (1000 * 60 * 60);
+                    let totalHours = diffMs / (1000 * 60 * 60);
                     
                     // Account for lunch break (1 hour) if working more than 5 hours
-                    if (diffHours > 5) {
-                        diffHours = diffHours - 1; // Subtract 1 hour for lunch break
+                    if (totalHours > 5) {
+                        totalHours = totalHours - 1; // Subtract 1 hour for lunch break
                     }
                     
-                    // Update hours worked display (you might want to make this editable too)
+                    // Calculate regular hours and overtime automatically
+                    let hoursWorked = totalHours;
+                    let overtimeHours = 0;
+                    
+                    // If total hours exceed 8.00, split into regular hours (8.00) and overtime
+                    if (totalHours > 8.00) {
+                        hoursWorked = 8.00;
+                        overtimeHours = totalHours - 8.00;
+                        // Round overtime hours to nearest 0.25 increment
+                        overtimeHours = roundToQuarter(overtimeHours);
+                    }
+                    
+                    // Round hours worked to 2 decimal places
+                    hoursWorked = Math.round(hoursWorked * 100) / 100;
+                    
+                    // Update hours worked display
                     const hoursCell = row.querySelector('td:nth-child(5)'); // Hours Worked column
                     if (hoursCell) {
-                        hoursCell.textContent = diffHours.toFixed(2) + ' hrs';
+                        hoursCell.textContent = hoursWorked.toFixed(2) + ' hrs';
+                    }
+                    
+                    // Update overtime hours display
+                    const overtimeCell = row.querySelector('td:nth-child(6)'); // Overtime column
+                    if (overtimeCell) {
+                        overtimeCell.textContent = overtimeHours.toFixed(2) + ' hrs';
                     }
                 }
             }

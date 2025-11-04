@@ -7,7 +7,7 @@ require_once 'inventory.php';
 
 
 // Get all POS sales
-function getPOSSales($status = null, $date_from = null, $date_to = null, $include_incomplete = false) {
+function getPOSSales($status = null, $date_from = null, $date_to = null, $include_incomplete = false, $shop_type = null) {
     global $pdo;
     
     $sql = "SELECT s.*, u.full_name as cashier_name,
@@ -25,6 +25,12 @@ function getPOSSales($status = null, $date_from = null, $date_to = null, $includ
     } elseif ($status) {
         $sql .= " AND s.status = ?";
         $params[] = $status;
+    }
+    
+    // Filter by shop_type if provided
+    if ($shop_type && in_array($shop_type, ['4nsolar', '168shop'])) {
+        $sql .= " AND s.shop_type = ?";
+        $params[] = $shop_type;
     }
     
     if ($date_from) {
@@ -69,6 +75,10 @@ function getPOSSale($id) {
     $sale = $stmt->fetch();
 
     
+    // Ensure shop_type exists (for backward compatibility with existing records)
+    if ($sale && !isset($sale['shop_type'])) {
+        $sale['shop_type'] = '4nsolar';
+    }
 
     if ($sale) {
 
@@ -102,7 +112,7 @@ function getPOSSale($id) {
 
 // Create new POS sale
 
-function createPOSSale($customer_name = null, $customer_phone = null) {
+function createPOSSale($customer_name = null, $customer_phone = null, $shop_type = '4nsolar') {
 
     global $pdo;
 
@@ -114,17 +124,24 @@ function createPOSSale($customer_name = null, $customer_phone = null) {
 
         
 
+        // Validate shop_type
+        if (!in_array($shop_type, ['4nsolar', '168shop'])) {
+            $shop_type = '4nsolar';
+        }
+
+        
+
         $stmt = $pdo->prepare("INSERT INTO pos_sales 
 
-                              (receipt_number, customer_name, customer_phone, status, created_by) 
+                              (receipt_number, customer_name, customer_phone, shop_type, status, created_by) 
 
-                              VALUES (?, ?, ?, 'pending', ?)");
+                              VALUES (?, ?, ?, ?, 'pending', ?)");
 
         
 
         $stmt->execute([
 
-            $receipt_number, $customer_name, $customer_phone, $_SESSION['user_id'] ?? 1
+            $receipt_number, $customer_name, $customer_phone, $shop_type, $_SESSION['user_id'] ?? 1
 
         ]);
 
@@ -763,7 +780,7 @@ function cancelPOSSale($sale_id) {
 
 // Get POS statistics
 
-function getPOSStats($date_from = null, $date_to = null) {
+function getPOSStats($date_from = null, $date_to = null, $shop_type = null) {
 
     global $pdo;
 
@@ -773,27 +790,40 @@ function getPOSStats($date_from = null, $date_to = null) {
 
     $date_condition = "";
 
+    $shop_condition = "";
+
     $params = [];
+
+    
+
+    // Build shop_type condition
+    if ($shop_type && in_array($shop_type, ['4nsolar', '168shop'])) {
+
+        $shop_condition = " AND s.shop_type = ?";
+
+        $params[] = $shop_type;
+
+    }
 
     
 
     if ($date_from && $date_to) {
 
-        $date_condition = " AND DATE(created_at) BETWEEN ? AND ?";
+        $date_condition = " AND DATE(s.created_at) BETWEEN ? AND ?";
 
-        $params = [$date_from, $date_to];
+        $params = array_merge($params, [$date_from, $date_to]);
 
     } elseif ($date_from) {
 
-        $date_condition = " AND DATE(created_at) >= ?";
+        $date_condition = " AND DATE(s.created_at) >= ?";
 
-        $params = [$date_from];
+        $params = array_merge($params, [$date_from]);
 
     } elseif ($date_to) {
 
-        $date_condition = " AND DATE(created_at) <= ?";
+        $date_condition = " AND DATE(s.created_at) <= ?";
 
-        $params = [$date_to];
+        $params = array_merge($params, [$date_to]);
 
     }
 
@@ -803,7 +833,7 @@ function getPOSStats($date_from = null, $date_to = null) {
 
     $stmt = $pdo->prepare("SELECT COUNT(*) as count, SUM(total_amount) as total 
 
-                          FROM pos_sales WHERE status = 'completed'" . $date_condition);
+                          FROM pos_sales s WHERE s.status = 'completed'" . $shop_condition . $date_condition);
 
     $stmt->execute($params);
 
@@ -817,11 +847,11 @@ function getPOSStats($date_from = null, $date_to = null) {
 
     // Sales by payment method
 
-    $stmt = $pdo->prepare("SELECT payment_method, COUNT(*) as count, SUM(total_amount) as total 
+    $stmt = $pdo->prepare("SELECT s.payment_method, COUNT(*) as count, SUM(s.total_amount) as total 
 
-                          FROM pos_sales WHERE status = 'completed'" . $date_condition . " 
+                          FROM pos_sales s WHERE s.status = 'completed'" . $shop_condition . $date_condition . " 
 
-                          GROUP BY payment_method");
+                          GROUP BY s.payment_method");
 
     $stmt->execute($params);
 
@@ -831,11 +861,19 @@ function getPOSStats($date_from = null, $date_to = null) {
 
     // Today's sales
 
+    $today_params = [];
+
+    if ($shop_type && in_array($shop_type, ['4nsolar', '168shop'])) {
+
+        $today_params[] = $shop_type;
+
+    }
+
     $stmt = $pdo->prepare("SELECT COUNT(*) as count, SUM(total_amount) as total 
 
-                          FROM pos_sales WHERE status = 'completed' AND DATE(created_at) = CURDATE()");
+                          FROM pos_sales s WHERE s.status = 'completed' AND DATE(s.created_at) = CURDATE()" . ($shop_type ? " AND s.shop_type = ?" : ""));
 
-    $stmt->execute();
+    $stmt->execute($today_params);
 
     $today = $stmt->fetch();
 
@@ -844,6 +882,32 @@ function getPOSStats($date_from = null, $date_to = null) {
     $stats['today_revenue'] = $today['total'] ?: 0;
 
     
+
+    // Calculate total profit (30% of (selling_price - base_price) * quantity)
+    // Profit formula: (unit_price - base_price) * quantity * 0.30
+    // $date_condition already contains s.created_at, so use it directly
+    $profit_sql = "SELECT SUM((si.unit_price - COALESCE(i.base_price, 0)) * si.quantity * 0.30) as total_profit
+                   FROM pos_sale_items si
+                   INNER JOIN pos_sales s ON si.sale_id = s.id
+                   LEFT JOIN inventory_items i ON si.inventory_item_id = i.id
+                   WHERE s.status = 'completed'" . $shop_condition . $date_condition;
+    
+    $stmt = $pdo->prepare($profit_sql);
+    $stmt->execute($params);
+    $profit_result = $stmt->fetch();
+    $stats['total_profit'] = $profit_result['total_profit'] ?: 0;
+    
+    // Calculate today's profit
+    $today_profit_sql = "SELECT SUM((si.unit_price - COALESCE(i.base_price, 0)) * si.quantity * 0.30) as today_profit
+                        FROM pos_sale_items si
+                        INNER JOIN pos_sales s ON si.sale_id = s.id
+                        LEFT JOIN inventory_items i ON si.inventory_item_id = i.id
+                        WHERE s.status = 'completed' AND DATE(s.created_at) = CURDATE()" . ($shop_type ? " AND s.shop_type = ?" : "");
+    
+    $stmt = $pdo->prepare($today_profit_sql);
+    $stmt->execute($today_params);
+    $today_profit_result = $stmt->fetch();
+    $stats['today_profit'] = $today_profit_result['today_profit'] ?: 0;
 
     return $stats;
 
