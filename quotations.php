@@ -939,22 +939,7 @@ document.addEventListener('DOMContentLoaded', function() {
                    oninput="filterQuotations()">
         </div>
         
-        <!-- Status Filter -->
-        <div>
-            <label for="status-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
-            <select id="status-filter" onchange="filterQuotations()" 
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-700 dark:text-white">
-                <option value="">All Statuses</option>
-                <option value="draft">Draft</option>
-                <option value="sent">Sent</option>
-                <option value="under_review">Under Review</option>
-                <option value="accepted">Approved</option>
-                <option value="ongoing">Ongoing</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
-                <option value="expired">Expired</option>
-            </select>
-        </div>
+        
         
         <!-- Date Range Filter -->
         <div>
@@ -5865,7 +5850,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function filterQuotations() {
     const searchTerm = document.getElementById('quote-search').value.toLowerCase();
-    const statusFilter = document.getElementById('status-filter').value;
+    let statusFilter = '';
+    const statusEl = document.getElementById('status-filter');
+    if (statusEl) { statusFilter = statusEl.value; }
     const dateFilter = document.getElementById('date-filter').value;
     
     filteredQuotes = allQuotes.filter(quote => {
@@ -5900,12 +5887,22 @@ function setQuickFilter(filterType) {
     event.target.classList.add('active', 'bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white');
     
     // Set filters based on quick filter type
-    if (filterType === 'installment') {
-        document.getElementById('status-filter').value = '';
+    const statusEl = document.getElementById('status-filter');
+    if (filterType === '') {
+        if (statusEl) { statusEl.value = ''; }
+        filteredQuotes = [...allQuotes];
+    } else if (filterType === 'installment') {
+        if (statusEl) { statusEl.value = ''; }
         filteredQuotes = allQuotes.filter(quote => quote.hasInstallment === 'yes');
     } else {
-        document.getElementById('status-filter').value = filterType;
-        filterQuotations();
+        // Status-based filter
+        if (statusEl) {
+            statusEl.value = filterType;
+            filterQuotations();
+            return; // filterQuotations will update display and counts
+        } else {
+            filteredQuotes = allQuotes.filter(quote => quote.status === filterType);
+        }
     }
     
     updateTableDisplay();
@@ -5991,7 +5988,8 @@ function updateResultsCount() {
 
 function clearFilters() {
     document.getElementById('quote-search').value = '';
-    document.getElementById('status-filter').value = '';
+    const statusEl = document.getElementById('status-filter');
+    if (statusEl) { statusEl.value = ''; }
     document.getElementById('date-filter').value = '';
     
     // Reset quick filter buttons

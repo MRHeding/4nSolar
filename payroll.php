@@ -366,14 +366,17 @@ include 'includes/header.php';
             $avg_salary = $total_employees > 0 ? $total_salary / $total_employees : 0;
             ?>
             <div class="bg-blue-600 text-white rounded-lg p-6 text-center">
+                <div class="mb-2"><i class="fas fa-users text-2xl opacity-90"></i></div>
                 <h4 class="text-3xl font-bold mb-2"><?php echo $total_employees; ?></h4>
                 <small class="text-blue-100 text-sm">Total Employees</small>
             </div>
             <div class="bg-green-600 text-white rounded-lg p-6 text-center">
+                <div class="mb-2"><i class="fas fa-user-check text-2xl opacity-90"></i></div>
                 <h4 class="text-3xl font-bold mb-2"><?php echo $active_employees; ?></h4>
                 <small class="text-green-100 text-sm">Active</small>
             </div>
             <div class="bg-cyan-600 text-white rounded-lg p-6 text-center">
+                <div class="mb-2"><i class="fas fa-wallet text-2xl opacity-90"></i></div>
                 <h4 class="text-3xl font-bold mb-2">₱<?php echo number_format($avg_salary, 2); ?></h4>
                 <small class="text-cyan-100 text-sm">Average Salary</small>
             </div>

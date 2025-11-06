@@ -24,33 +24,38 @@ if ($_POST) {
     switch ($action) {
         case 'add':
             if (hasPermission([ROLE_ADMIN, ROLE_HR, ROLE_SALES])) {
-                // Handle model field - use custom model if provided, otherwise use selected model
-                $model = $_POST['model'];
-                if ($model === 'Custom' && !empty($_POST['custom_model'])) {
-                    $model = $_POST['custom_model'];
-                }
-                
-                $data = [
-                    'brand' => $_POST['brand'],
-                    'model' => $model,
-                    'category_id' => $_POST['category_id'],
-                    'size_specification' => $_POST['size_specification'],
-                    'base_price' => $_POST['base_price'],
-                    'selling_price' => $_POST['selling_price'],
-                    'discount_percentage' => $_POST['discount_percentage'] ?? 0,
-                    'supplier_id' => $_POST['supplier_id'],
-                    'stock_quantity' => $_POST['stock_quantity'],
-                    'minimum_stock' => $_POST['minimum_stock'],
-                    'description' => $_POST['description']
-                ];
-                
-                $image_file = isset($_FILES['product_image']) ? $_FILES['product_image'] : null;
-                
-                if (addInventoryItem($data, $image_file)) {
-                    header("Location: inventory.php?message=" . urlencode('Item added successfully!'));
-                    exit();
+                // Validate supplier is selected
+                if (empty($_POST['supplier_id']) || $_POST['supplier_id'] == '') {
+                    $error = 'Please select a supplier. Supplier is required when adding a new item.';
                 } else {
-                    $error = 'Failed to add item. Please check the image format and size.';
+                    // Handle model field - use custom model if provided, otherwise use selected model
+                    $model = $_POST['model'];
+                    if ($model === 'Custom' && !empty($_POST['custom_model'])) {
+                        $model = $_POST['custom_model'];
+                    }
+                    
+                    $data = [
+                        'brand' => $_POST['brand'],
+                        'model' => $model,
+                        'category_id' => $_POST['category_id'],
+                        'size_specification' => $_POST['size_specification'],
+                        'base_price' => $_POST['base_price'],
+                        'selling_price' => $_POST['selling_price'],
+                        'discount_percentage' => $_POST['discount_percentage'] ?? 0,
+                        'supplier_id' => $_POST['supplier_id'],
+                        'stock_quantity' => 0,
+                        'minimum_stock' => $_POST['minimum_stock'],
+                        'description' => $_POST['description']
+                    ];
+                    
+                    $image_file = isset($_FILES['product_image']) ? $_FILES['product_image'] : null;
+                    
+                    if (addInventoryItem($data, $image_file)) {
+                        header("Location: inventory.php?message=" . urlencode('Item added successfully!'));
+                        exit();
+                    } else {
+                        $error = 'Failed to add item. Please check the image format and size.';
+                    }
                 }
             } else {
                 $error = 'You do not have permission to add items.';
@@ -474,22 +479,7 @@ include 'includes/header.php';
                     </a>
                 </div>
                 
-                <!-- Popular Brands -->
-                <div class="border-t border-gray-200 dark:border-gray-600 p-2">
-                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Popular Brands</div>
-                    <a href="?brand=Canadian+Solar" class="w-full flex items-center px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded-md transition">
-                        <i class="fas fa-solar-panel w-5 text-blue-400"></i>
-                        Canadian Solar
-                    </a>
-                    <a href="?brand=OSDA" class="w-full flex items-center px-3 py-2 text-sm text-green-700 hover:bg-green-50 rounded-md transition">
-                        <i class="fas fa-battery-full w-5 text-green-400"></i>
-                        OSDA
-                    </a>
-                    <a href="?brand=SUNRI" class="w-full flex items-center px-3 py-2 text-sm text-yellow-700 hover:bg-yellow-50 rounded-md transition">
-                        <i class="fas fa-sun w-5 text-yellow-400"></i>
-                        SUNRI
-                    </a>
-                </div>
+                
             </div>
         </div>
         
@@ -995,8 +985,8 @@ include 'includes/header.php';
             </div>
             
             <div>
-                <label for="supplier_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Supplier</label>
-                <select id="supplier_id" name="supplier_id"
+                <label for="supplier_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Supplier <?php if ($action == 'add'): ?><span class="text-red-500">*</span><?php endif; ?></label>
+                <select id="supplier_id" name="supplier_id" <?php if ($action == 'add'): ?>required<?php endif; ?>
                         class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent">
                     <option value="">Select Supplier</option>
                     <?php foreach ($suppliers as $supplier): ?>
@@ -1006,15 +996,18 @@ include 'includes/header.php';
                     </option>
                     <?php endforeach; ?>
                 </select>
+                <?php if ($action == 'add'): ?>
+                <p class="text-xs text-red-500 mt-1">Supplier is required when adding a new item.</p>
+                <?php endif; ?>
             </div>
             
             <div>
+                <?php if ($action == 'edit' && isset($item)): ?>
                 <label for="stock_quantity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stock Quantity</label>
                 <input type="number" min="0" id="stock_quantity" name="stock_quantity" required
                        value="<?php echo isset($item) ? $item['stock_quantity'] : '0'; ?>"
                        <?php echo ($action == 'edit' && isset($item)) ? 'readonly' : ''; ?>
                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent <?php echo ($action == 'edit' && isset($item)) ? 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed' : ''; ?>">
-                <?php if ($action == 'edit' && isset($item)): ?>
                 <p class="text-sm text-gray-500 mt-1">
                     <i class="fas fa-info-circle mr-1"></i>
                     Stock quantity cannot be edited directly. Use stock adjustment features to modify inventory levels.
@@ -2402,11 +2395,30 @@ function focusInventorySearch() {
     }
 }
 
-// Form validation for model field
+// Form validation for model field and supplier
 function validateModelForm() {
     const modelSelect = document.getElementById('model');
     const customModelInput = document.getElementById('custom-model');
+    const supplierSelect = document.getElementById('supplier_id');
+    const action = '<?php echo $action; ?>';
     
+    // Validate supplier when adding new item
+    if (action === 'add') {
+        if (!supplierSelect || !supplierSelect.value || supplierSelect.value === '') {
+            alert('Please select a supplier. Supplier is required when adding a new item.');
+            if (supplierSelect) {
+                supplierSelect.focus();
+                supplierSelect.style.borderColor = '#ef4444';
+                // Remove error styling after 3 seconds
+                setTimeout(() => {
+                    supplierSelect.style.borderColor = '';
+                }, 3000);
+            }
+            return false;
+        }
+    }
+    
+    // Validate custom model if selected
     if (modelSelect && customModelInput) {
         if (modelSelect.value === 'Custom') {
             if (!customModelInput.value.trim()) {
