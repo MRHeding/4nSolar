@@ -261,6 +261,12 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a class="nav-link sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'invoices.php' ? 'active' : ''; ?>" href="invoices.php">
+                                    <i class="fas fa-receipt"></i>
+                                    <span class="ms-2">Invoices</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a class="nav-link sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'projects.php' ? 'active' : ''; ?>" href="projects.php">
                                     <i class="fas fa-project-diagram"></i>
                                     <span class="ms-2">Projects</span>
@@ -384,6 +390,12 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
                             <a href="quotations.php" class="sidebar-link flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white transition-all duration-200 <?php echo basename($_SERVER['PHP_SELF']) == 'quotations.php' ? 'bg-solar-blue text-white' : ''; ?>">
                                 <i class="fas fa-file-invoice w-5 text-center"></i>
                                 <span class="transition-all duration-300">Quotations</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="invoices.php" class="sidebar-link flex items-center space-x-3 text-gray-700 p-3 rounded-lg hover:bg-solar-blue hover:text-white transition-all duration-200 <?php echo basename($_SERVER['PHP_SELF']) == 'invoices.php' ? 'bg-solar-blue text-white' : ''; ?>">
+                                <i class="fas fa-receipt w-5 text-center"></i>
+                                <span class="transition-all duration-300">Invoices</span>
                             </a>
                         </li>
                         <li>

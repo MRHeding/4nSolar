@@ -462,7 +462,8 @@ function getQuote($id) {
     if ($quote) {
         // Get quote items with priority ordering
         $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.size_specification, 
-                              c.name as category_name, i.stock_quantity, i.selling_price as current_price, i.generate_serials,
+                              c.name as category_name, i.stock_quantity, i.selling_price as current_price, i.base_price,
+                              i.generate_serials, i.supplier_id, s.name as supplier_name,
                               qi.is_direct_quote,
                               CASE 
                                 WHEN c.name = 'Hybrid Inverter' THEN 1
@@ -475,6 +476,7 @@ function getQuote($id) {
                               FROM quote_items qi 
                               LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
                               LEFT JOIN categories c ON i.category_id = c.id 
+                              LEFT JOIN suppliers s ON i.supplier_id = s.id 
                               WHERE qi.quote_id = ?
                               ORDER BY priority_order ASC, qi.id ASC");
         $stmt->execute([$id]);
@@ -2564,121 +2566,405 @@ function generateDirectQuoteSerials($inventory_item_id, $quantity, $prefix) {
     }
 }
 
-// Create purchase order from quotation
-function createPurchaseOrder($quote_id, $po_number, $supplier_name, $contact_person, $supplier_phone, $supplier_email, $supplier_address, $special_instructions, $delivery_requirements, $items_to_order) {
+// ==================== INVOICE FUNCTIONS ====================
+
+// Generate unique invoice number
+function generateInvoiceNumber() {
+    global $pdo;
+    
+    // Try to generate a unique invoice number
+    $max_attempts = 10;
+    $attempt = 0;
+    
+    while ($attempt < $max_attempts) {
+        $invoice_number = 'INT-' . str_pad(rand(1, 9999), 3, '0', STR_PAD_LEFT);
+        
+        // Check if this number already exists
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoices WHERE invoice_number = ?");
+            $stmt->execute([$invoice_number]);
+            $count = $stmt->fetchColumn();
+            
+            if ($count == 0) {
+                return $invoice_number;
+            }
+        } catch(PDOException $e) {
+            // If table doesn't exist, just return the number
+            error_log("Error checking invoice number: " . $e->getMessage());
+            return $invoice_number;
+        }
+        
+        $attempt++;
+    }
+    
+    // Fallback: use timestamp-based number
+    return 'INT-' . date('Ymd') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+}
+
+// Generate unique P.O. number for invoices
+function generatePONumber() {
+    global $pdo;
+    
+    $yearPrefix = date('Y');
+    $prefix = 'PO-' . $yearPrefix . '-';
+    
+    try {
+        // Check both invoices and purchase_orders tables for existing P.O. numbers
+        $stmt = $pdo->prepare("
+            SELECT po_number FROM (
+                SELECT po_number FROM invoices WHERE po_number LIKE ? AND po_number IS NOT NULL
+                UNION
+                SELECT po_number FROM purchase_orders WHERE po_number LIKE ?
+            ) AS combined ORDER BY po_number DESC LIMIT 1
+        ");
+        $stmt->execute([$prefix . '%', $prefix . '%']);
+        $lastPONumber = $stmt->fetchColumn();
+        
+        if ($lastPONumber) {
+            $lastSequence = (int)substr($lastPONumber, strrpos($lastPONumber, '-') + 1);
+            $nextSequence = $lastSequence + 1;
+        } else {
+            $nextSequence = 1;
+        }
+        
+        return sprintf('%s%04d', $prefix, $nextSequence);
+    } catch(PDOException $e) {
+        // Fallback if purchase_orders table doesn't exist
+        error_log("Error generating P.O. number: " . $e->getMessage());
+        try {
+            $stmt = $pdo->prepare("SELECT po_number FROM invoices WHERE po_number LIKE ? AND po_number IS NOT NULL ORDER BY po_number DESC LIMIT 1");
+            $stmt->execute([$prefix . '%']);
+            $lastPONumber = $stmt->fetchColumn();
+            
+            if ($lastPONumber) {
+                $lastSequence = (int)substr($lastPONumber, strrpos($lastPONumber, '-') + 1);
+                $nextSequence = $lastSequence + 1;
+            } else {
+                $nextSequence = 1;
+            }
+            
+            return sprintf('%s%04d', $prefix, $nextSequence);
+        } catch(PDOException $e2) {
+            // Final fallback
+            return $prefix . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+        }
+    }
+}
+
+// Create new invoice
+function createInvoice($data) {
     global $pdo;
     
     try {
-        $pdo->beginTransaction();
+        $invoice_number = generateInvoiceNumber();
         
-        // Insert purchase order record
-        $stmt = $pdo->prepare("INSERT INTO purchase_orders 
-                               (quote_id, po_number, supplier_name, contact_person, supplier_phone, supplier_email, supplier_address, special_instructions, delivery_requirements, status, created_at) 
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())");
+        // Ensure user_id is set
+        $created_by = $_SESSION['user_id'] ?? null;
+        if (!$created_by) {
+            error_log("Invoice creation failed: No user_id in session");
+            return ['success' => false, 'error' => 'User session not found'];
+        }
+        
+        // Validate required fields
+        if (empty($data['bill_to_name'])) {
+            error_log("Invoice creation failed: bill_to_name is required");
+            return ['success' => false, 'error' => 'Bill To Name is required'];
+        }
+        if (empty($data['invoice_date'])) {
+            error_log("Invoice creation failed: invoice_date is required");
+            return ['success' => false, 'error' => 'Invoice Date is required'];
+        }
+        if (empty($data['due_date'])) {
+            error_log("Invoice creation failed: due_date is required");
+            return ['success' => false, 'error' => 'Due Date is required'];
+        }
+        
+        // Ensure quotation_id is null if empty or invalid
+        $quotation_id = null;
+        if (!empty($data['quotation_id']) && is_numeric($data['quotation_id'])) {
+            // Verify quotation exists before setting foreign key
+            $check_stmt = $pdo->prepare("SELECT id FROM quotations WHERE id = ?");
+            $check_stmt->execute([$data['quotation_id']]);
+            if ($check_stmt->fetch()) {
+                $quotation_id = intval($data['quotation_id']);
+            }
+        }
+        
+        $stmt = $pdo->prepare("INSERT INTO invoices 
+                              (invoice_number, quotation_id, invoice_date, due_date, po_number,
+                               bill_to_name, bill_to_address, ship_to_name, ship_to_address,
+                               subtotal, tax_rate, tax_amount, total_amount,
+                               terms_conditions, bank_name, bank_account_number, bank_routing,
+                               status, notes, created_by) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         
         $result = $stmt->execute([
-            $quote_id, 
-            $po_number, 
-            $supplier_name, 
-            $contact_person, 
-            $supplier_phone, 
-            $supplier_email, 
-            $supplier_address, 
-            $special_instructions, 
-            $delivery_requirements
+            $invoice_number,
+            $quotation_id, // Use validated quotation_id
+            $data['invoice_date'],
+            $data['due_date'],
+            $data['po_number'] ?? null,
+            $data['bill_to_name'],
+            $data['bill_to_address'] ?? null,
+            $data['ship_to_name'] ?? $data['bill_to_name'],
+            $data['ship_to_address'] ?? $data['bill_to_address'],
+            $data['subtotal'] ?? 0,
+            $data['tax_rate'] ?? 0,
+            $data['tax_amount'] ?? 0,
+            $data['total_amount'] ?? 0,
+            $data['terms_conditions'] ?? null,
+            $data['bank_name'] ?? null,
+            $data['bank_account_number'] ?? null,
+            $data['bank_routing'] ?? null,
+            $data['status'] ?? 'draft',
+            $data['notes'] ?? null,
+            $created_by
         ]);
         
-        if (!$result) {
-            throw new Exception('Failed to create purchase order record');
+        if ($result) {
+            $invoice_id = $pdo->lastInsertId();
+            return ['success' => true, 'invoice_id' => $invoice_id];
+        } else {
+            $error_info = $stmt->errorInfo();
+            error_log("Invoice creation failed: " . print_r($error_info, true));
+            return ['success' => false, 'error' => 'Database insert failed: ' . ($error_info[2] ?? 'Unknown error')];
         }
-        
-        $po_id = $pdo->lastInsertId();
-        
-        // Get quote items for the selected items
-        $placeholders = str_repeat('?,', count($items_to_order) - 1) . '?';
-        $stmt = $pdo->prepare("SELECT qi.*, i.brand, i.model, i.category_id, c.name as category_name 
-                              FROM quote_items qi 
-                              LEFT JOIN inventory_items i ON qi.inventory_item_id = i.id 
-                              LEFT JOIN categories c ON i.category_id = c.id 
-                              WHERE qi.id IN ($placeholders)");
-        $stmt->execute($items_to_order);
-        $quote_items = $stmt->fetchAll();
-        
-        // Insert purchase order items
-        foreach ($quote_items as $item) {
-            $stmt = $pdo->prepare("INSERT INTO purchase_order_items 
-                                   (po_id, quote_item_id, inventory_item_id, brand, model, category_name, quantity, unit_price, total_amount, created_at) 
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-            
-            $total_amount = $item['unit_price'] * $item['quantity'];
-            
-            $stmt->execute([
-                $po_id,
-                $item['id'],
-                $item['inventory_item_id'],
-                $item['brand'],
-                $item['model'],
-                $item['category_name'],
-                $item['quantity'],
-                $item['unit_price'],
-                $total_amount
-            ]);
-        }
-        
-        $pdo->commit();
-        
-        return [
-            'success' => true, 
-            'message' => 'Purchase order created successfully',
-            'po_id' => $po_id,
-            'po_number' => $po_number
-        ];
-        
-    } catch(Exception $e) {
-        $pdo->rollBack();
-        return ['success' => false, 'message' => 'Failed to create purchase order: ' . $e->getMessage()];
+    } catch(PDOException $e) {
+        error_log("Invoice creation error: " . $e->getMessage());
+        error_log("SQL State: " . $e->getCode());
+        return ['success' => false, 'error' => $e->getMessage()];
     }
 }
 
-// Get purchase orders for a quotation
-function getPurchaseOrders($quote_id) {
+// Get all invoices
+function getInvoices($status = null, $search_term = null) {
     global $pdo;
     
-    $stmt = $pdo->prepare("SELECT po.*, 
-                           (SELECT COUNT(*) FROM purchase_order_items WHERE po_id = po.id) as items_count,
-                           (SELECT SUM(total_amount) FROM purchase_order_items WHERE po_id = po.id) as total_amount
-                           FROM purchase_orders po 
-                           WHERE po.quote_id = ? 
-                           ORDER BY po.created_at DESC");
-    $stmt->execute([$quote_id]);
+    $sql = "SELECT i.*, u.full_name as created_by_name, q.quote_number as quotation_number
+            FROM invoices i 
+            LEFT JOIN users u ON i.created_by = u.id 
+            LEFT JOIN quotations q ON i.quotation_id = q.id 
+            WHERE 1=1";
+    
+    $params = [];
+    
+    if ($status) {
+        $sql .= " AND i.status = ?";
+        $params[] = $status;
+    }
+    
+    if ($search_term) {
+        $sql .= " AND (i.invoice_number LIKE ? OR i.bill_to_name LIKE ? OR i.po_number LIKE ?)";
+        $searchParam = "%{$search_term}%";
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+    }
+    
+    $sql .= " ORDER BY i.created_at DESC";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     return $stmt->fetchAll();
 }
 
-// Get purchase order details with items
-function getPurchaseOrder($po_id) {
+// Get single invoice with items
+function getInvoice($id) {
     global $pdo;
     
-    // Get PO details
-    $stmt = $pdo->prepare("SELECT po.*, q.quote_number, q.customer_name 
-                           FROM purchase_orders po 
-                           LEFT JOIN quotations q ON po.quote_id = q.id 
-                           WHERE po.id = ?");
-    $stmt->execute([$po_id]);
-    $po = $stmt->fetch();
+    $stmt = $pdo->prepare("SELECT i.*, u.full_name as created_by_name, q.quote_number as quotation_number
+                          FROM invoices i 
+                          LEFT JOIN users u ON i.created_by = u.id 
+                          LEFT JOIN quotations q ON i.quotation_id = q.id 
+                          WHERE i.id = ?");
+    $stmt->execute([$id]);
+    $invoice = $stmt->fetch();
     
-    if (!$po) {
-        return null;
+    if ($invoice) {
+        $stmt = $pdo->prepare("SELECT ii.*, inv.brand, inv.model, inv.size_specification, c.name as category_name
+                              FROM invoice_items ii 
+                              LEFT JOIN inventory_items inv ON ii.inventory_item_id = inv.id 
+                              LEFT JOIN categories c ON inv.category_id = c.id 
+                              WHERE ii.invoice_id = ?
+                              ORDER BY ii.id ASC");
+        $stmt->execute([$id]);
+        $invoice['items'] = $stmt->fetchAll();
     }
     
-    // Get PO items
-    $stmt = $pdo->prepare("SELECT poi.*, qi.serial_numbers 
-                           FROM purchase_order_items poi 
-                           LEFT JOIN quote_items qi ON poi.quote_item_id = qi.id 
-                           WHERE poi.po_id = ? 
-                           ORDER BY poi.id");
-    $stmt->execute([$po_id]);
-    $po['items'] = $stmt->fetchAll();
-    
-    return $po;
+    return $invoice;
 }
+
+// Add item to invoice
+function addInvoiceItem($invoice_id, $data) {
+    global $pdo;
+    
+    try {
+        // Validate required fields
+        if (empty($data['description']) || !isset($data['quantity']) || !isset($data['unit_price'])) {
+            error_log("Invoice item validation failed: Missing required fields");
+            return false;
+        }
+        
+        $quantity = floatval($data['quantity']);
+        $unit_price = floatval($data['unit_price']);
+        $amount = $quantity * $unit_price;
+        
+        // Validate numeric values
+        if ($quantity <= 0 || $unit_price < 0) {
+            error_log("Invoice item validation failed: Invalid quantity or price");
+            return false;
+        }
+        
+        $stmt = $pdo->prepare("INSERT INTO invoice_items 
+                              (invoice_id, inventory_item_id, description, quantity, unit_price, amount) 
+                              VALUES (?, ?, ?, ?, ?, ?)");
+        
+        $result = $stmt->execute([
+            $invoice_id,
+            !empty($data['inventory_item_id']) ? $data['inventory_item_id'] : null,
+            trim($data['description']),
+            $quantity,
+            $unit_price,
+            $amount
+        ]);
+        
+        if ($result) {
+            updateInvoiceTotals($invoice_id);
+            return true;
+        } else {
+            error_log("Invoice item insert failed: Execute returned false");
+            return false;
+        }
+    } catch(PDOException $e) {
+        error_log("Invoice item error: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Update invoice totals
+function updateInvoiceTotals($invoice_id) {
+    global $pdo;
+    
+    try {
+        // Calculate subtotal
+        $stmt = $pdo->prepare("SELECT SUM(amount) as subtotal FROM invoice_items WHERE invoice_id = ?");
+        $stmt->execute([$invoice_id]);
+        $subtotal = $stmt->fetchColumn() ?? 0;
+        
+        // Get tax rate
+        $stmt = $pdo->prepare("SELECT tax_rate FROM invoices WHERE id = ?");
+        $stmt->execute([$invoice_id]);
+        $tax_rate = $stmt->fetchColumn() ?? 0;
+        
+        // Calculate tax and total
+        $tax_amount = $subtotal * ($tax_rate / 100);
+        $total_amount = $subtotal + $tax_amount;
+        
+        // Update invoice
+        $stmt = $pdo->prepare("UPDATE invoices 
+                              SET subtotal = ?, tax_amount = ?, total_amount = ? 
+                              WHERE id = ?");
+        $stmt->execute([$subtotal, $tax_amount, $total_amount, $invoice_id]);
+        
+        return true;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Delete invoice item
+function deleteInvoiceItem($item_id) {
+    global $pdo;
+    
+    try {
+        // Get invoice_id before deleting
+        $stmt = $pdo->prepare("SELECT invoice_id FROM invoice_items WHERE id = ?");
+        $stmt->execute([$item_id]);
+        $invoice_id = $stmt->fetchColumn();
+        
+        // Delete item
+        $stmt = $pdo->prepare("DELETE FROM invoice_items WHERE id = ?");
+        $stmt->execute([$item_id]);
+        
+        // Update totals
+        if ($invoice_id) {
+            updateInvoiceTotals($invoice_id);
+        }
+        
+        return true;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Update invoice
+function updateInvoice($id, $data) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE invoices SET 
+                              invoice_date = ?, due_date = ?, po_number = ?,
+                              bill_to_name = ?, bill_to_address = ?,
+                              ship_to_name = ?, ship_to_address = ?,
+                              tax_rate = ?, terms_conditions = ?,
+                              bank_name = ?, bank_account_number = ?, bank_routing = ?,
+                              status = ?, notes = ?
+                              WHERE id = ?");
+        
+        $stmt->execute([
+            $data['invoice_date'],
+            $data['due_date'],
+            $data['po_number'] ?? null,
+            $data['bill_to_name'],
+            $data['bill_to_address'] ?? null,
+            $data['ship_to_name'] ?? $data['bill_to_name'],
+            $data['ship_to_address'] ?? $data['bill_to_address'],
+            $data['tax_rate'] ?? 0,
+            $data['terms_conditions'] ?? null,
+            $data['bank_name'] ?? null,
+            $data['bank_account_number'] ?? null,
+            $data['bank_routing'] ?? null,
+            $data['status'] ?? 'draft',
+            $data['notes'] ?? null,
+            $id
+        ]);
+        
+        // Update totals if tax rate changed
+        updateInvoiceTotals($id);
+        
+        return true;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Delete invoice
+function deleteInvoice($id) {
+    global $pdo;
+    
+    try {
+        // First verify invoice exists
+        $check_stmt = $pdo->prepare("SELECT id FROM invoices WHERE id = ?");
+        $check_stmt->execute([$id]);
+        if (!$check_stmt->fetch()) {
+            error_log("Delete invoice failed: Invoice ID $id not found");
+            return false;
+        }
+        
+        // Delete invoice (invoice_items will be deleted automatically due to CASCADE)
+        $stmt = $pdo->prepare("DELETE FROM invoices WHERE id = ?");
+        $result = $stmt->execute([$id]);
+        
+        if ($result && $stmt->rowCount() > 0) {
+            return true;
+        } else {
+            error_log("Delete invoice failed: No rows affected for invoice ID $id");
+            return false;
+        }
+    } catch(PDOException $e) {
+        error_log("Delete invoice error: " . $e->getMessage());
+        return false;
+    }
+}
+
 ?>

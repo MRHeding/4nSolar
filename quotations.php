@@ -4,6 +4,7 @@ require_once 'includes/auth.php';
 require_once 'includes/inventory.php';
 require_once 'includes/suppliers.php';
 require_once 'includes/installments.php';
+require_once 'includes/purchase_orders.php';
 
 if (!isLoggedIn()) {
     header("Location: login.php");
@@ -446,35 +447,6 @@ if ($_POST) {
             }
             break;
             
-        case 'create_purchase_order':
-            if ($quote_id && isset($_POST['item_to_order'])) {
-                $supplier_name = $_POST['supplier_name'] ?? '';
-                $contact_person = $_POST['contact_person'] ?? '';
-                $supplier_phone = $_POST['supplier_phone'] ?? '';
-                $supplier_email = $_POST['supplier_email'] ?? '';
-                $supplier_address = $_POST['supplier_address'] ?? '';
-                $special_instructions = $_POST['special_instructions'] ?? '';
-                $delivery_requirements = $_POST['delivery_requirements'] ?? '';
-                $items_to_order = $_POST['item_to_order'];
-                
-                // Generate purchase order number
-                $po_number = 'PO-' . date('Y') . '-' . str_pad($quote_id, 4, '0', STR_PAD_LEFT);
-                
-                // Create purchase order record
-                $result = createPurchaseOrder($quote_id, $po_number, $supplier_name, $contact_person, $supplier_phone, $supplier_email, $supplier_address, $special_instructions, $delivery_requirements, $items_to_order);
-                
-                if ($result['success']) {
-                    $message = 'Purchase Order created successfully! PO Number: ' . $po_number;
-                    header("Location: ?action=purchase_order&quote_id=" . $quote_id . "&message=" . urlencode($message));
-                    exit();
-                } else {
-                    $error = $result['message'];
-                }
-            } else {
-                $error = 'Please select at least one item to order and provide supplier information.';
-            }
-            break;
-            
         case 'update_quote_quantity':
             if (isset($_POST['quote_item_id']) && isset($_POST['new_quantity'])) {
                 $result = updateQuoteItemQuantity($_POST['quote_item_id'], $_POST['new_quantity']);
@@ -508,6 +480,20 @@ if ($_POST) {
                 } else {
                     $error = $result['message'];
                 }
+            }
+            break;
+
+        case 'create_purchase_order':
+            if ($quote_id) {
+                $result = createPurchaseOrderFromQuote((int)$quote_id, $_POST);
+                if ($result['success']) {
+                    header("Location: ?action=quote&quote_id=" . $quote_id . "&message=" . urlencode($result['message']));
+                    exit();
+                } else {
+                    $error = $result['message'];
+                }
+            } else {
+                $error = 'Quotation reference is required to create a purchase order.';
             }
             break;
             
@@ -641,7 +627,6 @@ if ($_POST) {
                 }
             }
             break;
-            
         case 'update_inventory_item':
             // Debug: Log that we hit this action
             error_log("Hit update_inventory_item action");
@@ -717,21 +702,13 @@ if ($action == 'delete_quote' && $quote_id) {
     }
 }
 
+$inventory_shortages = [];
+$has_inventory_shortage = false;
+$available_suppliers = [];
+$purchase_orders = [];
+
 // Get data based on action
 switch ($action) {
-    case 'installments':
-        if ($quote_id) {
-            $quote = getQuote($quote_id);
-            if (!$quote) {
-                $error = 'Quotation not found.';
-                $action = 'list';
-            } else {
-                $installment_plan = getInstallmentPlanWithAdjustments($quote_id);
-                $customer_info = getCustomerInfo($quote_id);
-            }
-        }
-        break;
-        
     case 'quote':
         if ($quote_id) {
             $quote = getQuote($quote_id);
@@ -742,23 +719,51 @@ switch ($action) {
                 $inventory_items = getQuoteInventoryItems();
                 // Check if quote has installment plan
                 $installment_plan = getInstallmentPlanWithAdjustments($quote_id);
+                $available_suppliers = getSuppliers();
+                $purchase_orders = getPurchaseOrdersByQuote($quote_id);
+
+                if (!empty($quote['items'])) {
+                    foreach ($quote['items'] as $quote_item) {
+                        $inventory_item_id = $quote_item['inventory_item_id'] ?? null;
+                        $is_direct_quote = !empty($quote_item['is_direct_quote']);
+
+                        if (!$inventory_item_id || $is_direct_quote) {
+                            continue;
+                        }
+
+                        $brand = $quote_item['brand'] ?? '';
+                        $model = $quote_item['model'] ?? '';
+                        $is_labor_fee = (strtoupper($brand) === 'LABOR' && strtolower($model) === 'labor fee');
+                        if ($is_labor_fee) {
+                            continue;
+                        }
+
+                        $available_stock = isset($quote_item['stock_quantity']) ? (float)$quote_item['stock_quantity'] : 0;
+                        $quantity_needed = isset($quote_item['quantity']) ? (float)$quote_item['quantity'] : 0;
+
+                        if ($available_stock < $quantity_needed) {
+                            $shortage_quantity = max(0, $quantity_needed - $available_stock);
+
+                            $inventory_shortages[] = [
+                                'quote_item_id' => (int)$quote_item['id'],
+                                'inventory_item_id' => (int)$inventory_item_id,
+                                'brand' => $brand,
+                                'model' => $model,
+                                'category_name' => $quote_item['category_name'] ?? '',
+                                'stock_quantity' => max(0, $available_stock),
+                                'quantity_needed' => $quantity_needed,
+                                'shortage_quantity' => $shortage_quantity,
+                                'unit_price' => isset($quote_item['unit_price']) ? (float)$quote_item['unit_price'] : 0,
+                                'base_price' => isset($quote_item['base_price']) ? (float)$quote_item['base_price'] : null,
+                                'supplier_id' => $quote_item['supplier_id'] ?? null,
+                                'supplier_name' => $quote_item['supplier_name'] ?? ''
+                            ];
+                        }
+                    }
+                }
+
+                $has_inventory_shortage = !empty($inventory_shortages);
             }
-        }
-        break;
-        
-    case 'purchase_order':
-        if ($quote_id) {
-            $quote = getQuote($quote_id);
-            if (!$quote) {
-                $error = 'Quotation not found.';
-                $action = 'list';
-            } else {
-                // Get customer information
-                $customer_info = getCustomerInfo($quote_id);
-            }
-        } else {
-            $error = 'Quote ID is required for purchase order.';
-            $action = 'list';
         }
         break;
         
@@ -1178,7 +1183,6 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 </div>
-
 <!-- Create New Quote -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
     <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Create New Quotation</h2>
@@ -1482,10 +1486,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-credit-card mr-1"></i>Payment Plan
             </a>
             <?php endif; ?>
-            <a href="?action=purchase_order&quote_id=<?php echo $quote['id']; ?>" 
-               class="bg-orange-600 text-white px-3 py-2 rounded-lg hover:bg-orange-700 transition text-sm whitespace-nowrap">
-                <i class="fas fa-shopping-cart mr-1"></i>Purchase Order
-            </a>
             <a href="?action=order_fulfillment&quote_id=<?php echo $quote['id']; ?>" 
                class="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition text-sm whitespace-nowrap">
                 <i class="fas fa-clipboard-check mr-1"></i>Order Fulfillment
@@ -1826,6 +1826,368 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200">Inventory Availability</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Check which items need purchasing before fulfillment.</p>
+                </div>
+                <?php if ($has_inventory_shortage): ?>
+                <button type="button"
+                        class="inline-flex items-center px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-md shadow hover:bg-red-700 transition"
+                        onclick="openPurchaseOrderModal()">
+                    <i class="fas fa-file-invoice mr-2"></i>Create Purchase Order
+                </button>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($has_inventory_shortage): ?>
+            <div class="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    Some quote items require replenishment. Generate a purchase order to reserve incoming stock.
+                </div>
+            </div>
+
+            <ul class="mt-4 space-y-3">
+                <?php foreach ($inventory_shortages as $shortage): ?>
+                <li class="border border-red-100 dark:border-red-300/20 bg-white dark:bg-gray-900 rounded-lg p-3 shadow-sm">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                <?php echo htmlspecialchars(trim(($shortage['brand'] ?? '') . ' ' . ($shortage['model'] ?? ''))); ?>
+                            </div>
+                            <?php if (!empty($shortage['category_name'])): ?>
+                            <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-1">
+                                <?php echo htmlspecialchars($shortage['category_name']); ?>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700">
+                            Short by <?php echo number_format($shortage['shortage_quantity'], 2); ?>
+                        </span>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        Needed <?php echo number_format($shortage['quantity_needed'], 2); ?> &bull;
+                        Available <?php echo number_format($shortage['stock_quantity'], 2); ?>
+                    </div>
+                    <?php if (!empty($shortage['supplier_name'])): ?>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                        <i class="fas fa-truck mr-1 text-gray-400"></i>
+                        Preferred supplier: <?php echo htmlspecialchars($shortage['supplier_name']); ?>
+                    </div>
+                    <?php endif; ?>
+                </li>
+                <?php endforeach; ?>
+            </ul>
+            <?php else: ?>
+            <div class="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-700">
+                <div class="flex items-center">
+                    <i class="fas fa-check-circle mr-2"></i>
+                    All quoted items currently meet inventory requirements.
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <?php if (!empty($purchase_orders)): ?>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200">Related Purchase Orders</h2>
+                <span class="text-xs font-medium px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200">
+                    <?php echo count($purchase_orders); ?> active
+                </span>
+            </div>
+            <div class="space-y-3">
+                <?php foreach ($purchase_orders as $po): ?>
+                <?php
+                    $po_status_class = 'bg-gray-100 text-gray-700';
+                    switch ($po['status']) {
+                        case 'pending':
+                            $po_status_class = 'bg-yellow-100 text-yellow-700';
+                            break;
+                        case 'ordered':
+                            $po_status_class = 'bg-blue-100 text-blue-700';
+                            break;
+                        case 'received':
+                            $po_status_class = 'bg-green-100 text-green-700';
+                            break;
+                        case 'cancelled':
+                            $po_status_class = 'bg-red-100 text-red-700';
+                            break;
+                    }
+                ?>
+                <a href="purchase_order.php?po_id=<?php echo (int)$po['id']; ?>"
+                   class="block border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-900 hover:border-solar-blue hover:shadow-md transition">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                                <?php echo htmlspecialchars($po['po_number']); ?>
+                            </div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                Supplier: <?php echo htmlspecialchars($po['supplier_name']); ?>
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full <?php echo $po_status_class; ?>">
+                            <?php echo ucfirst($po['status']); ?>
+                        </span>
+                    </div>
+                    <div class="mt-2 flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span><?php echo (int)$po['item_count']; ?> item(s) &bull; Qty <?php echo number_format($po['total_quantity'], 2); ?></span>
+                        <span class="font-semibold text-gray-700 dark:text-gray-200"><?php echo formatCurrency($po['total_amount']); ?></span>
+                    </div>
+                    <div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        Created <?php echo date('M j, Y g:i A', strtotime($po['created_at'])); ?>
+                    </div>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Purchase Order Modal -->
+<div id="purchase-order-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm overflow-y-auto h-full w-full z-50">
+    <div class="relative top-12 mx-auto w-full max-w-5xl p-4">
+        <div class="bg-white dark:bg-gray-900 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700">
+            <div class="flex items-start justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                    <h3 class="text-xl font-semibold text-gray-800 dark:text-gray-100">Generate Purchase Order</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Create a purchase order for items that are out of stock in quotation <?php echo htmlspecialchars($quote['quote_number']); ?>.
+                    </p>
+                </div>
+                <button type="button" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition" onclick="closePurchaseOrderModal()">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="?action=create_purchase_order&quote_id=<?php echo $quote['id']; ?>" id="purchase-order-form">
+                <input type="hidden" name="supplier_id" id="po_supplier_id">
+                <div class="px-6 py-5 space-y-8">
+                    <div class="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                        <div class="flex items-start justify-between mb-4">
+                            <div>
+                                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">Supplier Details</h4>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Select an existing supplier or enter a new one.</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="po_supplier_select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Choose Supplier</label>
+                                <select id="po_supplier_select" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100" onchange="handleSupplierSelection(this)">
+                                    <option value="">Select supplier...</option>
+                                    <?php foreach ($available_suppliers as $supplier_option): ?>
+                                    <option value="<?php echo $supplier_option['id']; ?>"
+                                            data-name="<?php echo htmlspecialchars($supplier_option['name'], ENT_QUOTES); ?>"
+                                            data-contact="<?php echo htmlspecialchars($supplier_option['contact_person'] ?? '', ENT_QUOTES); ?>"
+                                            data-phone="<?php echo htmlspecialchars($supplier_option['phone'] ?? '', ENT_QUOTES); ?>"
+                                            data-email="<?php echo htmlspecialchars($supplier_option['email'] ?? '', ENT_QUOTES); ?>"
+                                            data-address="<?php echo htmlspecialchars($supplier_option['address'] ?? '', ENT_QUOTES); ?>">
+                                        <?php echo htmlspecialchars($supplier_option['name']); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                    <option value="__new">+ Add custom supplier</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="po_expected_delivery_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expected Delivery Date</label>
+                                <input type="date" id="po_expected_delivery_date" name="expected_delivery_date"
+                                       class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100">
+                            </div>
+                            <div>
+                                <label for="po_supplier_name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier Name <span class="text-red-500">*</span></label>
+                                <input type="text" id="po_supplier_name" name="supplier_name" required
+                                       class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                       placeholder="Enter supplier or vendor name">
+                            </div>
+                            <div>
+                                <label for="po_contact_person" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contact Person</label>
+                                <input type="text" id="po_contact_person" name="contact_person"
+                                       class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                       placeholder="Full name of point person">
+                            </div>
+                            <div>
+                                <label for="po_supplier_phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone</label>
+                                <input type="text" id="po_supplier_phone" name="supplier_phone"
+                                       class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                       placeholder="+63 900 000 0000">
+                            </div>
+                            <div>
+                                <label for="po_supplier_email" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                                <input type="email" id="po_supplier_email" name="supplier_email"
+                                       class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                       placeholder="supplier@company.com">
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <label for="po_supplier_address" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier Address</label>
+                            <textarea id="po_supplier_address" name="supplier_address" rows="2"
+                                      class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                      placeholder="Street, city, province, ZIP"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">Delivery & Instructions</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="po_delivery_method" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Delivery Method</label>
+                                <input type="text" id="po_delivery_method" name="delivery_method"
+                                       class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                       placeholder="Courier, pick-up, etc.">
+                            </div>
+                            <div>
+                                <label for="po_delivery_notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Delivery Requirements / Notes</label>
+                                <input type="text" id="po_delivery_notes" name="delivery_notes"
+                                       class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                       placeholder="Lead time, delivery window, etc.">
+                            </div>
+                        </div>
+                        <div>
+                            <label for="po_special_instructions" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Special Instructions</label>
+                            <textarea id="po_special_instructions" name="special_instructions" rows="2"
+                                      class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                      placeholder="Packing, inspection, or other instructions"></textarea>
+                        </div>
+                        <div>
+                            <label for="po_status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Purchase Order Status</label>
+                            <select id="po_status" name="status"
+                                    class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100">
+                                <option value="pending" selected>Pending</option>
+                                <option value="ordered">Ordered</option>
+                                <option value="received">Received</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">Items to Purchase</h4>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Adjust quantities and pricing before committing.</span>
+                        </div>
+
+                        <?php if ($has_inventory_shortage): ?>
+                        <?php $purchase_order_initial_total = 0.0; ?>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                                <thead class="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 uppercase tracking-wide text-xs">
+                                    <tr>
+                                        <th class="px-3 py-3 text-left">Item</th>
+                                        <th class="px-3 py-3 text-right w-28">Order Qty</th>
+                                        <th class="px-3 py-3 text-right w-28">Unit Cost</th>
+                                        <th class="px-3 py-3 text-left w-48">Notes</th>
+                                        <th class="px-3 py-3 text-right w-32">Line Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                                    <?php foreach ($inventory_shortages as $row_index => $shortage): ?>
+                                    <?php
+                                        $shortage_brand = $shortage['brand'] ?? '';
+                                        $shortage_model = $shortage['model'] ?? '';
+                                        $default_unit_price = isset($shortage['unit_price']) ? (float)$shortage['unit_price'] : 0;
+                                        if ($default_unit_price <= 0 && isset($shortage['base_price'])) {
+                                            $default_unit_price = (float)$shortage['base_price'];
+                                        }
+                                        if ($default_unit_price <= 0) {
+                                            $default_unit_price = 0;
+                                        }
+                                        $shortage_quantity = (float)$shortage['shortage_quantity'];
+                                        $row_total = $shortage_quantity * $default_unit_price;
+                                        $purchase_order_initial_total += $row_total;
+                                    ?>
+                                    <tr data-po-row="<?php echo $row_index; ?>">
+                                        <td class="px-3 py-3 align-top">
+                                            <div class="font-medium text-gray-800 dark:text-gray-100">
+                                                <?php echo htmlspecialchars(trim($shortage_brand . ' ' . $shortage_model)); ?>
+                                            </div>
+                                            <?php if (!empty($shortage['category_name'])): ?>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400">
+                                                <?php echo htmlspecialchars($shortage['category_name']); ?>
+                                            </div>
+                                            <?php endif; ?>
+                                            <div class="mt-1 text-xs text-gray-400">
+                                                Needed <?php echo number_format($shortage['quantity_needed'], 2); ?> · Available <?php echo number_format($shortage['stock_quantity'], 2); ?>
+                                            </div>
+                                            <input type="hidden" name="items[<?php echo $row_index; ?>][quote_item_id]" value="<?php echo (int)$shortage['quote_item_id']; ?>">
+                                            <input type="hidden" name="items[<?php echo $row_index; ?>][inventory_item_id]" value="<?php echo (int)$shortage['inventory_item_id']; ?>">
+                                            <input type="hidden" name="items[<?php echo $row_index; ?>][brand]" value="<?php echo htmlspecialchars($shortage_brand, ENT_QUOTES); ?>">
+                                            <input type="hidden" name="items[<?php echo $row_index; ?>][model]" value="<?php echo htmlspecialchars($shortage_model, ENT_QUOTES); ?>">
+                                            <input type="hidden" name="items[<?php echo $row_index; ?>][category_name]" value="<?php echo htmlspecialchars($shortage['category_name'] ?? '', ENT_QUOTES); ?>">
+                                        </td>
+                                        <td class="px-3 py-3 align-top text-right">
+                                            <input type="number" min="0.01" step="0.01"
+                                                   name="items[<?php echo $row_index; ?>][quantity]"
+                                                   value="<?php echo number_format($shortage_quantity, 2, '.', ''); ?>"
+                                                   class="po-quantity-input w-full border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-right text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                                   oninput="updatePurchaseOrderTotals()" required>
+                                        </td>
+                                        <td class="px-3 py-3 align-top text-right">
+                                            <input type="number" min="0" step="0.01"
+                                                   name="items[<?php echo $row_index; ?>][unit_price]"
+                                                   value="<?php echo number_format($default_unit_price, 2, '.', ''); ?>"
+                                                   class="po-unit-price-input w-full border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-right text-sm focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                                   oninput="updatePurchaseOrderTotals()" required>
+                                        </td>
+                                        <td class="px-3 py-3 align-top">
+                                            <input type="text" name="items[<?php echo $row_index; ?>][notes]"
+                                                   class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-solar-blue focus:border-transparent dark:bg-gray-900 dark:text-gray-100"
+                                                   placeholder="Batch preference, alternative brands, etc.">
+                                        </td>
+                                        <td class="px-3 py-3 align-top text-right">
+                                            <span class="po-line-total text-sm font-semibold text-gray-800 dark:text-gray-100" data-row="<?php echo $row_index; ?>">
+                                                <?php echo formatCurrency($row_total); ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-4 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-4">
+                            <div class="text-sm text-gray-500 dark:text-gray-400 flex items-center">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                Totals update automatically when you adjust quantities or pricing.
+                            </div>
+                            <div class="text-right">
+                                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Estimated PO Total</p>
+                                <p id="purchase-order-grand-total" class="text-xl font-semibold text-blue-600 dark:text-blue-400 mt-1">
+                                    <?php echo formatCurrency($purchase_order_initial_total); ?>
+                                </p>
+                            </div>
+                        </div>
+                        <?php else: ?>
+                        <div class="text-sm text-gray-500 dark:text-gray-300">
+                            All items in this quotation are sufficiently stocked. No purchase order is required at the moment.
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900/80 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center rounded-b-lg">
+                    <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                        <i class="fas fa-shield-alt mr-2"></i>Purchase orders help reserve inventory from suppliers before approval.
+                    </div>
+                    <div class="space-x-2">
+                        <button type="button" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition" onclick="closePurchaseOrderModal()">
+                            Cancel
+                        </button>
+                        <?php if ($has_inventory_shortage): ?>
+                        <button type="submit" class="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-md shadow hover:bg-red-700 transition">
+                            <i class="fas fa-file-invoice mr-2"></i>Create Purchase Order
+                        </button>
+                        <?php else: ?>
+                        <button type="button" class="px-4 py-2 bg-gray-300 text-gray-600 text-sm font-semibold rounded-md cursor-not-allowed" disabled>
+                            No Purchase Needed
+                        </button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -2223,6 +2585,128 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
         <script>
+function openPurchaseOrderModal() {
+    const modal = document.getElementById('purchase-order-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    updatePurchaseOrderTotals();
+}
+
+function closePurchaseOrderModal() {
+    const modal = document.getElementById('purchase-order-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+}
+
+function handleSupplierSelection(selectElement) {
+    if (!selectElement) return;
+    const supplierIdInput = document.getElementById('po_supplier_id');
+    const nameInput = document.getElementById('po_supplier_name');
+    const contactInput = document.getElementById('po_contact_person');
+    const phoneInput = document.getElementById('po_supplier_phone');
+    const emailInput = document.getElementById('po_supplier_email');
+    const addressInput = document.getElementById('po_supplier_address');
+
+    if (!supplierIdInput) return;
+
+    const selectedOption = selectElement.options[selectElement.selectedIndex];
+    if (!selectedOption) {
+        supplierIdInput.value = '';
+        return;
+    }
+
+    const selectedValue = selectedOption.value;
+
+    if (selectedValue === '') {
+        supplierIdInput.value = '';
+        return;
+    }
+
+    if (selectedValue === '__new') {
+        supplierIdInput.value = '';
+        if (nameInput) nameInput.value = '';
+        if (contactInput) contactInput.value = '';
+        if (phoneInput) phoneInput.value = '';
+        if (emailInput) emailInput.value = '';
+        if (addressInput) addressInput.value = '';
+        return;
+    }
+
+    supplierIdInput.value = selectedValue;
+
+    if (nameInput) {
+        nameInput.value = selectedOption.getAttribute('data-name') || '';
+    }
+    if (contactInput) {
+        contactInput.value = selectedOption.getAttribute('data-contact') || '';
+    }
+    if (phoneInput) {
+        phoneInput.value = selectedOption.getAttribute('data-phone') || '';
+    }
+    if (emailInput) {
+        emailInput.value = selectedOption.getAttribute('data-email') || '';
+    }
+    if (addressInput) {
+        addressInput.value = selectedOption.getAttribute('data-address') || '';
+    }
+}
+
+function updatePurchaseOrderTotals() {
+    const form = document.getElementById('purchase-order-form');
+    if (!form) return;
+
+    const rows = form.querySelectorAll('tr[data-po-row]');
+    if (!rows.length) return;
+
+    let totalAmount = 0;
+    rows.forEach(row => {
+        const quantityInput = row.querySelector('.po-quantity-input');
+        const priceInput = row.querySelector('.po-unit-price-input');
+        const lineTotalElement = row.querySelector('.po-line-total');
+
+        if (!quantityInput || !priceInput || !lineTotalElement) {
+            return;
+        }
+
+        const quantity = parseFloat(quantityInput.value) || 0;
+        const unitPrice = parseFloat(priceInput.value) || 0;
+        const lineTotal = quantity * unitPrice;
+        totalAmount += lineTotal;
+
+        if (typeof formatCurrency === 'function') {
+            lineTotalElement.textContent = formatCurrency(lineTotal);
+        } else {
+            lineTotalElement.textContent = lineTotal.toFixed(2);
+        }
+    });
+
+    const grandTotalElement = document.getElementById('purchase-order-grand-total');
+    if (grandTotalElement) {
+        grandTotalElement.textContent = (typeof formatCurrency === 'function')
+            ? formatCurrency(totalAmount)
+            : totalAmount.toFixed(2);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('purchase-order-modal');
+    if (modal) {
+        updatePurchaseOrderTotals();
+        modal.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closePurchaseOrderModal();
+            }
+        });
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closePurchaseOrderModal();
+            }
+        });
+    }
+});
+
 let selectedQuoteItemData = null;
 let currentQuoteCategoryFilter = '';
 
@@ -2478,7 +2962,6 @@ function toggleSerials(serialId) {
         icon.classList.add('fa-chevron-down');
     }
 }
-
 function updateQuoteSubmitButtonState() {
     const quantity = parseInt(document.getElementById('quote_quantity').value) || 1;
     const checkboxes = document.querySelectorAll('.quote-serial-checkbox:checked');
@@ -2981,7 +3464,6 @@ function printProfitBreakdown() {
             printWindow.close();
         });
 }
-
 function generatePrintContent(profitData, quoteNumber, currentDate) {
     let totalBaseCost = 0;
     let totalSellingPrice = 0;
@@ -3580,295 +4062,6 @@ document.getElementById('fulfillment-form').addEventListener('change', function(
 }
 </style>
 
-<?php elseif ($action == 'purchase_order' && isset($quote)): ?>
-<!-- Purchase Order Screen -->
-<div class="mb-6 purchase-order-page-header">
-    <div class="flex justify-between items-center">
-        <div>
-            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200">Purchase Order</h1>
-            <p class="text-gray-600 dark:text-gray-400">
-                Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
-                <?php if (!empty($quote['project_number'])): ?>
-                <br>Project Number: <span class="font-semibold"><?php echo htmlspecialchars($quote['project_number']); ?></span>
-                <?php endif; ?>
-            </p>
-        </div>
-        <div class="space-x-2">
-            <button onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                <i class="fas fa-print mr-2"></i>Print Purchase Order
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Purchase Order Form -->
-<div id="purchase-order-form-container" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 print:shadow-none print:p-0">
-    <?php if (isset($message)): ?>
-    <div class="mb-6 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-        <i class="fas fa-check-circle mr-2"></i><?php echo htmlspecialchars($message); ?>
-    </div>
-    <?php endif; ?>
-    
-    <?php if (isset($error)): ?>
-    <div class="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-        <i class="fas fa-exclamation-circle mr-2"></i><?php echo htmlspecialchars($error); ?>
-    </div>
-    <?php endif; ?>
-    
-    <form id="purchase-order-form" method="POST" action="">
-        <input type="hidden" name="action" value="create_purchase_order">
-        <input type="hidden" name="quote_id" value="<?php echo $quote['id']; ?>">
-        
-        <!-- Header Section -->
-        <div class="text-center mb-8 border-b-2 border-gray-300 pb-4">
-            <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">Purchase Order</h2>
-            <p class="text-gray-600 dark:text-gray-400">
-                Date: <?php echo date('Y-m-d'); ?><br>
-                Quotation: <?php echo htmlspecialchars($quote['quote_number']); ?>
-                <?php if (!empty($quote['project_number'])): ?>
-                <br>Project Number: <strong><?php echo htmlspecialchars($quote['project_number']); ?></strong>
-                <?php endif; ?>
-            </p>
-        </div>
-
-        <!-- Customer Information -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Quotation Code:</label>
-                    <p class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($quote['quote_number']); ?></p>
-                </div>
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer Name:</label>
-                    <p class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($quote['customer_name']); ?></p>
-                </div>
-            </div>
-            <div>
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Location:</label>
-                    <p class="text-gray-900"><?php echo $customer_info && $customer_info['address'] ? htmlspecialchars($customer_info['address']) : 'Not specified'; ?></p>
-                </div>
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Contact Number:</label>
-                    <p class="text-gray-900"><?php echo $quote['customer_phone'] ? htmlspecialchars($quote['customer_phone']) : ($customer_info && $customer_info['phone_number'] ? htmlspecialchars($customer_info['phone_number']) : 'Not specified'); ?></p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Items to Purchase Table -->
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 border border-gray-300">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
-                            No.
-                        </th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
-                            Description
-                        </th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
-                            Order
-                        </th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
-                            Quantity
-                        </th>
-                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">
-                            Unit Amount
-                        </th>
-                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Total Amount
-                        </th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    <?php if (!empty($quote['items'])): ?>
-                        <?php $item_no = 1; ?>
-                        <?php foreach ($quote['items'] as $item): ?>
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-300">
-                                <?php echo $item_no++; ?>
-                            </td>
-                            <td class="px-4 py-4 text-sm text-gray-900 border-r border-gray-300">
-                                <div class="font-medium"><?php echo htmlspecialchars($item['brand'] ?? 'Custom Item'); ?></div>
-                                <div class="text-gray-500"><?php echo htmlspecialchars($item['model'] ?? $item['custom_item_name'] ?? ''); ?></div>
-                                <?php if (!empty($item['category'])): ?>
-                                <div class="text-xs text-blue-600 mt-1"><?php echo htmlspecialchars($item['category']); ?></div>
-                                <?php endif; ?>
-                                <?php if (!empty($item['serial_numbers'])): ?>
-                                <div class="text-xs text-green-600 mt-1">
-                                    <button type="button" onclick="toggleSerials('po-serials-<?php echo $item['id']; ?>')" 
-                                            class="text-green-600 hover:text-green-800 font-medium underline">
-                                        <i class="fas fa-chevron-down" id="po-serials-icon-<?php echo $item['id']; ?>"></i>
-                                        Serials (<?php echo substr_count($item['serial_numbers'], ',') + 1; ?>)
-                                    </button>
-                                    <div id="po-serials-<?php echo $item['id']; ?>" class="hidden mt-1 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded border">
-                                        <?php 
-                                        $serials = explode(',', $item['serial_numbers']);
-                                        foreach ($serials as $serial): 
-                                        ?>
-                                        <div class="mb-1"><?php echo htmlspecialchars(trim($serial)); ?></div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                                <?php endif; ?>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center border-r border-gray-300">
-                                <input type="checkbox" name="item_to_order[]" value="<?php echo isset($item['quote_item_id']) ? $item['quote_item_id'] : $item['id']; ?>" 
-                                       class="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500 focus:ring-2 print:hidden" checked>
-                                <span class="hidden print:inline-block w-5 h-5 border-2 border-gray-400 bg-orange-100"></span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-300">
-                                <?php echo number_format($item['quantity'], 0); ?>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-900 border-r border-gray-300">
-                                <?php echo formatCurrency($item['unit_price']); ?>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                <?php echo formatCurrency($item['total_amount']); ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                        
-                        <!-- Total Row -->
-                        <tr class="bg-gray-50 font-semibold border-t-2 border-gray-400">
-                            <td colspan="5" class="px-4 py-4 text-right text-sm text-gray-900 border-r border-gray-300">
-                                <strong>Grand Total:</strong>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap text-right text-lg font-bold text-orange-600">
-                                <?php echo formatCurrency($quote['total_amount']); ?>
-                            </td>
-                        </tr>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
-                                No items found in this quotation.
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Supplier Information -->
-        <div class="mt-8 pt-6 border-t-2 border-gray-300">
-            <h4 class="text-lg font-medium text-gray-700 mb-4">Supplier Information</h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Supplier Name:</label>
-                    <input type="text" name="supplier_name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter supplier name">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Contact Person:</label>
-                    <input type="text" name="contact_person" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter contact person">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number:</label>
-                    <input type="text" name="supplier_phone" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter phone number">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Email:</label>
-                    <input type="email" name="supplier_email" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter email address">
-                </div>
-            </div>
-            <div class="mt-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Supplier Address:</label>
-                <textarea name="supplier_address" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter supplier address"></textarea>
-            </div>
-        </div>
-
-        <!-- Notes Section -->
-        <div class="mt-8 pt-6 border-t-2 border-gray-300">
-            <h4 class="text-lg font-medium text-gray-700 mb-4">Purchase Order Notes</h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Special Instructions:</label>
-                    <textarea name="special_instructions" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter any special instructions for the supplier"></textarea>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Delivery Requirements:</label>
-                    <textarea name="delivery_requirements" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter delivery requirements and timeline"></textarea>
-                </div>
-            </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="mt-8 pt-6 border-t flex justify-between">
-            <button type="button" onclick="selectAllItems()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                <i class="fas fa-check-double mr-2"></i>Select All Items
-            </button>
-            <div class="space-x-2">
-                <button type="button" onclick="window.print()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                    <i class="fas fa-print mr-2"></i>Print Purchase Order
-                </button>
-                <button type="submit" class="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition">
-                    <i class="fas fa-save mr-2"></i>Create Purchase Order
-                </button>
-            </div>
-        </div>
-    </form>
-</div>
-
-<script>
-function selectAllItems() {
-    const checkboxes = document.querySelectorAll('input[name="item_to_order[]"]');
-    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-    
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = !allChecked;
-    });
-}
-
-function toggleSerials(elementId) {
-    const element = document.getElementById(elementId);
-    const icon = document.getElementById(elementId.replace('po-serials-', 'po-serials-icon-'));
-    
-    if (element.classList.contains('hidden')) {
-        element.classList.remove('hidden');
-        icon.classList.remove('fa-chevron-down');
-        icon.classList.add('fa-chevron-up');
-    } else {
-        element.classList.add('hidden');
-        icon.classList.remove('fa-chevron-up');
-        icon.classList.add('fa-chevron-down');
-    }
-}
-</script>
-
-<style>
-@media print {
-    body * {
-        visibility: hidden;
-    }
-    .print\:shadow-none, .print\:shadow-none * {
-        visibility: visible;
-    }
-    .print\:shadow-none {
-        position: absolute;
-        left: 0;
-        top: 0;
-    }
-    
-    /* Remove browser print headers and footers */
-    @page {
-        margin: 0.5in;
-        size: A4;
-    }
-    
-    /* Hide URL and other browser print info */
-    body {
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    
-    /* Ensure clean print layout */
-    .print\:shadow-none {
-        width: 100%;
-        margin: 0;
-        padding: 0;
-    }
-}
-</style>
-
 <?php elseif ($action == 'installments' && isset($quote)): ?>
 <!-- Installment Management Screen -->
 <div class="mb-6">
@@ -4216,7 +4409,6 @@ function toggleSerials(elementId) {
     </form>
 </div>
 <?php endif; ?>
-
 <!-- Record Payment Modal -->
 <div id="payment-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
@@ -4793,7 +4985,6 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 </div>
-
 <!-- Edit Customer Details Modal -->
 <div id="edit-customer-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-5 mx-auto p-5 border w-full max-w-6xl shadow-lg rounded-md bg-white">
@@ -5444,7 +5635,6 @@ function closeEditCustomerModal() {
     const modal = document.getElementById('edit-customer-modal');
     modal.classList.add('hidden');
 }
-
 function loadCustomerDetailsForEdit(quoteId) {
     // Set the quote ID in the form
     document.getElementById('edit_quote_id').value = quoteId;
@@ -6069,7 +6259,6 @@ function editInventoryItem(itemId, itemName) {
             `;
         });
 }
-
 function displayEditForm(item) {
     // Debug: Log the item data to console
     console.log('Item data:', item);

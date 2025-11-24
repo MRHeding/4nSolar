@@ -575,16 +575,16 @@ function deleteAttendance($pdo, $attendance_id) {
 // Delete payroll record
 function deletePayroll($pdo, $payroll_id) {
     try {
-        // Only allow deletion of draft payroll records
+        // Allow deletion of draft and approved payroll records
         $stmt = $pdo->prepare("SELECT status FROM payroll WHERE id = ?");
         $stmt->execute([$payroll_id]);
         $status = $stmt->fetchColumn();
         
-        if ($status === 'draft') {
+        if ($status === 'draft' || $status === 'approved') {
             $stmt = $pdo->prepare("DELETE FROM payroll WHERE id = ?");
             return $stmt->execute([$payroll_id]);
         }
-        return false; // Cannot delete non-draft payroll
+        return false; // Cannot delete paid payroll
     } catch (Exception $e) {
         return false;
     }

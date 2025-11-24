@@ -565,7 +565,7 @@ include 'includes/header.php';
                                             <i class="fas fa-money-bill"></i>
                                         </button>
                                         <?php endif; ?>
-                                        <?php if ($payroll['status'] === 'draft' && hasRole(ROLE_ADMIN)): ?>
+                                        <?php if (($payroll['status'] === 'draft' || $payroll['status'] === 'approved') && hasRole(ROLE_ADMIN)): ?>
                                 <button type="button" class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" onclick="deletePayroll(<?php echo $payroll['id']; ?>)" title="Delete">
                                             <i class="fas fa-trash"></i>
                                         </button>

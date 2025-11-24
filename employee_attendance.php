@@ -413,30 +413,53 @@ $overtime_hours = array_sum(array_column($attendance_records, 'overtime_hours'))
                                 <?php echo number_format($record['overtime_hours'], 2); ?> hrs
                             </td>
                             <td class="px-4 py-4 whitespace-nowrap">
-                                <?php
-                                $status_class = '';
-                                $status_bg = '';
-                                switch ($record['status']) {
-                                    case 'present': 
-                                        $status_class = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'; 
-                                        break;
-                                    case 'absent': 
-                                        $status_class = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'; 
-                                        break;
-                                    case 'late': 
-                                        $status_class = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'; 
-                                        break;
-                                    case 'half_day': 
-                                        $status_class = 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'; 
-                                        break;
-                                    case 'overtime': 
-                                        $status_class = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'; 
-                                        break;
-                                }
-                                ?>
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full <?php echo $status_class; ?>">
-                                    <?php echo ucfirst(str_replace('_', ' ', $record['status'])); ?>
-                                </span>
+                                <div class="status-edit-container inline-block relative" data-attendance-id="<?php echo $record['id']; ?>" data-field="status">
+                                    <?php
+                                    $status_class = '';
+                                    $status_bg = '';
+                                    switch ($record['status']) {
+                                        case 'present': 
+                                            $status_class = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'; 
+                                            break;
+                                        case 'absent': 
+                                            $status_class = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'; 
+                                            break;
+                                        case 'late': 
+                                            $status_class = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'; 
+                                            break;
+                                        case 'half_day': 
+                                            $status_class = 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'; 
+                                            break;
+                                        case 'overtime': 
+                                            $status_class = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'; 
+                                            break;
+                                    }
+                                    ?>
+                                    <span class="status-display inline-block px-2 py-1 text-xs font-semibold rounded-full <?php echo $status_class; ?> cursor-pointer hover:opacity-80" onclick="editStatusFromDisplay(this)">
+                                        <?php echo ucfirst(str_replace('_', ' ', $record['status'])); ?>
+                                    </span>
+                                    <div class="status-edit-form hidden absolute top-0 left-0 z-10 bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-lg p-2 shadow-lg min-w-[180px]">
+                                        <select class="form-select mb-2 w-full text-sm" 
+                                                data-original-value="<?php echo htmlspecialchars($record['status']); ?>">
+                                            <option value="present" <?php echo $record['status'] === 'present' ? 'selected' : ''; ?>>Present</option>
+                                            <option value="absent" <?php echo $record['status'] === 'absent' ? 'selected' : ''; ?>>Absent</option>
+                                            <option value="late" <?php echo $record['status'] === 'late' ? 'selected' : ''; ?>>Late</option>
+                                            <option value="half_day" <?php echo $record['status'] === 'half_day' ? 'selected' : ''; ?>>Half Day</option>
+                                            <option value="overtime" <?php echo $record['status'] === 'overtime' ? 'selected' : ''; ?>>Overtime</option>
+                                        </select>
+                                        <div class="flex gap-2">
+                                            <button type="button" class="btn-success text-sm px-3 py-1 flex-1" onclick="saveStatusEdit(this)">
+                                                <i class="fas fa-check mr-1"></i> Save
+                                            </button>
+                                            <button type="button" class="btn-secondary text-sm px-3 py-1 flex-1" onclick="cancelStatusEdit(this)">
+                                                <i class="fas fa-times mr-1"></i> Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors opacity-70 hover:opacity-100 ml-1 edit-status-btn" onclick="editStatus(this)" title="Edit Status">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                </div>
                             </td>
                             <td class="px-4 py-4 text-gray-900 dark:text-white">
                                 <?php echo $record['notes'] ? htmlspecialchars($record['notes']) : '-'; ?>
@@ -1223,11 +1246,160 @@ function showNotification(message, type = 'info') {
         }
     }, 3000);
 }
+
+// Status editing functions
+function editStatusFromDisplay(displayElement) {
+    const container = displayElement.closest('.status-edit-container');
+    const editBtn = container.querySelector('.edit-status-btn');
+    editStatus(editBtn);
+}
+
+function editStatus(button) {
+    const container = button.closest('.status-edit-container');
+    const display = container.querySelector('.status-display');
+    const editForm = container.querySelector('.status-edit-form');
+    const select = editForm.querySelector('select');
+    
+    display.classList.add('hidden');
+    editForm.classList.remove('hidden');
+    button.classList.add('hidden');
+    
+    select.focus();
+}
+
+function cancelStatusEdit(button) {
+    const container = button.closest('.status-edit-container');
+    const display = container.querySelector('.status-display');
+    const editForm = container.querySelector('.status-edit-form');
+    const select = editForm.querySelector('select');
+    const editBtn = container.querySelector('.edit-status-btn');
+    
+    select.value = select.getAttribute('data-original-value');
+    
+    editForm.classList.add('hidden');
+    display.classList.remove('hidden');
+    editBtn.classList.remove('hidden');
+}
+
+function saveStatusEdit(button) {
+    const container = button.closest('.status-edit-container');
+    const attendanceId = container.getAttribute('data-attendance-id');
+    const field = container.getAttribute('data-field');
+    const select = container.querySelector('select');
+    const newValue = select.value;
+    const originalValue = select.getAttribute('data-original-value');
+    
+    if (newValue === originalValue) {
+        cancelStatusEdit(button);
+        return;
+    }
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    
+    fetch('update_attendance_time.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            attendance_id: attendanceId,
+            field: field,
+            value: newValue
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const display = container.querySelector('.status-display');
+            
+            // Update status display with new class
+            const statusClasses = {
+                'present': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                'absent': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                'late': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                'half_day': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+                'overtime': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+            };
+            
+            const statusLabels = {
+                'present': 'Present',
+                'absent': 'Absent',
+                'late': 'Late',
+                'half_day': 'Half Day',
+                'overtime': 'Overtime'
+            };
+            
+            // Remove old status classes and add new ones
+            display.className = `status-display inline-block px-2 py-1 text-xs font-semibold rounded-full cursor-pointer hover:opacity-80 ${statusClasses[newValue]}`;
+            display.textContent = statusLabels[newValue];
+            
+            select.setAttribute('data-original-value', newValue);
+            
+            container.querySelector('.status-edit-form').classList.add('hidden');
+            display.classList.remove('hidden');
+            container.querySelector('.edit-status-btn').classList.remove('hidden');
+            
+            // Update hours worked display if needed
+            updateHoursAfterStatusChange(container, newValue);
+            
+            showNotification('Status updated successfully!', 'success');
+        } else {
+            showNotification('Failed to update status: ' + (data.message || 'Unknown error'), 'error');
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-check mr-1"></i> Save';
+        }
+    })
+    .catch(error => {
+        console.error('Error updating status:', error);
+        showNotification('Error updating status: ' + error.message, 'error');
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-check mr-1"></i> Save';
+    });
+}
+
+function updateHoursAfterStatusChange(container, newStatus) {
+    const row = container.closest('tr');
+    const hoursCell = row.querySelector('td:nth-child(5)');
+    const overtimeCell = row.querySelector('td:nth-child(6)');
+    
+    // Update hours based on status
+    switch (newStatus) {
+        case 'absent':
+            if (hoursCell) hoursCell.textContent = '0.00 hrs';
+            if (overtimeCell) overtimeCell.textContent = '0.00 hrs';
+            break;
+        case 'half_day':
+            if (hoursCell) hoursCell.textContent = '4.00 hrs';
+            if (overtimeCell) overtimeCell.textContent = '0.00 hrs';
+            break;
+        case 'present':
+        case 'late':
+            // Hours will be recalculated by backend based on time_in/time_out
+            // If no time data, default to 8 hours
+            const timeInContainer = row.querySelector('[data-field="time_in"]');
+            const timeOutContainer = row.querySelector('[data-field="time_out"]');
+            const timeIn = timeInContainer ? timeInContainer.querySelector('input[type="time"]')?.value : null;
+            const timeOut = timeOutContainer ? timeOutContainer.querySelector('input[type="time"]')?.value : null;
+            
+            if (!timeIn || !timeOut) {
+                if (hoursCell) hoursCell.textContent = '8.00 hrs';
+                if (overtimeCell) overtimeCell.textContent = '0.00 hrs';
+            }
+            // If time data exists, backend will recalculate, so we'll keep current display
+            break;
+    }
+}
 </script>
 
 <style>
 /* Time editing styles */
 .time-edit-container:hover .edit-time-btn {
+    opacity: 1 !important;
+}
+
+/* Status editing styles */
+.status-edit-container:hover .edit-status-btn {
     opacity: 1 !important;
 }
 

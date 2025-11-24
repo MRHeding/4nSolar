@@ -655,8 +655,8 @@ include 'includes/header.php';
             <p class="text-gray-600 dark:text-gray-400">Project #<?php echo $project['id']; ?> - <?php echo htmlspecialchars($project['customer_name']); ?></p>
         </div>
         <div class="space-x-2">
-            <button onclick="printReceipt()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                <i class="fas fa-print mr-2"></i>Print Receipt
+            <button onclick="printInvoice()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                <i class="fas fa-print mr-2"></i>Print Invoice
             </button>
             <a href="?" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
                 <i class="fas fa-arrow-left mr-2"></i>Back
@@ -802,7 +802,7 @@ include 'includes/header.php';
 </div>
 
 
-<!-- Printable Receipt (Hidden on screen, visible on print) -->
+<!-- Printable Invoice (Hidden on screen, visible on print) -->
 <div id="printableReceipt" style="display: none;">
     <div class="quotation-content max-w-4xl mx-auto bg-white shadow-lg rounded-lg overflow-hidden">
         <!-- Company Header -->
@@ -826,9 +826,9 @@ include 'includes/header.php';
                     </div>
                 </div>
                 <div class="text-right">
-                    <h2 class="text-2xl font-bold mb-2">PROJECT RECEIPT</h2>
+                    <h2 class="text-2xl font-bold mb-2">PROJECT INVOICE</h2>
                     <div class="bg-white bg-opacity-20 rounded-lg p-4">
-                        <p class="text-sm opacity-90">Receipt Number</p>
+                        <p class="text-sm opacity-90">Invoice Number</p>
                         <p class="text-xl font-bold"><?php echo str_pad($project['id'], 6, '0', STR_PAD_LEFT); ?></p>
                         <p class="text-sm opacity-90 mt-2"><?php echo date('F j, Y'); ?></p>
                     </div>
@@ -880,9 +880,23 @@ include 'includes/header.php';
                                 <?php echo ucfirst(str_replace('_', ' ', $project['project_status'])); ?>
                             </span>
                         </div>
-                        <div>
+                        <div class="flex justify-between text-sm">
                             <span class="text-gray-600">Created: </span>
                             <span class="font-medium"><?php echo date('M j, Y', strtotime($project['created_at'])); ?></span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Invoice Date: </span>
+                            <span class="font-medium"><?php echo date('M j, Y'); ?></span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Due Date: </span>
+                            <span class="font-medium">
+                                <?php 
+                                $baseDate = !empty($project['created_at']) ? $project['created_at'] : 'now';
+                                $dueDate = date('M j, Y', strtotime($baseDate . ' +30 days'));
+                                echo $dueDate;
+                                ?>
+                            </span>
                         </div>
                         <div>
                             <span class="text-gray-600">Prepared by: </span>
@@ -945,7 +959,7 @@ include 'includes/header.php';
             <div class="totals-section flex justify-end mb-4">
                 <div class="w-64">
                     <div class="total-section bg-gray-50 rounded-lg p-4 border-2">
-                        <h4 class="text-sm font-bold text-gray-800 mb-2 text-center">RECEIPT SUMMARY</h4>
+                        <h4 class="text-sm font-bold text-gray-800 mb-2 text-center">INVOICE SUMMARY</h4>
                         <div class="space-y-1">
                             <div class="flex justify-between text-sm border-b pb-1">
                                 <span class="text-gray-600 font-medium">Subtotal:</span>
@@ -958,7 +972,7 @@ include 'includes/header.php';
                             </div>
                             <?php endif; ?>
                             <div class="flex justify-between text-lg font-bold bg-blue-100 p-2 rounded">
-                                <span class="text-gray-900">GRAND TOTAL:</span>
+                                <span class="text-gray-900">TOTAL DUE:</span>
                                 <span class="text-blue-600"><?php echo formatCurrency($project['final_amount']); ?></span>
                             </div>
                         </div>
@@ -978,7 +992,8 @@ include 'includes/header.php';
 
             <!-- Payment Information -->
             <div class="border-t pt-4 mb-4">
-                <h4 class="text-sm font-semibold text-gray-800 mb-2">Payment Options:</h4>
+                <h4 class="text-sm font-semibold text-gray-800 mb-2">Payment Terms:</h4>
+                <p class="text-xs text-gray-600 mb-2">Please settle payment on or before the due date using any of the following methods.</p>
                 <div class="grid grid-cols-2 gap-4 text-xs text-gray-600">
                     <div>
                         <strong>Bank Transfer:</strong><br>
@@ -1007,22 +1022,23 @@ include 'includes/header.php';
 
             <!-- Signature Section -->
             <div class="border-t pt-4">
-                <div class="flex justify-between items-center">
+                <div class="flex justify-between items-start">
                     <div class="text-left">
                         <div class="border-t border-gray-400 w-48 pt-1">
-                            <p class="text-xs font-medium">Customer Signature / Date</p>
+                            <p class="text-xs font-medium">Authorized Signature</p>
+                            <p class="text-xs text-gray-500"><?php echo htmlspecialchars($project['created_by_name']); ?></p>
                         </div>
                     </div>
                     <div class="text-right">
                         <div class="border-t border-gray-400 w-48 pt-1">
-                            <p class="text-xs font-medium">4nSolar Representative</p>
-                            <p class="text-xs text-gray-500"><?php echo htmlspecialchars($project['created_by_name']); ?></p>
+                            <p class="text-xs font-medium">Client Acknowledgement</p>
+                            <p class="text-xs text-gray-500">Name & Signature</p>
                         </div>
                     </div>
                 </div>
                 
                 <div class="mt-2 text-center text-xs text-gray-500">
-                    Generated on <?php echo date('M j, Y \a\t g:i A'); ?>
+                    Invoice generated on <?php echo date('M j, Y \a\t g:i A'); ?>
                 </div>
             </div>
         </div>
@@ -1041,7 +1057,7 @@ function toggleStatusForm() {
     }
 }
 
-function printReceipt() {
+function printInvoice() {
     // Simply trigger the print dialog
     // The CSS @media print rules will handle showing only the receipt
     window.print();
