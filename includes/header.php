@@ -32,6 +32,9 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
 // Dynamic settings are already loaded at the top of the file
 ?>
     
+    <!-- Christmas Theme CSS -->
+    <link href="assets/css/christmas-theme.css" rel="stylesheet">
+    
     <?php if ($use_bootstrap): ?>
         <!-- Bootstrap CSS -->
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -698,4 +701,23 @@ $use_bootstrap = in_array($current_page, $payroll_pages);
         // Update header clock immediately and then every second
         updateHeaderClock();
         setInterval(updateHeaderClock, 1000);
+        
+        // Add Christmas theme class (always active)
+        function applyChristmasTheme() {
+            // Always apply Christmas theme
+            document.body.classList.add('christmas-mode');
+            
+            // Add Christmas decorations to header if exists
+            const header = document.querySelector('nav, .navbar');
+            if (header) {
+                header.classList.add('christmas-header');
+            }
+        }
+        
+        // Apply Christmas theme on load
+        document.addEventListener('DOMContentLoaded', applyChristmasTheme);
+        applyChristmasTheme();
     </script>
+    
+    <!-- Christmas Snow Effect Script -->
+    <script src="assets/js/christmas-snow.js"></script>

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `invoices` (
   `invoice_date` date NOT NULL,
   `due_date` date NOT NULL,
   `po_number` varchar(50) DEFAULT NULL,
+  `description` text DEFAULT NULL,
   `bill_to_name` varchar(255) NOT NULL,
   `bill_to_address` text DEFAULT NULL,
   `ship_to_name` varchar(255) DEFAULT NULL,
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS `invoices` (
   `tax_rate` decimal(5,2) DEFAULT 0.00,
   `tax_amount` decimal(15,2) DEFAULT 0.00,
   `total_amount` decimal(15,2) DEFAULT 0.00,
+  `payment_amount` decimal(15,2) DEFAULT 0.00,
   `terms_conditions` text DEFAULT NULL,
   `bank_name` varchar(255) DEFAULT NULL,
   `bank_account_number` varchar(50) DEFAULT NULL,
@@ -44,6 +46,7 @@ CREATE TABLE IF NOT EXISTS `invoice_items` (
   `quantity` decimal(10,2) NOT NULL DEFAULT 1.00,
   `unit_price` decimal(10,2) NOT NULL DEFAULT 0.00,
   `amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `hide_on_print` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `invoice_id` (`invoice_id`),
@@ -51,4 +54,13 @@ CREATE TABLE IF NOT EXISTS `invoice_items` (
   FOREIGN KEY (`invoice_id`) REFERENCES `invoices`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`inventory_item_id`) REFERENCES `inventory_items`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Backfill helpers for existing installations
+ALTER TABLE `invoices`
+  ADD COLUMN IF NOT EXISTS `description` text DEFAULT NULL AFTER `po_number`;
+ALTER TABLE `invoices`
+  ADD COLUMN IF NOT EXISTS `payment_amount` decimal(15,2) DEFAULT 0.00 AFTER `total_amount`;
+
+ALTER TABLE `invoice_items`
+  ADD COLUMN IF NOT EXISTS `hide_on_print` tinyint(1) NOT NULL DEFAULT 0 AFTER `amount`;
 

@@ -39,6 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'invoice_date' => $_POST['invoice_date'],
             'due_date' => $_POST['due_date'],
             'po_number' => $po_number,
+            'description' => (isset($_POST['invoice_description']) && trim($_POST['invoice_description']) !== '') ? trim($_POST['invoice_description']) : null,
+            'payment_amount' => isset($_POST['payment_amount']) ? max(0, floatval($_POST['payment_amount'])) : 0,
             'bill_to_name' => trim($_POST['bill_to_name']),
             'bill_to_address' => !empty($_POST['bill_to_address']) ? trim($_POST['bill_to_address']) : null,
             'ship_to_name' => !empty($_POST['ship_to_name']) ? trim($_POST['ship_to_name']) : trim($_POST['bill_to_name']),
@@ -66,13 +68,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $item['quantity'] = isset($item['quantity']) ? floatval($item['quantity']) : 0;
                     $item['unit_price'] = isset($item['unit_price']) ? floatval($item['unit_price']) : 0;
                     $item['inventory_item_id'] = isset($item['inventory_item_id']) && !empty(trim($item['inventory_item_id'])) ? intval($item['inventory_item_id']) : null;
+                    $item['hide_on_print'] = isset($item['hide_on_print']) ? intval($item['hide_on_print']) : 0;
                     
                     if (!empty($item['description']) && $item['quantity'] > 0 && $item['unit_price'] >= 0) {
                         if (addInvoiceItem($new_invoice_id, [
                             'inventory_item_id' => $item['inventory_item_id'],
                             'description' => $item['description'],
                             'quantity' => $item['quantity'],
-                            'unit_price' => $item['unit_price']
+                            'unit_price' => $item['unit_price'],
+                            'hide_on_print' => $item['hide_on_print'] ? 1 : 0
                         ])) {
                             $items_added = true;
                         }
@@ -81,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // If no items were added, that's okay - invoice can be created without items initially
+            updateInvoiceTotals($new_invoice_id);
             header("Location: invoices.php?action=edit&invoice_id={$new_invoice_id}&message=Invoice created successfully");
             exit();
         } else {
@@ -105,6 +110,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'invoice_date' => $_POST['invoice_date'],
             'due_date' => $_POST['due_date'],
             'po_number' => $_POST['po_number'] ?? null,
+            'description' => (isset($_POST['invoice_description']) && trim($_POST['invoice_description']) !== '') ? trim($_POST['invoice_description']) : null,
+            'payment_amount' => isset($_POST['payment_amount']) ? max(0, floatval($_POST['payment_amount'])) : 0,
             'bill_to_name' => $_POST['bill_to_name'],
             'bill_to_address' => $_POST['bill_to_address'] ?? null,
             'ship_to_name' => $_POST['ship_to_name'] ?? $_POST['bill_to_name'],
@@ -124,17 +131,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$invoice_id]);
                 
                 foreach ($_POST['items'] as $item) {
-                    if (!empty($item['description']) && $item['quantity'] > 0) {
+                    $item_description = trim($item['description'] ?? '');
+                    $item_quantity = isset($item['quantity']) ? floatval($item['quantity']) : 0;
+                    $item_price = isset($item['unit_price']) ? floatval($item['unit_price']) : 0;
+                    $item_hide = isset($item['hide_on_print']) ? intval($item['hide_on_print']) : 0;
+                    
+                    if (!empty($item_description) && $item_quantity > 0) {
                         addInvoiceItem($invoice_id, [
                             'inventory_item_id' => $item['inventory_item_id'] ?? null,
-                            'description' => $item['description'],
-                            'quantity' => floatval($item['quantity']),
-                            'unit_price' => floatval($item['unit_price'])
+                            'description' => $item_description,
+                            'quantity' => $item_quantity,
+                            'unit_price' => $item_price,
+                            'hide_on_print' => $item_hide
                         ]);
                     }
                 }
             }
             
+            updateInvoiceTotals($invoice_id);
             $message = 'Invoice updated successfully';
         } else {
             $error = 'Failed to update invoice';
@@ -415,6 +429,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             <option value="paid" <?php echo ($invoice && $invoice['status'] === 'paid') ? 'selected' : ''; ?>>Paid</option>
                         </select>
                     </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Invoice Description
+                            <span class="text-xs text-gray-500 ml-2">Shown near the invoice header</span>
+                        </label>
+                        <input type="text" name="invoice_description"
+                               value="<?php echo $invoice ? htmlspecialchars($invoice['description']) : ''; ?>"
+                               placeholder="e.g., 5kW Hybrid Solar Package"
+                               class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-700 dark:text-white">
+                    </div>
                 </div>
             </div>
 
@@ -471,10 +495,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     </label>
                     <?php endif; ?>
                 </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Use the hide toggle on any line to keep it for internal use without showing it on customer-facing printouts. Totals still include hidden lines.</p>
                 <div id="items-container" class="space-y-4">
                     <?php if ($invoice && !empty($invoice['items'])): ?>
                         <?php foreach ($invoice['items'] as $index => $item): ?>
-                        <div class="item-row p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                        <?php $is_hidden = !empty($item['hide_on_print']); ?>
+                        <div class="item-row p-4 border border-gray-200 dark:border-gray-700 rounded-lg <?php echo $is_hidden ? 'opacity-60 ring-2 ring-yellow-400' : ''; ?>">
                             <div class="grid grid-cols-12 gap-4">
                                 <div class="col-span-12 md:col-span-5">
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -507,6 +533,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <input type="text" readonly 
                                            class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 item-amount bg-gray-50 dark:bg-gray-900 dark:text-white" 
                                            value="<?php echo formatCurrency($item['amount']); ?>">
+                                </div>
+                                <div class="col-span-12 flex flex-col md:flex-row md:items-center md:justify-between">
+                                    <div class="flex items-center">
+                                        <input type="checkbox" name="items[<?php echo $index; ?>][hide_on_print]" value="1"
+                                               class="item-hide-checkbox rounded border-gray-300 text-solar-blue focus:ring-solar-blue"
+                                               <?php echo $is_hidden ? 'checked' : ''; ?>>
+                                        <span class="ml-2 text-sm text-gray-600 dark:text-gray-300">Hide this item on printed invoice</span>
+                                    </div>
+                                    <span class="text-xs text-gray-400 italic mt-2 md:mt-0">Hidden items stay saved, excluded from printed invoices but still counted in totals.</span>
                                 </div>
                             </div>
                         </div>
@@ -546,6 +581,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <input type="text" readonly 
                                            class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 item-amount bg-gray-50 dark:bg-gray-900 dark:text-white" 
                                            value="<?php echo formatCurrency($item['quantity'] * $item['unit_price']); ?>">
+                                </div>
+                                <div class="col-span-12 flex flex-col md:flex-row md:items-center md:justify-between">
+                                    <div class="flex items-center">
+                                        <input type="checkbox" name="items[<?php echo $index; ?>][hide_on_print]" value="1"
+                                               class="item-hide-checkbox rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                                        <span class="ml-2 text-sm text-gray-600 dark:text-gray-300">Hide this item on printed invoice</span>
+                                    </div>
+                                    <span class="text-xs text-gray-400 italic mt-2 md:mt-0">Hidden items stay saved, excluded from printed invoices but still counted in totals.</span>
                                 </div>
                             </div>
                         </div>
@@ -604,6 +647,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                <?php echo !$invoice ? 'readonly' : ''; ?>
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-700 dark:text-white <?php echo !$invoice ? 'bg-gray-100 dark:bg-gray-900 cursor-not-allowed' : ''; ?>">
                     </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Payment Received
+                            <span class="text-xs text-gray-500 ml-2">(Deducted from total to show balance due)</span>
+                        </label>
+                        <input type="number" name="payment_amount" id="payment-input"
+                               step="0.01" min="0"
+                               value="<?php echo $invoice ? htmlspecialchars($invoice['payment_amount'] ?? 0) : '0'; ?>"
+                               class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:ring-2 focus:ring-solar-blue focus:border-transparent dark:bg-gray-700 dark:text-white">
+                    </div>
                     <div class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
                         <div class="flex justify-between text-sm">
                             <span class="text-gray-700 dark:text-gray-300">Subtotal:</span>
@@ -613,9 +666,17 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="text-gray-700 dark:text-gray-300">Tax:</span>
                             <span class="font-medium text-gray-900 dark:text-gray-200" id="tax-display"><?php echo formatCurrency(0); ?></span>
                         </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-700 dark:text-gray-300">Payment Received:</span>
+                            <span class="font-medium text-gray-900 dark:text-gray-200" id="payment-display"><?php echo formatCurrency($invoice['payment_amount'] ?? 0); ?></span>
+                        </div>
                         <div class="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between">
                             <span class="font-semibold text-gray-900 dark:text-gray-200">Total:</span>
                             <span class="font-bold text-lg text-gray-900 dark:text-gray-200" id="total-display"><?php echo formatCurrency(0); ?></span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="font-semibold text-gray-900 dark:text-gray-200">Balance Due:</span>
+                            <span class="font-bold text-gray-900 dark:text-gray-200" id="balance-display"><?php echo formatCurrency(0); ?></span>
                         </div>
                     </div>
                 </div>
@@ -718,6 +779,14 @@ document.getElementById('add-item-btn')?.addEventListener('click', function() {
                 <input type="text" readonly 
                        class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 item-amount bg-gray-50 dark:bg-gray-900 dark:text-white">
             </div>
+            <div class="col-span-12 flex flex-col md:flex-row md:items-center md:justify-between">
+                <div class="flex items-center">
+                    <input type="checkbox" name="items[${itemIndex}][hide_on_print]" value="1"
+                           class="item-hide-checkbox rounded border-gray-300 text-solar-blue focus:ring-solar-blue">
+                    <span class="ml-2 text-sm text-gray-600 dark:text-gray-300">Hide this item on printed invoice</span>
+                </div>
+                <span class="text-xs text-gray-400 italic mt-2 md:mt-0">Hidden items stay saved but are excluded from printed invoices and totals.</span>
+            </div>
         </div>
     `;
     container.appendChild(row);
@@ -738,6 +807,18 @@ document.getElementById('add-item-btn')?.addEventListener('click', function() {
     });
 });
 
+function updateHideState(row) {
+    const hideCheckbox = row.querySelector('.item-hide-checkbox');
+    if (!hideCheckbox) {
+        return;
+    }
+    if (hideCheckbox.checked) {
+        row.classList.add('opacity-60', 'ring-2', 'ring-yellow-400');
+    } else {
+        row.classList.remove('opacity-60', 'ring-2', 'ring-yellow-400');
+    }
+}
+
 function calculateItemAmount(row) {
     const qty = parseFloat(row.querySelector('.item-qty').value) || 0;
     const price = parseFloat(row.querySelector('.item-price').value) || 0;
@@ -757,20 +838,35 @@ function calculateTotals() {
     const taxRate = parseFloat(document.getElementById('tax-rate').value) || 0;
     const taxAmount = subtotal * (taxRate / 100);
     const total = subtotal + taxAmount;
+    const paymentInput = document.getElementById('payment-input');
+    let paymentAmount = paymentInput ? parseFloat(paymentInput.value) || 0 : 0;
+    if (paymentAmount < 0) paymentAmount = 0;
+    const balance = Math.max(total - paymentAmount, 0);
     
     document.getElementById('subtotal-display').textContent = '<?php echo CURRENCY_SYMBOL; ?>' + subtotal.toFixed(2);
     document.getElementById('tax-display').textContent = '<?php echo CURRENCY_SYMBOL; ?>' + taxAmount.toFixed(2);
     document.getElementById('total-display').textContent = '<?php echo CURRENCY_SYMBOL; ?>' + total.toFixed(2);
+    document.getElementById('payment-display').textContent = '<?php echo CURRENCY_SYMBOL; ?>' + paymentAmount.toFixed(2);
+    document.getElementById('balance-display').textContent = '<?php echo CURRENCY_SYMBOL; ?>' + balance.toFixed(2);
 }
 
 function attachItemListeners(row) {
     row.querySelector('.item-qty').addEventListener('input', () => calculateItemAmount(row));
     row.querySelector('.item-price').addEventListener('input', () => calculateItemAmount(row));
+    const hideCheckbox = row.querySelector('.item-hide-checkbox');
+    if (hideCheckbox) {
+        hideCheckbox.addEventListener('change', () => {
+            updateHideState(row);
+            calculateTotals();
+        });
+        updateHideState(row);
+    }
 }
 
 document.querySelectorAll('.item-row').forEach(row => attachItemListeners(row));
 
 document.getElementById('tax-rate')?.addEventListener('input', calculateTotals);
+document.getElementById('payment-input')?.addEventListener('input', calculateTotals);
 
 calculateTotals();
 

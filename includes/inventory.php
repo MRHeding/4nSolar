@@ -2691,12 +2691,12 @@ function createInvoice($data) {
         }
         
         $stmt = $pdo->prepare("INSERT INTO invoices 
-                              (invoice_number, quotation_id, invoice_date, due_date, po_number,
+                              (invoice_number, quotation_id, invoice_date, due_date, po_number, description,
                                bill_to_name, bill_to_address, ship_to_name, ship_to_address,
-                               subtotal, tax_rate, tax_amount, total_amount,
+                               subtotal, tax_rate, tax_amount, total_amount, payment_amount,
                                terms_conditions, bank_name, bank_account_number, bank_routing,
                                status, notes, created_by) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         
         $result = $stmt->execute([
             $invoice_number,
@@ -2704,6 +2704,7 @@ function createInvoice($data) {
             $data['invoice_date'],
             $data['due_date'],
             $data['po_number'] ?? null,
+            $data['description'] ?? null,
             $data['bill_to_name'],
             $data['bill_to_address'] ?? null,
             $data['ship_to_name'] ?? $data['bill_to_name'],
@@ -2712,6 +2713,7 @@ function createInvoice($data) {
             $data['tax_rate'] ?? 0,
             $data['tax_amount'] ?? 0,
             $data['total_amount'] ?? 0,
+            $data['payment_amount'] ?? 0,
             $data['terms_conditions'] ?? null,
             $data['bank_name'] ?? null,
             $data['bank_account_number'] ?? null,
@@ -2816,8 +2818,8 @@ function addInvoiceItem($invoice_id, $data) {
         }
         
         $stmt = $pdo->prepare("INSERT INTO invoice_items 
-                              (invoice_id, inventory_item_id, description, quantity, unit_price, amount) 
-                              VALUES (?, ?, ?, ?, ?, ?)");
+                              (invoice_id, inventory_item_id, description, quantity, unit_price, amount, hide_on_print) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?)");
         
         $result = $stmt->execute([
             $invoice_id,
@@ -2825,7 +2827,8 @@ function addInvoiceItem($invoice_id, $data) {
             trim($data['description']),
             $quantity,
             $unit_price,
-            $amount
+            $amount,
+            !empty($data['hide_on_print']) ? 1 : 0
         ]);
         
         if ($result) {
@@ -2903,18 +2906,19 @@ function updateInvoice($id, $data) {
     
     try {
         $stmt = $pdo->prepare("UPDATE invoices SET 
-                              invoice_date = ?, due_date = ?, po_number = ?,
+                              invoice_date = ?, due_date = ?, po_number = ?, description = ?,
                               bill_to_name = ?, bill_to_address = ?,
                               ship_to_name = ?, ship_to_address = ?,
                               tax_rate = ?, terms_conditions = ?,
                               bank_name = ?, bank_account_number = ?, bank_routing = ?,
-                              status = ?, notes = ?
+                              status = ?, notes = ?, payment_amount = ?
                               WHERE id = ?");
         
         $stmt->execute([
             $data['invoice_date'],
             $data['due_date'],
             $data['po_number'] ?? null,
+            $data['description'] ?? null,
             $data['bill_to_name'],
             $data['bill_to_address'] ?? null,
             $data['ship_to_name'] ?? $data['bill_to_name'],
@@ -2926,6 +2930,7 @@ function updateInvoice($id, $data) {
             $data['bank_routing'] ?? null,
             $data['status'] ?? 'draft',
             $data['notes'] ?? null,
+            $data['payment_amount'] ?? 0,
             $id
         ]);
         

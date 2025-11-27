@@ -20,6 +20,17 @@ if (!$invoice) {
     header("Location: invoices.php?error=" . urlencode('Invoice not found'));
     exit();
 }
+
+$visible_items = array_values(array_filter($invoice['items'] ?? [], function($item) {
+    return empty($item['hide_on_print']);
+}));
+$hidden_item_count = isset($invoice['items']) ? max(count($invoice['items']) - count($visible_items), 0) : 0;
+$calculated_subtotal = isset($invoice['subtotal']) ? floatval($invoice['subtotal']) : 0;
+$tax_rate_value = isset($invoice['tax_rate']) ? floatval($invoice['tax_rate']) : 0;
+$calculated_tax = isset($invoice['tax_amount']) ? floatval($invoice['tax_amount']) : ($calculated_subtotal * ($tax_rate_value / 100));
+$calculated_total = isset($invoice['total_amount']) ? floatval($invoice['total_amount']) : ($calculated_subtotal + $calculated_tax);
+$payment_amount = isset($invoice['payment_amount']) ? floatval($invoice['payment_amount']) : 0;
+$balance_due = max($calculated_total - $payment_amount, 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -485,75 +496,52 @@ if (!$invoice) {
         <!-- Items Table -->
             <div class="items-section mb-4 print-break-after">
                 <h3 class="text-lg font-semibold text-gray-800 mb-2 border-b pb-1">Items:</h3>
-                <?php if (!empty($invoice['items'])): ?>
+                <?php if (!empty($invoice['description'])): ?>
+                <div class="text-center mb-4">
+                    <p class="text-lg font-semibold text-gray-800"><?php echo htmlspecialchars($invoice['description']); ?></p>
+                </div>
+                <?php endif; ?>
+                <?php if (!empty($visible_items)): ?>
                 <div class="overflow-x-auto">
                     <table class="invoice-table w-full border-collapse border border-gray-300">
-            <thead>
+                        <thead>
                             <tr class="bg-gray-50">
-                                <th class="border border-gray-300 px-4 py-3 text-left text-sm font-medium text-gray-700" style="width: 5%">#</th>
-                                <th class="border border-gray-300 px-4 py-3 text-left text-sm font-medium text-gray-700" style="width: 50%">Description</th>
-                                <th class="border border-gray-300 px-4 py-3 text-center text-sm font-medium text-gray-700" style="width: 10%">Qty</th>
-                                <th class="border border-gray-300 px-4 py-3 text-right text-sm font-medium text-gray-700" style="width: 17.5%">Unit Price</th>
-                                <th class="border border-gray-300 px-4 py-3 text-right text-sm font-medium text-gray-700" style="width: 17.5%">Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                            <?php foreach ($invoice['items'] as $index => $item): ?>
+                                <th class="border border-gray-300 px-4 py-3 text-left text-sm font-medium text-gray-700">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($visible_items as $index => $item): ?>
                             <tr class="<?php echo $index % 2 === 0 ? 'bg-white' : 'bg-gray-50'; ?>">
-                                <td class="border border-gray-300 px-4 py-3 text-sm text-gray-900"><?php echo $index + 1; ?></td>
                                 <td class="border border-gray-300 px-4 py-3">
                                     <div class="text-sm text-gray-900">
                                         <?php 
-                                        // Display full product information if available
                                         if (!empty($item['brand']) || !empty($item['model'])) {
                                             $item_name = trim($item['brand'] ?? '');
-                                            
-                                            // Add model if it exists and is not just a placeholder
                                             if (!empty($item['model']) && $item['model'] !== 'N/A') {
                                                 $model = trim($item['model']);
                                                 if (stripos($item_name, $model) === false) {
                                                     $item_name .= ' ' . $model;
                                                 }
                                             }
-                                            
-                                            // Add size specification if it exists
                                             if (!empty($item['size_specification']) && $item['size_specification'] !== 'N/A') {
                                                 $size_spec = trim($item['size_specification']);
                                                 if (stripos($item_name, $size_spec) === false) {
-                                                    $item_name .= ' ' . $size_spec;
+                                                $item_name .= ' ' . $size_spec;
                                                 }
                                             }
                                             
-                                            if ($item_name) {
-                                                echo htmlspecialchars($item_name);
-                                            } else {
-                                                echo htmlspecialchars($item['description']);
-                                            }
+                                            echo htmlspecialchars($item_name ?: $item['description']);
                                         } else {
                                             echo htmlspecialchars($item['description']);
                                         }
                                         ?>
                                     </div>
                                 </td>
-                                <td class="border border-gray-300 px-4 py-3 text-center text-sm text-gray-900">
-                                    <?php 
-                            $qty = floatval($item['quantity']);
-                            echo $qty == intval($qty) ? number_format($qty, 0) : number_format($qty, 2);
-                                    ?>
-                                </td>
-                                <td class="border border-gray-300 px-4 py-3 text-right text-sm text-gray-900">
-                                    <?php echo formatCurrency($item['unit_price']); ?>
-                                </td>
-                                <td class="border border-gray-300 px-4 py-3 text-right text-sm font-medium text-gray-900">
-                                    <?php echo formatCurrency($item['amount']); ?>
-                                </td>
-                    </tr>
-                    <?php endforeach; ?>
+                            </tr>
+                            <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
-                <?php else: ?>
-                <p class="text-gray-500 text-center py-4">No items in this invoice.</p>
                 <?php endif; ?>
             </div>
 
@@ -565,17 +553,27 @@ if (!$invoice) {
                         <div class="space-y-1">
                             <div class="flex justify-between text-sm border-b pb-1">
                                 <span class="text-gray-600 font-medium">Subtotal:</span>
-                                <span class="font-bold"><?php echo formatCurrency($invoice['subtotal']); ?></span>
+                                <span class="font-bold"><?php echo formatCurrency($calculated_subtotal); ?></span>
             </div>
-            <?php if ($invoice['tax_rate'] > 0): ?>
+            <?php if ($tax_rate_value > 0): ?>
                             <div class="flex justify-between text-sm border-b pb-1">
-                                <span class="text-gray-600 font-medium">Tax (<?php echo number_format($invoice['tax_rate'], 1); ?>%):</span>
-                                <span class="font-bold"><?php echo formatCurrency($invoice['tax_amount']); ?></span>
+                                <span class="text-gray-600 font-medium">Tax (<?php echo number_format($tax_rate_value, 1); ?>%):</span>
+                                <span class="font-bold"><?php echo formatCurrency($calculated_tax); ?></span>
             </div>
             <?php endif; ?>
+                            <?php if ($payment_amount > 0): ?>
+                            <div class="flex justify-between text-sm border-b pb-1">
+                                <span class="text-gray-600 font-medium">Payment Received:</span>
+                                <span class="font-bold text-green-600"><?php echo formatCurrency($payment_amount); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <div class="flex justify-between text-lg font-bold bg-blue-100 p-2 rounded">
                                 <span class="text-gray-900">TOTAL:</span>
-                                <span class="text-blue-600"><?php echo formatCurrency($invoice['total_amount']); ?></span>
+                                <span class="text-blue-600"><?php echo formatCurrency($calculated_total); ?></span>
+                            </div>
+                            <div class="flex justify-between text-lg font-bold bg-green-50 p-2 rounded mt-2">
+                                <span class="text-gray-900">Balance Due:</span>
+                                <span class="text-green-700"><?php echo formatCurrency($balance_due); ?></span>
                             </div>
                         </div>
                     </div>

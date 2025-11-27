@@ -1,0 +1,231 @@
+/**
+ * Christmas Theme Styles
+ * Festive decorations and colors for the holiday season
+ */
+
+/* Christmas Theme - Active only in December */
+:root {
+    --christmas-red: #dc2626;
+    --christmas-green: #059669;
+    --christmas-gold: #d97706;
+    --christmas-white: #ffffff;
+}
+
+/* Snow container (already handled by JS, but adding base styles) */
+#snow-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+}
+
+/* Christmas decorations for header */
+.christmas-header {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.christmas-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.05) 10px, rgba(255,255,255,0.05) 20px);
+    pointer-events: none;
+}
+
+/* Christmas tree icon animation */
+@keyframes christmas-twinkle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.christmas-icon {
+    animation: christmas-twinkle 2s ease-in-out infinite;
+    display: inline-block;
+    margin: 0 2px;
+}
+
+/* Christmas themed buttons */
+.btn-christmas {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 6px rgba(220, 38, 38, 0.3);
+    transition: all 0.3s ease;
+}
+
+.btn-christmas:hover {
+    background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+    box-shadow: 0 6px 8px rgba(220, 38, 38, 0.4);
+    transform: translateY(-2px);
+    color: white;
+}
+
+/* Christmas themed cards */
+.card-christmas {
+    border: 2px solid var(--christmas-green);
+    box-shadow: 0 4px 6px rgba(5, 150, 105, 0.2);
+    position: relative;
+}
+
+.card-christmas::before {
+    content: '🎄';
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    font-size: 24px;
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+/* Christmas themed sidebar accents */
+.christmas-sidebar-accent {
+    background: linear-gradient(180deg, var(--christmas-green) 0%, #047857 100%);
+}
+
+/* Festive border animations */
+@keyframes border-glow {
+    0%, 100% { 
+        box-shadow: 0 0 5px rgba(220, 38, 38, 0.5);
+    }
+    50% { 
+        box-shadow: 0 0 20px rgba(220, 38, 38, 0.8), 0 0 30px rgba(220, 38, 38, 0.4);
+    }
+}
+
+.christmas-glow {
+    animation: border-glow 2s ease-in-out infinite;
+}
+
+/* Christmas garland effect */
+@keyframes garland {
+    0% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-5px) rotate(2deg); }
+    50% { transform: translateY(0) rotate(0deg); }
+    75% { transform: translateY(-5px) rotate(-2deg); }
+    100% { transform: translateY(0) rotate(0deg); }
+}
+
+.christmas-garland {
+    animation: garland 3s ease-in-out infinite;
+}
+
+/* Festive text effects */
+.christmas-text {
+    background: linear-gradient(135deg, #dc2626 0%, #d97706 50%, #059669 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: bold;
+}
+
+/* Snowflake sparkle effect */
+@keyframes sparkle {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+.christmas-sparkle {
+    animation: sparkle 1.5s ease-in-out infinite;
+}
+
+/* Holiday badge styles */
+.badge-christmas {
+    background: linear-gradient(135deg, #dc2626 0%, #d97706 100%);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Christmas notification styles */
+.alert-christmas {
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
+    border-left: 4px solid var(--christmas-red);
+    color: #991b1b;
+}
+
+.alert-christmas::before {
+    content: '🎄 ';
+    margin-right: 8px;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 768px) {
+    #snow-container {
+        z-index: 9998; /* Slightly lower on mobile to avoid interfering with modals */
+    }
+}
+
+/* Print styles - hide snow and decorations when printing */
+@media print {
+    #snow-container {
+        display: none !important;
+    }
+    
+    .christmas-header::before,
+    .card-christmas::before {
+        display: none !important;
+    }
+}
+
+/* Dark mode support for Christmas theme */
+.dark .christmas-text {
+    background: linear-gradient(135deg, #fca5a5 0%, #fbbf24 50%, #34d399 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.dark .alert-christmas {
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.2) 0%, rgba(217, 119, 6, 0.2) 100%);
+    color: #fca5a5;
+}
+
+/* Optional: Add subtle Christmas colors to existing elements in December */
+body.christmas-mode .bg-solar-blue {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+}
+
+body.christmas-mode .text-solar-blue {
+    color: var(--christmas-red) !important;
+}
+
+/* Smooth transitions */
+.christmas-transition {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Christmas emoji decorations */
+.christmas-decoration::before {
+    content: '🎄';
+    margin-right: 0.5rem;
+    font-size: 1.2em;
+}
+
+.christmas-decoration-red::before {
+    content: '🎅';
+}
+
+.christmas-decoration-gold::before {
+    content: '⭐';
+}
+
+
+
+
+
+
+
